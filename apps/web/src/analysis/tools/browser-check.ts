@@ -6,12 +6,13 @@ import { decodeAudio, frameToRgba, videoFrames } from '../../media/decode';
 import wasmModule from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url';
 import wasmBinary from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url';
 
-export async function runWorkerCheck(task: 'transcription' | 'beats' | 'footage' | 'sync', modelRoot = '/t19a-models/', mediaRoot = '/t19a-media/') {
+export async function runWorkerCheck(task: 'transcription' | 'beats' | 'footage' | 'sync', modelRoot = '/t19a-models/', mediaRoot = '/t19a-media/', clip?: string) {
   const engine = new AnalysisEngine({ modelRoot, device: 'wasm', wasm: { mjs: new URL(wasmModule, location.href).href, wasm: new URL(wasmBinary, location.href).href } });
   const worker = new AnalysisWorker();
-  const file = task === 'beats' ? 'prerequisites/OT-5-drum-120.wav' : 'corpus/tos-speech-45s.mp4';
+  // A named clip is decoded whole: the music gate (T19q T8) is judged on the full clip, not its first 6 s.
+  const file = clip ?? (task === 'beats' ? 'prerequisites/OT-5-drum-120.wav' : 'corpus/tos-speech-45s.mp4');
   const blob = await (await fetch(mediaRoot + file)).blob(), decoded = await decodeAudio(blob);
-  const pcm: Pcm = { sampleRate: decoded.sampleRate, channels: decoded.channels, data: decoded.data.map(c => c.slice(0, decoded.sampleRate * 6)) };
+  const pcm: Pcm = { sampleRate: decoded.sampleRate, channels: decoded.channels, data: decoded.data.map(c => clip ? c : c.slice(0, decoded.sampleRate * 6)) };
   let direct: unknown, workerValue: unknown, again: unknown, elapsedMs = 0, backends: Record<string, string> = {};
   try {
     if (task === 'transcription') {

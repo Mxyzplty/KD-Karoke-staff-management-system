@@ -69,12 +69,15 @@ async function serveModels(page: Page, ids: readonly string[], modelRoot = '/t19
     byRelative.set(file.path.replace(/^models\/t19a\//, ''), abs);
   }
   const origin = await startStaticServer(byRelative);
+  const served: string[] = [];
   await page.route(`**${modelRoot}**`, route => {
     const relative = decodeURIComponent(new URL(route.request().url()).pathname.replace(new RegExp(`^.*${modelRoot}`), ''));
     const abs = byRelative.get(relative);
     if (!abs) return route.abort();
+    served.push(relative);
     return statSync(abs).size >= CDP_PIPE_CAP ? route.continue({ url: `${origin}/${relative}` }) : route.fulfill({ path: abs });
   });
+  return served;
 }
 
 /** Serves one fixture-store media file, unverified against the manifest (it carries no model-integrity hash). */
@@ -95,20 +98,21 @@ async function blockRemote(page: Page, origin: string) {
   return () => remote;
 }
 
-async function run(page: Page, task: 'transcription' | 'beats' | 'footage' | 'sync') {
+/** `clip` replaces the task's default media file and is decoded whole (see runWorkerCheck); `served` lists the model files requested. */
+async function run(page: Page, task: 'transcription' | 'beats' | 'footage' | 'sync', clip?: string) {
   const origin = new URL(page.url()).origin;
   const remote = await blockRemote(page, origin);
-  await serveModels(page, MODELS_FOR[task]);
-  await serveMedia(page, task === 'beats' ? 'prerequisites/OT-5-drum-120.wav' : 'corpus/tos-speech-45s.mp4');
-  const result = await page.evaluate(async task => {
+  const served = await serveModels(page, MODELS_FOR[task]);
+  await serveMedia(page, clip ?? (task === 'beats' ? 'prerequisites/OT-5-drum-120.wav' : 'corpus/tos-speech-45s.mp4'));
+  const result = await page.evaluate(async ({ task, clip }) => {
     const path = '/src/analysis/tools/browser-check.ts';
     const { runWorkerCheck } = await import(path);
-    return runWorkerCheck(task);
-  }, task);
+    return runWorkerCheck(task, undefined, undefined, clip);
+  }, { task, clip });
   expect(result.worker, 'worker must match DirectEngine exactly').toEqual(result.direct);
   expect(result.again, 'a second worker run must match the first exactly').toEqual(result.worker);
   expect(remote(), 'no request should leave the app origin').toBe(0);
-  return result;
+  return { ...result, served };
 }
 
 test.beforeEach(async ({ page }) => { await page.goto('/src/analysis/tools/check.html'); });
@@ -138,6 +142,18 @@ test('real transcription: DirectEngine, worker and worker rerun agree on the spe
     }
   }
   expect(result.backends).toMatchObject({ transcription: 'wasm', sound: 'wasm', 'word alignment': 'wasm' });
+});
+
+// T19q T8: an English decode runs Qwen3-ASR and the arbitration only when the sound classifier marks the file as music.
+// tos-speech-45s may never fire that gate, so the clip here is one it does fire on; the model files requested prove it did.
+test('real transcription: DirectEngine, worker and worker rerun agree on a clip the music gate fires on', async ({ page }) => {
+  test.setTimeout(1_800_000);
+  const result = await run(page, 'transcription', 'corpus/tos-action-30s.mp4');
+  expect(result.direct).toMatchObject({ status: 'complete' });
+  const qwen = manifest.models.find(m => m.id === 'T19a-qwen3-asr')!.files.map(f => f.path.replace(/^models\/t19a\//, ''));
+  const decoderFiles = qwen.filter(f => /(conv_frontend|encoder|decoder)[^/]*\.onnx$/.test(f));
+  expect(decoderFiles.length, 'manifest lists the Qwen3-ASR conv_frontend, encoder and decoder').toBe(3);
+  for (const file of decoderFiles) expect(result.served, `Qwen3-ASR file ${file} must be requested`).toContain(file);
 });
 
 test('real beats: DirectEngine, worker and worker rerun agree on the drum fixture', async ({ page }) => {
