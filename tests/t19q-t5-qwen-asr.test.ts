@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19q T5: model-free unit tests for the Qwen3-ASR TypeScript port. No ONNX session is loaded here —
-// only the pure feature/tokenizer helpers (qwen-asr.ts) and ports of models.ts's private window/anchor
-// helpers, plus engine.ts routing with LocalModels mocked out.
+// feature/tokenizer helpers, production windowing and alignment, and engine routing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Tensor } from 'onnxruntime-web/webgpu';
 import { logMelFeatures, normalizeWhisperFeatures, trimAudioFeatures, featToAudioTokensLen, Qwen3AsrTokenizer } from '../apps/web/src/analysis/qwen-asr';
 import { AnalysisEngine } from '../apps/web/src/analysis/engine';
 import { CAPABILITY_MODELS, modelAvailability } from '../apps/web/src/analysis/availability';
 import { MODEL_IDS } from '../apps/web/src/analysis/model-ids';
 import type { Pair } from '../apps/web/src/analysis/types';
+import { LocalModels } from '../apps/web/src/analysis/models';
+import { makeTranscript } from '../apps/web/src/analysis/transcript';
 
 const N_MELS = 128;
 
@@ -78,22 +80,19 @@ describe('featToAudioTokensLen: sherpa-onnx impl.cc integer formula', () => {
   });
 });
 
-describe('trimAudioFeatures: last-frame-first scan', () => {
-  const frame = (dim: number, value: number) => Array.from({ length: dim }, () => value);
-  function build(values: number[]): Float32Array {
-    const out = new Float32Array(values.length * N_MELS);
-    values.forEach((v, i) => out.set(frame(N_MELS, v), i * N_MELS));
-    return out;
-  }
-
-  it('returns the count of leading voiced frames, scanning from the end', () => {
-    expect(trimAudioFeatures(build([0.1, 0.2, 0.3, 1e-7, 1e-8]), 5)).toBe(3);
+describe('trimAudioFeatures: encoder embedding rows', () => {
+  it('trims silent trailing rows and preserves the hidden width', async () => {
+    const tensor = new Tensor('float32', Float32Array.from([1, 2, 0, 0, 0, 0]), [1, 3, 2]);
+    const result = await trimAudioFeatures(tensor);
+    expect(result?.dims).toEqual([1, 1, 2]);
+    expect(Array.from(result!.data as Float32Array)).toEqual([1, 2]);
   });
-  it('returns 0 when every frame is silent', () => {
-    expect(trimAudioFeatures(build([1e-7, 1e-8, 0]), 3)).toBe(0);
+  it('returns null for an entirely silent tensor', async () => {
+    expect(await trimAudioFeatures(new Tensor('float32', new Float32Array(6), [1, 3, 2]))).toBeNull();
   });
-  it('returns numFrames when every frame is voiced', () => {
-    expect(trimAudioFeatures(build([0.1, 0.2, 0.3]), 3)).toBe(3);
+  it('preserves an untrimmed tensor', async () => {
+    const tensor = new Tensor('float32', Float32Array.from([0, 0, 1, 0]), [1, 2, 2]);
+    expect(await trimAudioFeatures(tensor)).toBe(tensor);
   });
 });
 
@@ -158,93 +157,74 @@ describe('Qwen3AsrTokenizer: byte-level BPE round-trip + specials', () => {
   });
 });
 
-describe('qwenWindows (ported): <=30s windows cut at the latest VAD-gap midpoint', () => {
-  /** Verbatim port of LocalModels#qwenWindows (models.ts), private and untestable directly. */
-  function qwenWindows(voice: Pair[], duration: number): Pair[] {
-    const CAP = 30, MIN_IN = 1;
-    const windows: Pair[] = [];
-    let cursor = 0;
-    while (cursor < duration - 1e-6) {
-      const hard = Math.min(duration, cursor + CAP);
-      if (hard - cursor < CAP - 1e-6) { windows.push([cursor, hard]); break; }
-      let latest = -1;
-      for (let i = 0; i + 1 < voice.length; i++) {
-        const ge = voice[i][1], gs = voice[i + 1][0];
-        if (gs <= ge) continue;
-        const mid = (ge + gs) / 2;
-        if (mid > cursor + MIN_IN && mid <= hard && mid > latest) latest = mid;
-      }
-      const cut = latest > 0 ? latest : hard;
-      windows.push([cursor, cut]);
-      cursor = cut;
-    }
-    return windows;
-  }
-
-  it('no voice at all: one window covering [0, duration]', () => {
-    expect(qwenWindows([], 10)).toEqual([[0, 10]]);
-  });
-  it('cuts at the gap midpoint when one falls in [cursor+1, cursor+30]', () => {
-    expect(qwenWindows([[5, 20], [25, 55]], 60)).toEqual([[0, 22.5], [22.5, 52.5], [52.5, 60]]);
-  });
-  it('a single voice span wider than 30s is hard-cut at 30s', () => {
-    expect(qwenWindows([[0, 40]], 40)).toEqual([[0, 30], [30, 40]]);
-  });
-  it('every window is at most 30s and the windows cover [0, duration] in order with no gaps', () => {
-    const windows = qwenWindows([[5, 20], [25, 55]], 60);
-    expect(windows[0][0]).toBe(0);
-    expect(windows.at(-1)![1]).toBe(60);
-    windows.forEach(([s, e], i) => {
-      expect(e - s).toBeLessThanOrEqual(30 + 1e-6);
-      if (i) expect(s).toBe(windows[i - 1][1]);
+describe('Qwen production windowing and alignment', () => {
+  function setup(text: string) {
+    const models = new LocalModels({ modelRoot: 'unused', device: 'cpu' });
+    const decode = vi.fn().mockResolvedValue({ text });
+    vi.spyOn(models as any, 'qwenRecognizer').mockResolvedValue({ decode });
+    vi.spyOn(models, 'ctcLogProbs').mockResolvedValue({
+      logProbs: new Float32Array(), frames: 0, classes: 4,
+      vocab: new Map([['a', 2], ['b', 3]]), blank: 0, delimiter: 1,
     });
-  });
-});
-
-describe('char-count anchor fill (ported): interpolates unaligned words between neighbours', () => {
-  /** Verbatim port of the anchor-fill block inside LocalModels#qwenTranscribe (models.ts). */
-  function fillAnchors(words: string[], initial: (Pair | null)[], winStart: number, winEnd: number): Pair[] {
-    const winDur = winEnd - winStart;
-    const anchors = initial.slice();
-    const lens = words.map(w => Math.max(1, w.length));
-    let allNull = true;
-    for (const a of anchors) if (a !== null) { allNull = false; break; }
-    if (allNull) {
-      const total = lens.reduce((a, b) => a + b, 0);
-      let cur = 0;
-      for (let k = 0; k < words.length; k++) {
-        const sf = cur / total; cur += lens[k]; const ef = cur / total;
-        anchors[k] = [sf * winDur, ef * winDur];
-      }
-    } else {
-      let i = 0;
-      while (i < words.length) {
-        if (anchors[i]) { i++; continue; }
-        let j = i;
-        while (j < words.length && !anchors[j]) j++;
-        const left = i === 0 ? 0 : anchors[i - 1]![1];
-        const right = j === words.length ? winDur : anchors[j]![0];
-        const total = Math.max(1, lens.slice(i, j).reduce((a, b) => a + b, 0));
-        let cur = 0;
-        for (let k = i; k < j; k++) {
-          const sf = cur / total; cur += lens[k]; const ef = cur / total;
-          anchors[k] = [left + sf * (right - left), left + ef * (right - left)];
-        }
-        i = j;
-      }
-    }
-    return anchors as Pair[];
+    return { models, decode };
   }
 
-  it('whole-window fallback: char-length spread over [0, winDur] when every anchor is null', () => {
-    expect(fillAnchors(['a', 'bb', 'ccc'], [null, null, null], 0, 6)).toEqual([[0, 1], [1, 3], [3, 6]]);
+  it('cuts at the latest available VAD gap and covers the whole multi-window input', async () => {
+    const { models, decode } = setup('');
+    await models.qwenTranscribe(new Float32Array(60 * 16000), [[1, 5], [7, 15], [20, 25], [29, 60]], 60);
+    expect(decode.mock.calls.map(([samples]) => samples.length / 16000)).toEqual([27, 30, 3]);
   });
-  it('fills a single unaligned word in the gap between two anchored neighbours', () => {
-    expect(fillAnchors(['aa', 'bb', 'cc'], [[0, 1], null, [5, 6]], 0, 6)).toEqual([[0, 1], [1, 5], [5, 6]]);
+
+  it('hard splits a continuous voice region at 30 seconds', async () => {
+    const { models, decode } = setup('');
+    await models.qwenTranscribe(new Float32Array(40 * 16000), [[0, 40]], 40);
+    expect(decode.mock.calls.map(([samples]) => samples.length / 16000)).toEqual([30, 10]);
   });
-  it('kept anchors pass through unchanged', () => {
-    const anchors: (Pair | null)[] = [[0, 1], [1, 2], [2, 3]];
-    expect(fillAnchors(['a', 'b', 'c'], anchors, 0, 3)).toEqual([[0, 1], [1, 2], [2, 3]]);
+
+  it('interpolates an unspellable word between real CTC anchors', async () => {
+    const { models } = setup('a !!! b');
+    const data = new Float32Array(7 * 4).fill(-100);
+    [0, 2, 0, 1, 0, 3, 0].forEach((id, frame) => { data[frame * 4 + id] = 0; });
+    vi.mocked(models.ctcLogProbs).mockResolvedValue({ logProbs: data, frames: 7, classes: 4, vocab: new Map([['a', 2], ['b', 3]]), blank: 0, delimiter: 1 });
+    const { chunks } = await models.qwenTranscribe(new Float32Array(16000), [[0, 1]], 1);
+    expect(chunks.map(c => c.text)).toEqual(['a', '!!!', 'b']);
+    expect(chunks.map(c => c.timestamp)).toEqual([[0.02, 0.04], [0.04, 0.1], [0.1, 0.12]]);
+  });
+
+  it('places a no-path fallback in separated intersecting voiced spans and retains both words', async () => {
+    const { models } = setup('hello world');
+    const samples = new Float32Array(10 * 16000);
+    const voice: Pair[] = [[0, 1], [9, 10]];
+    const { chunks } = await models.qwenTranscribe(samples, voice, 10);
+    expect(chunks.map(c => c.timestamp)).toEqual([[0, 1], [9, 10]]);
+    expect(makeTranscript(chunks, samples, 10, 'en', voice).segments.flatMap(s => s.words.map(w => w.word))).toEqual(['hello', 'world']);
+  });
+
+  it('clamps an unequal word crossing a voice gap to the span containing its active-time midpoint', async () => {
+    const { models } = setup('a bbb');
+    const samples = new Float32Array(10 * 16000);
+    const voice: Pair[] = [[0, 1], [9, 10]];
+    const { chunks } = await models.qwenTranscribe(samples, voice, 10);
+    expect(chunks.map(c => c.timestamp)).toEqual([[0, 0.5], [9, 10]]);
+    expect(makeTranscript(chunks, samples, 10, 'en', voice).segments.flatMap(s => s.words.map(w => w.word))).toEqual(['a', 'bbb']);
+  });
+
+  it('emits nothing for windows with no voice and keeps the fallback in the voiced ones', async () => {
+    const { models, decode } = setup('hello');
+    const samples = new Float32Array(105 * 16000);
+    const { chunks } = await models.qwenTranscribe(samples, [[0, 5], [100, 105]], 105);
+    // Windows: [0,30], [30,52.5] (VAD-gap midpoint), [52.5,82.5], [82.5,105]; only the first and last intersect voice.
+    expect(decode).toHaveBeenCalledTimes(4);
+    expect(chunks).toEqual([{ text: 'hello', timestamp: [0, 5] }, { text: 'hello', timestamp: [100, 105] }]);
+  });
+
+  it('intersects voice with each window and applies nonzero window offsets', async () => {
+    const { models } = setup('a');
+    const samples = new Float32Array(40 * 16000);
+    const voice: Pair[] = [[0, 1], [29, 40]];
+    const { chunks } = await models.qwenTranscribe(samples, voice, 40);
+    expect(chunks.map(c => c.timestamp)).toEqual([[0, 1], [29, 40]]);
+    expect(makeTranscript(chunks, samples, 40, 'en', voice).segments.flatMap(s => s.words.map(w => w.word))).toEqual(['a', 'a']);
   });
 });
 

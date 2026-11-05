@@ -1,4 +1,18 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only AND Apache-2.0
+/*! @license TypeScript port of https://github.com/k2-fsa/sherpa-onnx
+ * @ 4161dacf2a9a86e3c4dd773b106c557b0a63cc1a:
+ * sherpa-onnx/csrc/offline-recognizer-qwen3-asr-impl.cc,
+ * sherpa-onnx/csrc/offline-qwen3-asr-model.cc and sherpa-onnx/csrc/qwen-asr-tokenizer.cc.
+ * Copyright (c)  2026 zengyw
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations
+ * under the License. This file has been changed from the original C++ sources for TypeScript,
+ * browser/Node ONNX sessions and the registered greedy English decoding path.
+ */
 /**
  * Qwen3-ASR-0.6B TypeScript port of sherpa-onnx's offline-recognizer-qwen3-asr-impl.cc,
  * offline-qwen3-asr-model.cc and qwen-asr-tokenizer.cc @ sherpa-onnx 4161dacf (Apache-2.0).
@@ -179,19 +193,29 @@ export function normalizeWhisperFeatures(features: Float32Array, numFrames: numb
   }
 }
 
-/** TrimAudioFeatures: last-frame-first scan, first frame with max|v|>eps sets valid=a+1; all-silent → 0. */
-export function trimAudioFeatures(features: Float32Array, numFrames: number): number {
+/** Reference TrimAudioFeatures on [1, audio tokens, hidden width] embeddings; null means all silent. */
+export async function trimAudioFeatures(features: OrtTensor): Promise<OrtTensor | null> {
+  const shape = features.dims;
+  if (shape.length !== 3 || shape[0] !== 1 || shape[1] <= 0 || shape[2] <= 0) return features;
+  if (features.type !== 'float32' && features.type !== 'float16' && features.type !== 'uint16') return features;
+  const [, numFrames, width] = shape, source = features.data as Float32Array | Uint16Array;
+  // ORT can expose float16 data as native Float16Array; scan and copy its underlying half bits.
+  const data = features.type === 'float32' ? source : new Uint16Array(source.buffer, source.byteOffset, source.byteLength / 2);
   const eps = 1e-6;
   for (let a = numFrames - 1; a >= 0; a--) {
     let m = 0;
-    const row = a * N_MELS;
-    for (let d = 0; d < N_MELS; d++) {
-      const v = Math.abs(features[row + d]);
+    const row = a * width;
+    for (let d = 0; d < width; d++) {
+      const v = Math.abs(features.type === 'float32' ? data[row + d] : fp16ToFloat(data[row + d]));
       if (v > m) m = v;
     }
-    if (m > eps) return a + 1;
+    if (m > eps) {
+      if (a + 1 === numFrames) return features;
+      const o = await ort();
+      return new o.Tensor(features.type, data.slice(0, (a + 1) * width), [1, a + 1, width]);
+    }
   }
-  return 0;
+  return null;
 }
 
 /** tn = (((cs+1)/2+1)/2+1)/2 integer-div; full*tn + aftercnn(rem) where aftercnn = three times (x-1)/2+1. */
@@ -423,30 +447,35 @@ export class Qwen3AsrModel {
     m.o = await ort(opts.wasm);
     const sessOpts: import('onnxruntime-web/webgpu').InferenceSession.SessionOptions = { executionProviders: ['wasm'] };
     const [convBytes, encoderBytes, decoderBytes] = await Promise.all([readBytes(opts.convUrl), readBytes(opts.encoderUrl), readBytes(opts.decoderUrl)]);
-    m.conv = await m.o.InferenceSession.create(convBytes, sessOpts);
-    m.encoder = await m.o.InferenceSession.create(encoderBytes, sessOpts);
-    m.decoder = await m.o.InferenceSession.create(decoderBytes, sessOpts);
-    if (m.conv.inputNames.length !== 1 || m.conv.outputNames.length !== 1) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR conv frontend must have exactly one input and output.');
-    m.convInputName = m.conv.inputNames[0]; m.convOutputName = m.conv.outputNames[0];
-    if (m.encoder.inputNames.length !== 2 || m.encoder.outputNames.length !== 1) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR encoder must have exactly two inputs and one output.');
-    m.encoderInputNames = m.encoder.inputNames; m.encoderOutputName = m.encoder.outputNames[0];
-    m.decoderInputNames = m.decoder.inputNames; m.decoderOutputNames = m.decoder.outputNames;
-    const outs = m.decoderOutputNames.length;
-    if (outs < 1 || (outs - 1) % 2 !== 0) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR decoder outputs mismatch: expected 1+2*num_layers.');
-    m.numLayers = (outs - 1) / 2;
-    if (m.decoderInputNames.length !== 4 + 2 * m.numLayers) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR decoder inputs mismatch: expected 4+2*num_layers.');
-    const pastKeyMeta = m.decoder.inputMetadata[4] as { shape?: readonly (number | string)[]; type?: string };
-    const shape = pastKeyMeta?.shape ?? [];
-    m.pastKeyShapeTpl = shape.map(d => typeof d === 'number' ? d : -1);
-    const dim1 = m.pastKeyShapeTpl[1];
-    m.maxTotalLen = typeof dim1 === 'number' && dim1 > 0 ? Math.min(dim1, MAX_TOTAL_LEN_CAP) : MAX_TOTAL_LEN_CAP;
-    const keyMeta = m.decoder.inputMetadata[4] as { type?: string };
-    const valMeta = m.decoder.inputMetadata[5] as { type?: string };
-    m.kvKeyType = (keyMeta?.type ?? 'float32') as OrtTensorDataType;
-    m.kvValueType = (valMeta?.type ?? 'float32') as OrtTensorDataType;
-    if (m.kvKeyType !== 'float32' && m.kvKeyType !== 'float16' && m.kvKeyType !== 'uint16') throw new AnalysisError('TRANSCRIPTION_FAILED', `Qwen3-ASR decoder past_key dtype ${m.kvKeyType} is not supported.`);
-    if (m.kvValueType !== 'float32' && m.kvValueType !== 'float16' && m.kvValueType !== 'uint16') throw new AnalysisError('TRANSCRIPTION_FAILED', `Qwen3-ASR decoder past_value dtype ${m.kvValueType} is not supported.`);
-    return m;
+    try {
+      m.conv = await m.o.InferenceSession.create(convBytes, sessOpts);
+      m.encoder = await m.o.InferenceSession.create(encoderBytes, sessOpts);
+      m.decoder = await m.o.InferenceSession.create(decoderBytes, sessOpts);
+      if (m.conv.inputNames.length !== 1 || m.conv.outputNames.length !== 1) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR conv frontend must have exactly one input and output.');
+      m.convInputName = m.conv.inputNames[0]; m.convOutputName = m.conv.outputNames[0];
+      if (m.encoder.inputNames.length !== 2 || m.encoder.outputNames.length !== 1) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR encoder must have exactly two inputs and one output.');
+      m.encoderInputNames = m.encoder.inputNames; m.encoderOutputName = m.encoder.outputNames[0];
+      m.decoderInputNames = m.decoder.inputNames; m.decoderOutputNames = m.decoder.outputNames;
+      const outs = m.decoderOutputNames.length;
+      if (outs < 1 || (outs - 1) % 2 !== 0) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR decoder outputs mismatch: expected 1+2*num_layers.');
+      m.numLayers = (outs - 1) / 2;
+      if (m.decoderInputNames.length !== 4 + 2 * m.numLayers) throw new AnalysisError('TRANSCRIPTION_FAILED', 'Qwen3-ASR decoder inputs mismatch: expected 4+2*num_layers.');
+      const pastKeyMeta = m.decoder.inputMetadata[4] as { shape?: readonly (number | string)[]; type?: string };
+      const shape = pastKeyMeta?.shape ?? [];
+      m.pastKeyShapeTpl = shape.map(d => typeof d === 'number' ? d : -1);
+      const dim1 = m.pastKeyShapeTpl[1];
+      m.maxTotalLen = typeof dim1 === 'number' && dim1 > 0 ? Math.min(dim1, MAX_TOTAL_LEN_CAP) : MAX_TOTAL_LEN_CAP;
+      const keyMeta = m.decoder.inputMetadata[4] as { type?: string };
+      const valMeta = m.decoder.inputMetadata[5] as { type?: string };
+      m.kvKeyType = (keyMeta?.type ?? 'float32') as OrtTensorDataType;
+      m.kvValueType = (valMeta?.type ?? 'float32') as OrtTensorDataType;
+      if (m.kvKeyType !== 'float32' && m.kvKeyType !== 'float16' && m.kvKeyType !== 'uint16') throw new AnalysisError('TRANSCRIPTION_FAILED', `Qwen3-ASR decoder past_key dtype ${m.kvKeyType} is not supported.`);
+      if (m.kvValueType !== 'float32' && m.kvValueType !== 'float16' && m.kvValueType !== 'uint16') throw new AnalysisError('TRANSCRIPTION_FAILED', `Qwen3-ASR decoder past_value dtype ${m.kvValueType} is not supported.`);
+      return m;
+    } catch (error) {
+      await m.dispose().catch(() => {});
+      throw error;
+    }
   }
 
   async forwardConvFrontend(features: Float32Array, numFrames: number): Promise<OrtTensor> {
@@ -526,8 +555,9 @@ export class Qwen3AsrModel {
   }
 
   async dispose(): Promise<void> {
-    const r = (s: OrtSession) => (s as unknown as { release?: () => Promise<void> }).release?.();
-    await Promise.all([r(this.conv), r(this.encoder), r(this.decoder)].filter(Boolean) as Promise<void>[]);
+    const released = await Promise.allSettled([this.conv, this.encoder, this.decoder].filter(Boolean).map(async session => session.release()));
+    const failure = released.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
   }
 }
 
@@ -614,15 +644,16 @@ export class Qwen3AsrRecognizer {
   async decode(samples: Float32Array, language = 'en', hotwords = ''): Promise<Qwen3AsrDecodeResult> {
     const { features, numFrames } = logMelFeatures(samples);
     if (numFrames < 2) return { text: '' };
-    const valid = trimAudioFeatures(features, numFrames);
-    if (valid < 2) return { text: '' };
-    const conv = await this.model.forwardConvFrontend(features.subarray(0, valid * N_MELS), valid);
+    const conv = await this.model.forwardConvFrontend(features, numFrames);
     const [, convFrames] = conv.dims as readonly number[];
-    const expected = featToAudioTokensLen(valid, CHUNK_SIZE);
+    const expected = featToAudioTokensLen(numFrames, CHUNK_SIZE);
     const audioValid = Math.min(expected, convFrames);
-    const audioFeatures = await this.model.forwardEncoder(conv, audioValid);
+    const audioFeatures = await trimAudioFeatures(await this.model.forwardEncoder(conv, audioValid));
+    if (!audioFeatures) return { text: '' };
+    const audioTokenLen = audioFeatures.dims.length === 3 && audioFeatures.dims[1] > 0 ? Math.min(audioValid, audioFeatures.dims[1]) : audioValid;
+    if (audioTokenLen <= 0) return { text: '' };
 
-    const source = this.buildSourceIds(audioValid, language, hotwords);
+    const source = this.buildSourceIds(audioTokenLen, language, hotwords);
     if (source.length >= this.model.maxTotalLen) return { text: '' };
     const cacheKv = this.model.createEmptyKVCache(1);
     const cachePos0 = new BigInt64Array(source.length);
@@ -670,12 +701,20 @@ export interface Qwen3AsrLoadOptions { modelId: string; wasm?: { mjs: string; wa
 export async function loadQwen3Asr(opts: Qwen3AsrLoadOptions): Promise<Qwen3AsrRecognizer> {
   const root = env.localModelPath, id = opts.modelId;
   const base = `${root}${id}/`;
-  const [vocab, merges, config, model] = await Promise.all([
-    readText(base + 'tokenizer/vocab.json'),
-    readText(base + 'tokenizer/merges.txt'),
-    readText(base + 'tokenizer/tokenizer_config.json'),
-    Qwen3AsrModel.create({ convUrl: base + 'conv_frontend.onnx', encoderUrl: base + 'encoder.int8.onnx', decoderUrl: base + 'decoder.int8.onnx', wasm: opts.wasm }),
-  ]);
-  const tokenizer = new Qwen3AsrTokenizer(vocab, merges, config);
-  return new Qwen3AsrRecognizer(model, tokenizer);
+  const pendingModel = Qwen3AsrModel.create({ convUrl: base + 'conv_frontend.onnx', encoderUrl: base + 'encoder.int8.onnx', decoderUrl: base + 'decoder.int8.onnx', wasm: opts.wasm });
+  try {
+    const [vocab, merges, config, model] = await Promise.all([
+      readText(base + 'tokenizer/vocab.json'),
+      readText(base + 'tokenizer/merges.txt'),
+      readText(base + 'tokenizer/tokenizer_config.json'),
+      pendingModel,
+    ]);
+    const tokenizer = new Qwen3AsrTokenizer(vocab, merges, config);
+    return new Qwen3AsrRecognizer(model, tokenizer);
+  } catch (error) {
+    // A tokenizer failure may win the race while session creation is still pending.
+    const model = await pendingModel.catch(() => undefined);
+    if (model) await model.dispose().catch(() => {});
+    throw error;
+  }
 }

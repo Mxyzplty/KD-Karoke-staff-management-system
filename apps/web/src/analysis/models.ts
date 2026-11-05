@@ -296,7 +296,7 @@ export class LocalModels {
     return windows;
   }
   /** T19q T5 English path: Qwen3-ASR per ≤ 30 s window; word times from the T19a aligner with char-count interpolation
-   *  for unplaceable words, and whole-window char-count spread when alignment yields no path. Chunks are in local time. */
+   *  for unplaceable words, and char-count spread over voiced regions when alignment yields no path. Chunks are in local time. */
   async qwenTranscribe(samples: Float32Array, voice: Pair[], duration: number) {
     const qwen = await this.qwenRecognizer();
     const windows = this.qwenWindows(voice, duration);
@@ -316,11 +316,21 @@ export class LocalModels {
       const lens = words.map(w => Math.max(1, w.length));
       if (spans) spans.forEach(([s, e], i) => { anchors[spellable[i][1]] = [s * CTC_FRAME, e * CTC_FRAME]; });
       if (!spans || anchors.every(a => a === null)) {
+        const regions = voice.map(([s, e]) => [Math.max(s, winStart) - winStart, Math.min(e, winEnd) - winStart] as Pair).filter(([s, e]) => e > s);
+        if (!regions.length) continue;
+        const voicedDuration = regions.reduce((sum, [s, e]) => sum + e - s, 0);
         const total = lens.reduce((a, b) => a + b, 0);
-        let cur = 0;
+        let cur = 0, region = 0, voicedAt = 0;
         for (let k = 0; k < words.length; k++) {
-          const sf = cur / total; cur += lens[k]; const ef = cur / total;
-          anchors[k] = [sf * winDur, ef * winDur];
+          const from = cur / total * voicedDuration; cur += lens[k]; const to = cur / total * voicedDuration;
+          // Keep a word that straddles a gap wholly in the region containing its voiced-time midpoint.
+          const middle = (from + to) / 2;
+          while (region + 1 < regions.length && middle >= voicedAt + regions[region][1] - regions[region][0]) {
+            voicedAt += regions[region][1] - regions[region][0];
+            region++;
+          }
+          const [start, end] = regions[region];
+          anchors[k] = [start + Math.max(0, from - voicedAt), start + Math.min(end - start, to - voicedAt)];
         }
       } else {
         let i = 0;
