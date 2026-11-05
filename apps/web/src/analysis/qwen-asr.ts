@@ -2,8 +2,11 @@
 /*! @license TypeScript port of https://github.com/k2-fsa/sherpa-onnx
  * @ 4161dacf2a9a86e3c4dd773b106c557b0a63cc1a:
  * sherpa-onnx/csrc/offline-recognizer-qwen3-asr-impl.cc,
- * sherpa-onnx/csrc/offline-qwen3-asr-model.cc and sherpa-onnx/csrc/qwen-asr-tokenizer.cc.
+ * sherpa-onnx/csrc/offline-qwen3-asr-model.cc, sherpa-onnx/csrc/qwen-asr-tokenizer.cc,
+ * sherpa-onnx/csrc/offline-stream.cc and sherpa-onnx/csrc/math.cc.
  * Copyright (c)  2026 zengyw
+ * Copyright (c)  2023  Xiaomi Corporation (offline-stream.cc)
+ * Copyright (c)  2025  Xiaomi Corporation (math.cc)
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0

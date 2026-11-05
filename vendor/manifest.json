@@ -61,6 +61,19 @@
         { "path": "vendor/noto-emoji/Noto-COLRv1.ttf", "bytes": 5038236, "sha256": "b8e25ea68db82f9e4d0aee921f4420be2be39887bd5c893a2ad98710531f9d0c" },
         { "path": "vendor/noto-emoji/OFL.txt", "bytes": 4301, "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2" }
       ]
+    },
+    {
+      "name": "sherpa-onnx @ 4161dacf, ported to TypeScript (T19q T5 Qwen3-ASR recognizer)",
+      "license": "Apache-2.0",
+      "licenseEvidence": "The repository k2-fsa/sherpa-onnx at 4161dacf2a9a86e3c4dd773b106c557b0a63cc1a ships the Apache-2.0 text in LICENSE, copied unmodified to vendor/sherpa-onnx/LICENSE. The port apps/web/src/analysis/qwen-asr.ts (SPDX AGPL-3.0-only AND Apache-2.0) names the five upstream files and their copyright holders (zengyw; Xiaomi Corporation) in a /*! @license */ block and states that it was changed.",
+      "source": {
+        "repository": "https://github.com/k2-fsa/sherpa-onnx",
+        "revision": "4161dacf2a9a86e3c4dd773b106c557b0a63cc1a"
+      },
+      "files": [
+        { "path": "vendor/sherpa-onnx/LICENSE", "bytes": 11358, "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30" },
+        { "path": "apps/web/src/analysis/qwen-asr.ts", "bytes": 34482, "sha256": "9b946dd4d74297c41131f19533dc7f53cfe5cee166f3759d3d8ca462f9abb1a7" }
+      ]
     }
   ],
   "effectiveLicenses": {
