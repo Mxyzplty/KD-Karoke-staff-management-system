@@ -1,0 +1,606 @@
+{
+  "fixture": "OT-3 search relevance key",
+  "version": 1,
+  "created": "2026-10-22",
+  "author": "claude (research agent, clean-room)",
+  "status": "agent-judged, 22 Oct; a human spot check is optional",
+  "usedBy": ["FS-P03 relevance key (recall@5 and precision@5 per query; 'not worse than Xapp' per query)", "FS-P04 no-match queries return 0 results", "FS-P05 spoken and on-screen text is found"],
+  "cleanRoom": "Our own judgements and words. Inputs: frames we extracted from the fixture store with ffmpeg (one per second at t + 0.5 s, plus detail frames), shot cuts from ffmpeg scene detection on the same files, and the stored transcript words (numbers + Tears of Steel dialogue, CC BY 3.0, Blender Foundation). No Xapp analysis text (tags, summaries, descriptions) was used for the grades; xappReference only records Xapp's result counts for the 'not worse than Xapp' comparison.",
+  "times": "SOURCE seconds of each clip (not timeline seconds)",
+  "rubric": {
+    "grade2": "clearly matches: (a) noun or action: the thing is a main, clearly visible subject for most of the range; (b) phrase: the exact query words are spoken (transcript word times) or shown as legible on-screen text; a one-word noun query also matches the same word spoken; (c) colour: the colour covers a large part of the frame or is the dominant grade; (d) mood or style: a typical viewer would clearly call the shot that; (e) file-name query: the clip's own file name contains the query (whole clip)",
+    "grade1": "partly matches: present but small, in the background, partly visible or ambiguous; a closely related thing (e.g. a robotic hand or a hologram for 'robot', 'robotics' spoken for 'robot'); only text on screen or part of another phrase; the same scene without the thing in frame",
+    "notListed": "grade 0 (not relevant)",
+    "ranges": "visual ranges snap to our shot cuts (ffmpeg scdet, threshold 8, on the fixture files; rounded to 0.01 s); spoken ranges use the transcript word times (20 ms grid); ranges of one clip may touch but do not overlap",
+    "clipGrade": "the highest grade of the clip's ranges; use it for asset-level recall@k",
+    "noMatch": "true when no clip has a relevant range: the expected search result is empty (FS-P04)",
+    "filenameChannel": "clips whose file name contains the query (case-insensitive substring); a deterministic-channel expectation (FS-P02), kept apart from the content grades",
+    "confidence": "'low' marks a judgement the optional human spot check should look at first"
+  },
+  "clips": {
+    "tos-speech-45s.mp4": {
+      "durationS": 45.0,
+      "speech": [
+        {"text": "This is pretty freaky.", "startS": 2.96, "endS": 4.34}
+      ],
+      "shots": [
+        [0.0, 6.46, "man with a cybernetic eyepiece examines a brain model; warm pink-red light"],
+        [6.46, 11.92, "black screen; the film title fades in (about 7.2-11.9 s)"],
+        [11.92, 16.08, "misty city skyline: church tower, smoke, a floating platform; blue-grey"],
+        [16.08, 21.38, "dark tower interior (bells, cables) open to the city; small figures: an old man lying, a soldier at the balustrade"],
+        [21.38, 24.13, "close-up: a newspaper with the headline 'ROBOTICIST CREATES KILLER ROBOTS' (masthead 'De Amsterdammer') over an old man; a hand"],
+        [24.13, 26.83, "soldier (man) aims a rifle between stone balusters; blue light"],
+        [26.83, 34.42, "rifle-scope view: a flying war machine with spotlights above rooftops; dark round vignette"],
+        [34.42, 37.42, "close-up of the soldier's eye behind the rifle scope"],
+        [37.42, 40.21, "scope view: the flying machine with lights over the city rooftops"],
+        [40.21, 44.42, "old man asleep under the newspaper (foreground), soldier aiming behind; candles"],
+        [44.42, 45.0, "scope view again"]
+      ]
+    },
+    "tos-action-30s.mp4": {
+      "durationS": 30.0,
+      "speech": [
+        {"text": "You have your robotics,", "startS": 1.48, "endS": 2.7},
+        {"text": "and I just want to be awesome in space.", "startS": 5.2, "endS": 7.74},
+        {"text": "Okay, they're coming. Two minutes left. Two minutes.", "startS": 19.18, "endS": 21.94},
+        {"text": "Speed it up, Doc.", "startS": 23.0, "endS": 23.8},
+        {"text": "Vivo, sitio!", "startS": 25.0, "endS": 26.06},
+        {"text": "Why don't you just admit that you're freaked out by my robot hand?", "startS": 27.08, "endS": 29.9}
+      ],
+      "words": [
+        {"text": "robotics,", "startS": 1.98, "endS": 2.7},
+        {"text": "awesome", "startS": 6.8, "endS": 7.1},
+        {"text": "space.", "startS": 7.34, "endS": 7.74},
+        {"text": "robot", "startS": 29.3, "endS": 29.64}
+      ],
+      "shots": [
+        [0.0, 2.21, "woman close-up; green trees and canal houses blurred behind"],
+        [2.21, 4.08, "man seen from behind, looking at a canal street with gabled houses, small pedestrians, cars; pink on-screen text '...AND I JUST WANT TO BE AWESOME IN SPACE.' legible about 2.6-4.08 s"],
+        [4.08, 8.46, "man close-up, talking; trees and canal houses blurred behind"],
+        [8.46, 10.29, "sunlit hazy city skyline with domes, towers and industrial scaffolding"],
+        [10.29, 18.92, "rifle-scope view of gabled rooftops with orange tiles; a large combat robot climbs over the roofs (first parts about 12.6 s, clearly visible from about 13.2 s)"],
+        [18.92, 21.21, "soldier (man) aims a rifle between balusters; warm light; radio voice"],
+        [21.21, 26.46, "older man with a cybernetic eye and a red head-up readout, talking"],
+        [26.46, 28.42, "woman close-up, talking, annoyed"],
+        [28.42, 30.0, "wide: the woman and the man on a canal bridge with railings; she holds up a robotic prosthetic hand"]
+      ]
+    },
+    "tos-credits-music-40s.mp4": {
+      "durationS": 40.0,
+      "speech": [],
+      "note": "instrumental music, no speech (no transcript)",
+      "shots": [
+        [
+          0.0,
+          40.0,
+          "one continuous end-credits roll: credit text over a dark background with orange and cyan head-up-display graphics; a wireframe robot hologram about 14.5-20.0 s; a wireframe brain hologram about 20.0-25.5 s"
+        ]
+      ]
+    }
+  },
+  "counts": {
+    "queries": 24,
+    "wave2Queries": 20,
+    "w3rf10Queries": 7,
+    "w3rf10New": 4,
+    "noMatchQueries": ["running", "I love you", "happy", "snowboarding unicorn underwater"],
+    "gradedRanges": 106,
+    "grade2Ranges": 44,
+    "grade1Ranges": 62,
+    "lowConfidence": 1
+  },
+  "queries": [
+    {
+      "id": "Q01",
+      "query": "person",
+      "sources": ["wave2 #1"],
+      "queryType": "visual noun",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 0.0, "endS": 6.46, "grade": 2, "basis": "man in close-up"},
+          {"startS": 16.08, "endS": 21.38, "grade": 1, "basis": "small figures in a dark interior"},
+          {"startS": 21.38, "endS": 24.13, "grade": 1, "basis": "only a hand and a head under the newspaper"},
+          {"startS": 24.13, "endS": 26.83, "grade": 2, "basis": "soldier"},
+          {"startS": 34.42, "endS": 37.42, "grade": 2, "basis": "soldier close-up"},
+          {"startS": 40.21, "endS": 44.42, "grade": 2, "basis": "old man and soldier"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 8.46, "grade": 2, "basis": "woman, then man"},
+          {"startS": 18.92, "endS": 30.0, "grade": 2, "basis": "soldier, cyborg man, woman, couple on the bridge"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q02",
+      "query": "robot",
+      "sources": ["wave2 #2", "W3-RF-10"],
+      "queryType": "visual noun",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 21.38, "endS": 24.13, "grade": 1, "basis": "headline text 'KILLER ROBOTS'"},
+          {"startS": 26.83, "endS": 34.42, "grade": 1, "basis": "flying war machine (machine, not clearly a robot)"},
+          {"startS": 37.42, "endS": 40.21, "grade": 1, "basis": "flying war machine"},
+          {"startS": 44.42, "endS": 45.0, "grade": 1, "basis": "flying war machine"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 1.98, "endS": 2.7, "grade": 1, "basis": "related word spoken: 'robotics,'"},
+          {"startS": 10.29, "endS": 13.2, "grade": 1, "basis": "scope on the rooftops while the robot emerges"},
+          {"startS": 13.2, "endS": 18.92, "grade": 2, "basis": "combat robot clearly visible climbing over roofs"},
+          {"startS": 28.42, "endS": 30.0, "grade": 2, "basis": "robotic hand shown; the word 'robot' spoken 29.30-29.64 s"}
+        ],
+        "tos-credits-music-40s.mp4": [
+          {"startS": 14.5, "endS": 20.0, "grade": 1, "basis": "wireframe robot hologram inside the credits graphics"}
+        ]
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 1, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 1},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results; W3-RF-10: 0 results"
+    },
+    {
+      "id": "Q03",
+      "query": "bridge",
+      "sources": ["wave2 #3", "W3-RF-10"],
+      "queryType": "visual noun",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 8.46, "grade": 1, "basis": "same canal-bridge scene, close-ups (bridge itself not in frame; canal edge visible 2.21-4.08 s)"},
+          {"startS": 26.46, "endS": 28.42, "grade": 1, "basis": "same scene, close-up"},
+          {"startS": 28.42, "endS": 30.0, "grade": 2, "basis": "the two people standing on a canal bridge with railings"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results; W3-RF-10: 0 results"
+    },
+    {
+      "id": "Q04",
+      "query": "city",
+      "sources": ["wave2 #4"],
+      "queryType": "visual noun",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 11.92, "endS": 16.08, "grade": 2, "basis": "city skyline"},
+          {"startS": 16.08, "endS": 21.38, "grade": 1, "basis": "city seen through the tower openings"},
+          {"startS": 26.83, "endS": 34.42, "grade": 1, "basis": "rooftops under the flying machine"},
+          {"startS": 37.42, "endS": 40.21, "grade": 1, "basis": "rooftops"},
+          {"startS": 44.42, "endS": 45.0, "grade": 1, "basis": "rooftops"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 2.21, "grade": 1, "basis": "canal houses blurred behind"},
+          {"startS": 2.21, "endS": 4.08, "grade": 2, "basis": "canal street with gabled houses"},
+          {"startS": 4.08, "endS": 8.46, "grade": 1, "basis": "houses blurred behind"},
+          {"startS": 8.46, "endS": 10.29, "grade": 2, "basis": "city skyline"},
+          {"startS": 10.29, "endS": 18.92, "grade": 1, "basis": "rooftops in the scope view"},
+          {"startS": 26.46, "endS": 30.0, "grade": 1, "basis": "canal houses behind"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q05",
+      "query": "woman",
+      "sources": ["wave2 #5"],
+      "queryType": "visual noun",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 2.21, "grade": 2, "basis": "woman close-up"},
+          {"startS": 26.46, "endS": 30.0, "grade": 2, "basis": "woman close-up, then on the bridge"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q06",
+      "query": "man",
+      "sources": ["wave2 #6"],
+      "queryType": "visual noun",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 0.0, "endS": 6.46, "grade": 2, "basis": "man in close-up"},
+          {"startS": 16.08, "endS": 21.38, "grade": 1, "basis": "small figures"},
+          {"startS": 21.38, "endS": 24.13, "grade": 1, "basis": "a hand and a head under the newspaper"},
+          {"startS": 24.13, "endS": 26.83, "grade": 2, "basis": "soldier"},
+          {"startS": 34.42, "endS": 37.42, "grade": 2, "basis": "soldier close-up"},
+          {"startS": 40.21, "endS": 44.42, "grade": 2, "basis": "old man and soldier"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 2.21, "endS": 8.46, "grade": 2, "basis": "man from behind, then close-up"},
+          {"startS": 18.92, "endS": 26.46, "grade": 2, "basis": "soldier, cyborg man"},
+          {"startS": 28.42, "endS": 30.0, "grade": 2, "basis": "man on the bridge"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q07",
+      "query": "walking",
+      "sources": ["wave2 #7"],
+      "queryType": "visual action",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [
+          {"startS": 2.21, "endS": 4.08, "grade": 1, "basis": "small pedestrians in the background of the canal street (walking not verified frame to frame)", "confidence": "low"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 1, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q08",
+      "query": "running",
+      "sources": ["wave2 #8"],
+      "queryType": "visual action",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 0, "tos-credits-music-40s.mp4": 0},
+      "noMatch": true,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results",
+      "note": "nobody runs in any of the three clips"
+    },
+    {
+      "id": "Q09",
+      "query": "talking",
+      "sources": ["wave2 #9"],
+      "queryType": "visual action + speech",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 2.96, "endS": 4.34, "grade": 1, "basis": "the spoken line is heard while the man is on screen; his mouth is hidden behind the brain model"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 1.48, "endS": 2.7, "grade": 1, "basis": "speech heard while the woman listens"},
+          {"startS": 4.08, "endS": 8.46, "grade": 2, "basis": "man talking on camera (words 5.20-7.74 s)"},
+          {"startS": 18.92, "endS": 21.21, "grade": 1, "basis": "radio voice over the soldier"},
+          {"startS": 21.21, "endS": 26.46, "grade": 2, "basis": "cyborg man talking (23.00-23.80, 25.00-26.06 s)"},
+          {"startS": 26.46, "endS": 30.0, "grade": 2, "basis": "woman talking (27.08-29.90 s)"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 1, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 2 results (clip 1 tags 0.49, clip 2 tags 0.35; whole clips, no ranges)"
+    },
+    {
+      "id": "Q10",
+      "query": "fighting",
+      "sources": ["wave2 #10"],
+      "queryType": "visual action",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 24.13, "endS": 26.83, "grade": 1, "basis": "soldier aiming a rifle, no fight"},
+          {"startS": 34.42, "endS": 37.42, "grade": 1, "basis": "soldier aiming"},
+          {"startS": 40.21, "endS": 44.42, "grade": 1, "basis": "soldier aiming"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 13.2, "endS": 18.92, "grade": 1, "basis": "combat robot advancing"},
+          {"startS": 18.92, "endS": 21.21, "grade": 1, "basis": "soldier aiming"},
+          {"startS": 26.46, "endS": 30.0, "grade": 1, "basis": "verbal argument"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 1, "tos-action-30s.mp4": 1, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results",
+      "note": "no physical fight is shown; only grade-1 context"
+    },
+    {
+      "id": "Q11",
+      "query": "This is pretty freaky",
+      "sources": ["wave2 #11", "W3-RF-10"],
+      "queryType": "spoken phrase",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 2.96, "endS": 4.34, "grade": 2, "basis": "exact line spoken (transcript word times)"}
+        ],
+        "tos-action-30s.mp4": [],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 0, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results; W3-RF-10: 0 results"
+    },
+    {
+      "id": "Q12",
+      "query": "I love you",
+      "sources": ["wave2 #12"],
+      "queryType": "spoken phrase",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 0, "tos-credits-music-40s.mp4": 0},
+      "noMatch": true,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results",
+      "note": "never spoken or shown"
+    },
+    {
+      "id": "Q13",
+      "query": "blue",
+      "sources": ["wave2 #13"],
+      "queryType": "colour",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 11.92, "endS": 16.08, "grade": 2, "basis": "blue-grey misty city"},
+          {"startS": 16.08, "endS": 24.13, "grade": 1, "basis": "dark blue interior, bluish newspaper scene"},
+          {"startS": 24.13, "endS": 45.0, "grade": 2, "basis": "blue-toned soldier and scope shots"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 28.42, "endS": 30.0, "grade": 1, "basis": "blue jacket on the bridge"}
+        ],
+        "tos-credits-music-40s.mp4": [
+          {"startS": 0.0, "endS": 40.0, "grade": 1, "basis": "cyan graphics on a dark background"}
+        ]
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 1, "tos-credits-music-40s.mp4": 1},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results (response after 7.2 s)"
+    },
+    {
+      "id": "Q14",
+      "query": "red",
+      "sources": ["wave2 #14"],
+      "queryType": "colour",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 0.0, "endS": 6.46, "grade": 1, "basis": "warm pink-red light with a magenta glow"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 10.29, "endS": 18.92, "grade": 1, "basis": "orange-red roof tiles"},
+          {"startS": 21.21, "endS": 26.46, "grade": 1, "basis": "red head-up readout, red-brown jacket"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 1, "tos-action-30s.mp4": 1, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": ["tos-credits-music-40s.mp4"],
+      "xappReference": "wave 2: 1 result (clip 3, filename match 1.0, not content)",
+      "note": "no clearly red subject; the wave-2 hit was the substring 'red' in 'tos-credits' (filename channel, tested by FS-P02, not by this key)"
+    },
+    {
+      "id": "Q15",
+      "query": "green",
+      "sources": ["wave2 #15"],
+      "queryType": "colour",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 2.21, "grade": 2, "basis": "green foliage fills the background"},
+          {"startS": 2.21, "endS": 4.08, "grade": 1, "basis": "trees at the frame edges"},
+          {"startS": 4.08, "endS": 8.46, "grade": 2, "basis": "green foliage behind"},
+          {"startS": 26.46, "endS": 30.0, "grade": 2, "basis": "green foliage and trees"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q16",
+      "query": "dark",
+      "sources": ["wave2 #16"],
+      "queryType": "look / mood",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 6.46, "endS": 11.92, "grade": 2, "basis": "black title card"},
+          {"startS": 16.08, "endS": 21.38, "grade": 2, "basis": "dark interior"},
+          {"startS": 26.83, "endS": 34.42, "grade": 1, "basis": "scope view with a dark surround"},
+          {"startS": 37.42, "endS": 40.21, "grade": 1, "basis": "scope view"},
+          {"startS": 44.42, "endS": 45.0, "grade": 1, "basis": "scope view"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 10.29, "endS": 18.92, "grade": 1, "basis": "scope view with a dark surround"}
+        ],
+        "tos-credits-music-40s.mp4": [
+          {"startS": 0.0, "endS": 40.0, "grade": 1, "basis": "dark background behind the credits"}
+        ]
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 1, "tos-credits-music-40s.mp4": 1},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q17",
+      "query": "happy",
+      "sources": ["wave2 #17"],
+      "queryType": "mood",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 0, "tos-credits-music-40s.mp4": 0},
+      "noMatch": true,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results",
+      "note": "no smiling or joyful moment: faces are neutral, pensive, stern or annoyed"
+    },
+    {
+      "id": "Q18",
+      "query": "tense",
+      "sources": ["wave2 #18"],
+      "queryType": "mood",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 16.08, "endS": 21.38, "grade": 1, "basis": "quiet lookout, soldier in position"},
+          {"startS": 24.13, "endS": 45.0, "grade": 2, "basis": "soldier aiming at the war machine"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 10.29, "endS": 21.21, "grade": 2, "basis": "combat robot climbing, soldier aiming, 'they're coming, two minutes left'"},
+          {"startS": 21.21, "endS": 26.46, "grade": 2, "basis": "stern 'Speed it up, Doc.'"},
+          {"startS": 26.46, "endS": 30.0, "grade": 1, "basis": "argument"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q19",
+      "query": "cinematic",
+      "sources": ["wave2 #19"],
+      "queryType": "style",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 0.0, "endS": 6.46, "grade": 2, "basis": "graded wide-screen film shot"},
+          {"startS": 6.46, "endS": 11.92, "grade": 1, "basis": "title card"},
+          {"startS": 11.92, "endS": 45.0, "grade": 2, "basis": "film shots"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 30.0, "grade": 2, "basis": "film shots"}
+        ],
+        "tos-credits-music-40s.mp4": [
+          {"startS": 0.0, "endS": 40.0, "grade": 1, "basis": "film credits roll, not a shot"}
+        ]
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 2, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 1},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 4 results (clip 1 tags 0.55, clip 2 tags 0.44, clip 3 tags 0.37, clip 3 segment 0-10 s 0.35)"
+    },
+    {
+      "id": "Q20",
+      "query": "snowboarding unicorn underwater",
+      "sources": ["wave2 #20"],
+      "queryType": "deliberate no-match",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 0, "tos-credits-music-40s.mp4": 0},
+      "noMatch": true,
+      "filenameChannel": [],
+      "xappReference": "wave 2: 0 results"
+    },
+    {
+      "id": "Q21",
+      "query": "awesome in space",
+      "sources": ["W3-RF-10"],
+      "queryType": "spoken phrase + on-screen text",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [
+          {"startS": 2.6, "endS": 4.08, "grade": 2, "basis": "the phrase is legible on-screen text"},
+          {"startS": 5.2, "endS": 6.8, "grade": 1, "basis": "same spoken sentence, before the phrase"},
+          {"startS": 6.8, "endS": 7.74, "grade": 2, "basis": "phrase spoken (transcript word times)"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "W3-RF-10: 4 unrelated rows at 0.36-0.39 (clip 2 tags, two clip-1 descriptions, clip 3 summary)"
+    },
+    {
+      "id": "Q22",
+      "query": "robotics",
+      "sources": ["W3-RF-10"],
+      "queryType": "word / topic",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 21.38, "endS": 24.13, "grade": 1, "basis": "headline text 'ROBOTICIST CREATES KILLER ROBOTS'"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 1.98, "endS": 2.7, "grade": 2, "basis": "word spoken: 'robotics,'"},
+          {"startS": 13.2, "endS": 18.92, "grade": 1, "basis": "combat robot"},
+          {"startS": 28.42, "endS": 30.0, "grade": 1, "basis": "robotic prosthetic hand"}
+        ],
+        "tos-credits-music-40s.mp4": [
+          {"startS": 14.5, "endS": 20.0, "grade": 1, "basis": "wireframe robot hologram"}
+        ]
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 1, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 1},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "W3-RF-10: 2 rows, both clip 2 descriptions (0.38 for 26.5-30 s, 0.37 for 8-18.5 s)"
+    },
+    {
+      "id": "Q23",
+      "query": "tos-action",
+      "sources": ["W3-RF-10"],
+      "queryType": "file name",
+      "relevant": {
+        "tos-speech-45s.mp4": [],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 30.0, "grade": 2, "basis": "the clip's file name contains the query (whole clip)"}
+        ],
+        "tos-credits-music-40s.mp4": []
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 0, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 0},
+      "noMatch": false,
+      "filenameChannel": ["tos-action-30s.mp4"],
+      "xappReference": "W3-RF-10: 4 rows (clip 2 filename 1.0, clip 2 tags 0.89, clip 1 tags 0.5, a TTS clip tags 0.39)",
+      "note": "content judgement does not apply; the other two file names share only 'tos'"
+    },
+    {
+      "id": "Q24",
+      "query": "amsterdam",
+      "sources": ["W3-RF-10"],
+      "queryType": "place",
+      "relevant": {
+        "tos-speech-45s.mp4": [
+          {"startS": 11.92, "endS": 16.08, "grade": 1, "basis": "the film's Amsterdam skyline with a church tower (not verified as a real landmark)"},
+          {"startS": 21.38, "endS": 24.13, "grade": 1, "basis": "newspaper masthead 'De Amsterdammer'"},
+          {"startS": 37.42, "endS": 40.21, "grade": 1, "basis": "gabled rooftops in the scope view"}
+        ],
+        "tos-action-30s.mp4": [
+          {"startS": 0.0, "endS": 2.21, "grade": 1, "basis": "canal houses blurred behind"},
+          {"startS": 2.21, "endS": 4.08, "grade": 2, "basis": "recognisable Amsterdam canal street with gabled canal houses"},
+          {"startS": 4.08, "endS": 8.46, "grade": 1, "basis": "canal houses blurred behind"},
+          {"startS": 8.46, "endS": 10.29, "grade": 1, "basis": "skyline with domes"},
+          {"startS": 10.29, "endS": 18.92, "grade": 1, "basis": "Dutch gabled rooftops"},
+          {"startS": 26.46, "endS": 28.42, "grade": 1, "basis": "canal houses behind"},
+          {"startS": 28.42, "endS": 30.0, "grade": 2, "basis": "canal bridge with canal houses"}
+        ],
+        "tos-credits-music-40s.mp4": [
+          {"startS": 6.5, "endS": 11.0, "grade": 1, "basis": "credit text 'Amsterdam Studios'"},
+          {"startS": 16.0, "endS": 21.0, "grade": 1, "basis": "credit text 'Dell Lab Amsterdam'"}
+        ]
+      },
+      "clipGrade": {"tos-speech-45s.mp4": 1, "tos-action-30s.mp4": 2, "tos-credits-music-40s.mp4": 1},
+      "noMatch": false,
+      "filenameChannel": [],
+      "xappReference": "W3-RF-10: 5 rows (the jpg's filename 1.0 and tags 0.60, clip 2 tags 0.56, a summary 0.42, a description 0.36)",
+      "note": "out of scope of this key: amsterdam-houseboat-exif.jpg (fixture store) would be grade 2 by file name and content if it is in the searched set"
+    }
+  ]
+}

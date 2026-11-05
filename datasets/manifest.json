@@ -1,0 +1,1590 @@
+{
+  "version": 1,
+  "store": "$CUTFRAME_FIXTURES",
+  "datasets": [
+    {
+      "id": "T19a-Groove-validation",
+      "store": "$LOCALAPPDATA/Cutframe/analysis-cache",
+      "name": "Google Groove MIDI Dataset v1.0.0, validation split: beat, 4-4, 15-60 s (beat-phase validation, not scored)",
+      "url": "https://storage.googleapis.com/magentadata/datasets/groove/groove-v1.0.0.zip",
+      "licence": "CC-BY-4.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Gillick, Roberts, Engel, Eck, Bamman. Learning to Groove with Inverse Sequence Transformations. ICML 2019.",
+      "use": "T19a beat-phase validation outside the scored BEAT-P02 test subset; fetched by prepare.py groove-lock (HTTP Range members)",
+      "files": [
+        {
+          "path": "datasets/t19a/groove-validation/drummer1/session1/145_latin-brazilian-baiao_95_beat_4-4.mid",
+          "bytes": 3580,
+          "sha256": "9a454bb0a930b7b767d9a29a23a6926208792ae3b79e97374f95ec96f79ce13d"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer1/session1/145_latin-brazilian-baiao_95_beat_4-4.wav",
+          "bytes": 5359006,
+          "sha256": "9596a7ccfd18693204c00261ee701a452ec7281797ab8f962ff6042249901258"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer1/session1/38_latin-samba_116_beat_4-4.mid",
+          "bytes": 17034,
+          "sha256": "b4dbda7d6464af3fc6e5cbaf673f8575f19b95b17ace734b6bb4391c23060662"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer1/session1/38_latin-samba_116_beat_4-4.wav",
+          "bytes": 10236978,
+          "sha256": "e144c24c58b65196b8f356ea73695528fe45ad84e1813ae6e6f7dc96156d536d"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session1/15_jazz_120_beat_4-4.mid",
+          "bytes": 1166,
+          "sha256": "8efc5a8d9843ccbb00fff427b1a9207f7e78e7e22807112b5c80746415bfe8c8"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session1/15_jazz_120_beat_4-4.wav",
+          "bytes": 2834728,
+          "sha256": "051d02f4d4c923748f08fce23ff0d725a5e79c8e6c04506fbc7ed27241d3be6c"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session1/7_rock_105_beat_4-4.mid",
+          "bytes": 3269,
+          "sha256": "5285774821399cdf7a8c021e8de906a1367afd9230fa96f81ddd42351ee0b172"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session1/7_rock_105_beat_4-4.wav",
+          "bytes": 3037228,
+          "sha256": "60c5634ace622d6f5ea4e16cd17b5bb1217b815c01b1505c8dc65e260f9bc249"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session2/25_hiphop_92_beat_4-4.mid",
+          "bytes": 2162,
+          "sha256": "e6a9eb69d1269f662b78d74da043386d76ce7025cd6cbef2017d8a89c41b6e25"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session2/25_hiphop_92_beat_4-4.wav",
+          "bytes": 6917536,
+          "sha256": "fa805009564b9475a8020c550df4a028e210d4ad2545b0aa5f6b57d86300b376"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session2/5_rock_100_beat_4-4.mid",
+          "bytes": 2257,
+          "sha256": "94c94eefd34a826f52be34aaa3faf48b03188cf502c1b578a9124e549decd422"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer3/session2/5_rock_100_beat_4-4.wav",
+          "bytes": 7212558,
+          "sha256": "f11314e84f09f9b75887494026d9c0a05b9f76ad76879e3c195a9e215d1680e2"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer4/session1/2_jazz_158_beat_4-4.mid",
+          "bytes": 5834,
+          "sha256": "afa3aee27ff1682b5016923f74b49c277f030e5a55c0432c94a875b1c0d6f9db"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer4/session1/2_jazz_158_beat_4-4.wav",
+          "bytes": 8861676,
+          "sha256": "b95195329720ff8547cab6c2617d6ae4febdf038a6143d444722a320d155ac36"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer4/session1/5_latin-brazilian_184_beat_4-4.mid",
+          "bytes": 2645,
+          "sha256": "a3b20cd34a34d73cddb60347ab21bd54466e0904daef34afe64570edd11b8c87"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer4/session1/5_latin-brazilian_184_beat_4-4.wav",
+          "bytes": 6917958,
+          "sha256": "9bd0db2957ace3d0aa1c1dfd96a3cce3aa77e5974857804c0107e97002293dda"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer6/session3/1_rock_90_beat_4-4.mid",
+          "bytes": 4626,
+          "sha256": "23058c4ecb675624b4b1c20df8273e79c60ee7d0a2ac3b9e56194d35c8ce81d1"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer6/session3/1_rock_90_beat_4-4.wav",
+          "bytes": 4926086,
+          "sha256": "707446ebc495c9cabd33d80f0697ff7169ee1aa5bf1506b5e7fc8103b1811c97"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session1/14_jazz_100_beat_4-4.mid",
+          "bytes": 3242,
+          "sha256": "fcbc82f7901787e3f9e89aa8e3d1556fda09da7b6721f8e20b258a1228d6eb02"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session1/14_jazz_100_beat_4-4.wav",
+          "bytes": 10606260,
+          "sha256": "abfb947bdc9e59288ca39db98ce0f5c1ec43dbacb5cf442b0fa0121baa03fdff"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/100_pop_142_beat_4-4.mid",
+          "bytes": 2108,
+          "sha256": "327d2072ec7ff40d86ebe39990286a52b151bcb00d744c5714a7f60e83a253bc"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/100_pop_142_beat_4-4.wav",
+          "bytes": 5079944,
+          "sha256": "d2b05fc73f144522498d681c4971e73c574bc30b5c5e4fedc5c43669205fe35c"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/113_jazz-fusion_96_beat_4-4.mid",
+          "bytes": 2917,
+          "sha256": "4570607fbce77001d08b7b80899f6371f1685a6fff5645e577ba4bbd0fa2adb5"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/113_jazz-fusion_96_beat_4-4.wav",
+          "bytes": 7927330,
+          "sha256": "aa657848f5a7dcca887d531ecfc665b46f0ae3dc5b284cb6cb08bcc1c329dfa8"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/14_rock_95_beat_4-4.mid",
+          "bytes": 2147,
+          "sha256": "5bdd6e45cc6748676daea571f866e15a39cb4ff0a35cece9c153afe4f7c25d25"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/14_rock_95_beat_4-4.wav",
+          "bytes": 6727126,
+          "sha256": "e30919d2359b8c69d90d3deb69e1ddd2c3511cb34f63933532b763a5f2685529"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/46_rock_135_beat_4-4.mid",
+          "bytes": 3432,
+          "sha256": "79cafeb320c03e9a5ac65fd820a92e07d4e767ab74030cf1d2119609d39920c6"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session2/46_rock_135_beat_4-4.wav",
+          "bytes": 5657328,
+          "sha256": "732c41592cadbc4b9f0c513a3ed0d0866bb36073cc4b9a5728c60f81f29e460a"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session3/22_pop-soft_83_beat_4-4.mid",
+          "bytes": 7029,
+          "sha256": "9af3f1bb4ee5120f4a3b7327dcf3a62a87638f12800e819c01bf71bba536e9d2"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/drummer7/session3/22_pop-soft_83_beat_4-4.wav",
+          "bytes": 8688956,
+          "sha256": "563970a3dcb8fe1b1fcff12dd1f254f7595afded761dd8af3a1605b409881360"
+        },
+        {
+          "path": "datasets/t19a/groove-validation/validation-set.json",
+          "bytes": 104172,
+          "sha256": "118ea8727ce3294708bb3beec022deb50eeb28613dfff001bdf0ba9ca8c22646"
+        }
+      ]
+    },
+    {
+      "id": "T19a-LibriSpeech",
+      "store": "$LOCALAPPDATA/Cutframe/analysis-cache",
+      "name": "LibriSpeech test-clean: first utterance of each of the first ten lexically sorted speakers",
+      "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+      "licence": "CC-BY-4.0",
+      "licenceUrl": "https://www.openslr.org/12/",
+      "attribution": "Panayotov, Chen, Povey, Khudanpur. LibriSpeech. ICASSP 2015. OpenSLR SLR12.",
+      "use": "T19a independent read-speech WER, ten speakers; deterministic subset, not a full test-clean score",
+      "files": [
+        {
+          "path": "datasets/t19a/librispeech/test-clean.tar.gz",
+          "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+          "bytes": 346663984,
+          "sha256": "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1089/134686/1089-134686-0000.flac",
+          "bytes": 183318,
+          "sha256": "30885601173f96b0d8ddd020dc959b055c6c1582b85a33e3fcab8c4b08ed94c2"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1089/134686/1089-134686.trans.txt",
+          "bytes": 4537,
+          "sha256": "acc2353d5507053a02adc1ecb8d497bf3453a60d32fe7da97577d1c212c9b075"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1188/133604/1188-133604-0000.flac",
+          "bytes": 159035,
+          "sha256": "4a10149395cb5af8aa5d04ef3adb49b3980baa93114d0851046e6343744b26cb"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1188/133604/1188-133604.trans.txt",
+          "bytes": 7813,
+          "sha256": "d833bb07d79d40debbbfeb5bd7d1a290ff6aa04974fb1f907108a50cf833981a"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/121/121726/121-121726-0000.flac",
+          "bytes": 151338,
+          "sha256": "81378fdb3e648b43efb1cb8c4f87da3fc9cfbe19c5dda97e9e7361c4a2470d2f"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/121/121726/121-121726.trans.txt",
+          "bytes": 973,
+          "sha256": "aef21ad2ec551651cada3748a10e592091a61e4c89effe68aca96674a1bb7f43"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1221/135766/1221-135766-0000.flac",
+          "bytes": 254266,
+          "sha256": "1f6b9ba126dc0f0a3cb813b04e2c970ff9583beeaf8cfaa8f7c8199244aa2514"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1221/135766/1221-135766.trans.txt",
+          "bytes": 2931,
+          "sha256": "388486b3bc2cf35761d8796c27362c7055fdbe9ed56120476ba92e4e03e41fe2"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1284/1180/1284-1180-0000.flac",
+          "bytes": 150925,
+          "sha256": "1b76cef86ab0f918aac7f576be7398f29bfa968e6c78bdf024c335faedd378f1"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1284/1180/1284-1180.trans.txt",
+          "bytes": 4194,
+          "sha256": "257080c8ef2b34918c88d43f8e7a47af532f0655f56cc7aae33eef1e1c7df003"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1320/122612/1320-122612-0000.flac",
+          "bytes": 263962,
+          "sha256": "2f914687b13e1864d267282c3749ab6f0b6a5b7dcb2b772f28b6a3af7854859e"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1320/122612/1320-122612.trans.txt",
+          "bytes": 2324,
+          "sha256": "d4f37376ef3f5cfe4ada37c40610218a5e9397c856dff7d846a6ee54e08c2e79"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1580/141083/1580-141083-0000.flac",
+          "bytes": 179809,
+          "sha256": "59123e88017e4bf645e39506a878b5734b3d94fe990018de25b712ba881cf7a5"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1580/141083/1580-141083.trans.txt",
+          "bytes": 5147,
+          "sha256": "5220a35c444fa48337e03f8ce53cf0b6f7fc7342614541b80dbc270509dee60c"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1995/1826/1995-1826-0000.flac",
+          "bytes": 172422,
+          "sha256": "74596627a026feb72e3acba17ee9268f120ee25e9f4afb935bb2f3d3ba779e57"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/1995/1826/1995-1826.trans.txt",
+          "bytes": 2670,
+          "sha256": "e876fa794280e3ba34189a443a81d3c64cf8821ef87ab1108c2271228a156617"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/2094/142345/2094-142345-0000.flac",
+          "bytes": 450531,
+          "sha256": "557af1a29773cd4d78e62aa9e1ad55e2e46db5cde88b7a84c4692427df765279"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/2094/142345/2094-142345.trans.txt",
+          "bytes": 8004,
+          "sha256": "0ce1dbcc944bdb2bf0174971fc36f2761f8e0be2c260f0852517b096df996a3c"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/2300/131720/2300-131720-0000.flac",
+          "bytes": 96342,
+          "sha256": "84cb3f03857e7a68d5811c2f07f14725f8583a61d3a280816e30ec44956d8d7e"
+        },
+        {
+          "path": "datasets/t19a/librispeech/LibriSpeech/test-clean/2300/131720/2300-131720.trans.txt",
+          "bytes": 7785,
+          "sha256": "e24a2d858d772bfb8000d9ce952d84eb1059aa965c6c8bbd9877c15c75591e06"
+        }
+      ]
+    },
+    {
+      "id": "T19-AMI-report-only",
+      "store": "$LOCALAPPDATA/Cutframe/analysis-cache",
+      "name": "AMI Meeting Corpus EN2001a: headset mix and manual annotations v1.6.2 (words, segments)",
+      "url": "https://groups.inf.ed.ac.uk/ami/download/",
+      "licence": "CC-BY-4.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Carletta et al. The AMI Meeting Corpus: A Pre-announcement. MLMI 2005. AMI Consortium, University of Edinburgh.",
+      "use": "TR-P06 (D28, T19q): the 120 s excerpt chosen by T19's pre-registered rule (EN2001a 0-120 s) is pooled with the corpus clips in the gated row \"TR-P06 pooled with AMI\" and scored alone in \"TR-P06 EN2001a-0s-120s\" (per-clip rule); T19 registered it for the report-only row \"TR-P06 human-labelled (report-only)\" (Q7), which D28 replaced; no tuning",
+      "files": [
+        {
+          "path": "datasets/t19/ami/ami_public_manual_1.6.2.zip",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip",
+          "bytes": 22887865,
+          "sha256": "b56e5babb2496b8795deeeda7e71178d7fbc9963f94276cf2a3f4b56ebbc9f9d"
+        },
+        {
+          "path": "datasets/t19/ami/LICENCE.txt",
+          "bytes": 13197,
+          "sha256": "d52fd9c7c19eec9f0bec3107554c10937203e261259d73b01637a61501fec7f7"
+        },
+        {
+          "path": "datasets/t19/ami/words/EN2001a.A.words.xml",
+          "bytes": 87802,
+          "sha256": "712d09483b21e78a84f7613fe9e170c0b8ea517cc05a87d7c8ac102171df3015"
+        },
+        {
+          "path": "datasets/t19/ami/segments/EN2001a.A.segments.xml",
+          "bytes": 29047,
+          "sha256": "7fe48bebda3b80a672ccb34cef7268a45a0df052e70aa30f0717a5a89e9f2070"
+        },
+        {
+          "path": "datasets/t19/ami/words/EN2001a.B.words.xml",
+          "bytes": 167929,
+          "sha256": "09ed2045a22d04c61097687a1998fd79ca63869e21d2c89866d7c92fbb92cd7b"
+        },
+        {
+          "path": "datasets/t19/ami/segments/EN2001a.B.segments.xml",
+          "bytes": 29027,
+          "sha256": "66a6b59cd35591b897d87eec60e53764f0bf98f4fddfebbfb5968100a79f3383"
+        },
+        {
+          "path": "datasets/t19/ami/words/EN2001a.C.words.xml",
+          "bytes": 99601,
+          "sha256": "f6fae9a43e3fa1f81799adf20ff39d730df10a50584ee756325197aa18e40821"
+        },
+        {
+          "path": "datasets/t19/ami/segments/EN2001a.C.segments.xml",
+          "bytes": 28364,
+          "sha256": "1a085cef66a400c176946d612c1dcf4fa3277d58842406caf0dd351187b34e5c"
+        },
+        {
+          "path": "datasets/t19/ami/words/EN2001a.D.words.xml",
+          "bytes": 319780,
+          "sha256": "97a337ecfd691cb53fcd43fbc30e765242c03bc8aefc8dc0156a1ae646a148c9"
+        },
+        {
+          "path": "datasets/t19/ami/segments/EN2001a.D.segments.xml",
+          "bytes": 52009,
+          "sha256": "983b06b8c05ec35e46b191c0913ab3b2d23a83cc96bee798f47cc7bda7c5395d"
+        },
+        {
+          "path": "datasets/t19/ami/words/EN2001a.E.words.xml",
+          "bytes": 899893,
+          "sha256": "6fc2c5cf0896778e3e2b69be82a1b359b3edf3b2fbd99c3018a032bbd162ffb5"
+        },
+        {
+          "path": "datasets/t19/ami/segments/EN2001a.E.segments.xml",
+          "bytes": 81061,
+          "sha256": "3ed1cc0c86310bf1b66948ae092e6ffafefe71ff924d023fbe604683d1f3161f"
+        },
+        {
+          "path": "datasets/t19/ami/EN2001a.Mix-Headset.wav",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/EN2001a/audio/EN2001a.Mix-Headset.wav",
+          "bytes": 168007726,
+          "sha256": "81e06be816e9d94d0bee410bef1b158b2cdfba8e2b80f44a6e62cf6b9fd780f9"
+        }
+      ]
+    },
+    {
+      "id": "T19q-AMI-validation",
+      "store": "$LOCALAPPDATA/Cutframe/analysis-cache",
+      "name": "AMI Meeting Corpus ES2002a, IS1000a, TS3003a, IB4001, IN1001: headset mixes and their manual words and segments (annotations v1.6.2, extracted from the zip in T19-AMI-report-only)",
+      "url": "https://groups.inf.ed.ac.uk/ami/download/",
+      "licence": "CC-BY-4.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Carletta et al. The AMI Meeting Corpus: A Pre-announcement. MLMI 2005. AMI Consortium, University of Edinburgh.",
+      "use": "T19q round S validation set V-AMI (pre-registered 3 Nov 02:23): the first meeting of each series ES, IS, TS, IB, IN sharing no participant with EN2001a, up to three 120 s excerpts each by T19's window rule; validation only, feeds no scored row; no tuning",
+      "files": [
+        {
+          "path": "datasets/t19q/vami/ES2002a.Mix-Headset.wav",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002a.Mix-Headset.wav",
+          "bytes": 40724524,
+          "sha256": "9c76866990fcc8b84006dc32d273ad99df439090b748ebe72103bb78c3216ee7"
+        },
+        {
+          "path": "datasets/t19q/vami/IS1000a.Mix-Headset.wav",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/IS1000a/audio/IS1000a.Mix-Headset.wav",
+          "bytes": 50645452,
+          "sha256": "25c9a48237c1f23bc419702f89234467a1b9efedbac16d9673f52d6a8c1c6a57"
+        },
+        {
+          "path": "datasets/t19q/vami/TS3003a.Mix-Headset.wav",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/TS3003a/audio/TS3003a.Mix-Headset.wav",
+          "bytes": 48180608,
+          "sha256": "b6ce59ff735c234afdd94b13744aa26f6785af746170543fd03b33160e920a6d"
+        },
+        {
+          "path": "datasets/t19q/vami/IB4001.Mix-Headset.wav",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/IB4001/audio/IB4001.Mix-Headset.wav",
+          "bytes": 56980866,
+          "sha256": "11e395326e9d8922801c736822a91477aa8bb2a65ce353585e3b19724e294c5d"
+        },
+        {
+          "path": "datasets/t19q/vami/IN1001.Mix-Headset.wav",
+          "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/IN1001/audio/IN1001.Mix-Headset.wav",
+          "bytes": 110840024,
+          "sha256": "9bffc290193022169e7cb46af699eccf383cae37b412d47b1462fd8619b296f0"
+        },
+        {
+          "path": "datasets/t19q/vami/words/ES2002a.A.words.xml",
+          "bytes": 25103,
+          "sha256": "03e7f37c4b3519ee78396779bbc90e2778b7b7ccd7a7388f7fa3a22cb31f7044"
+        },
+        {
+          "path": "datasets/t19q/vami/words/ES2002a.B.words.xml",
+          "bytes": 130553,
+          "sha256": "a51156e0b3f1b05d9d1a631206d523c5247d2d6fd851ecfe826317ab261cc17a"
+        },
+        {
+          "path": "datasets/t19q/vami/words/ES2002a.C.words.xml",
+          "bytes": 8896,
+          "sha256": "c539fca7b7183a2b56be43f2362432a91a4552512ed03df8c4ce96aee75f3330"
+        },
+        {
+          "path": "datasets/t19q/vami/words/ES2002a.D.words.xml",
+          "bytes": 100864,
+          "sha256": "d4f8b66e53de583c839424323f0e05d038a1426e5628042d03dcd2ee72e68b05"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IB4001.A.words.xml",
+          "bytes": 152269,
+          "sha256": "5364f0c350b0bdc59475d23ad031ed147606d972d7e61838f7afb3dafa67cf85"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IB4001.B.words.xml",
+          "bytes": 224953,
+          "sha256": "7e15e366ef4dbd32e05a6e6a233a8fbe13c5c7cff38f4521f03f68fead2770d2"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IB4001.C.words.xml",
+          "bytes": 45960,
+          "sha256": "fc9b8127d86814e466d1666e7c41949b57b3db28aa8537342ce008e477963254"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IB4001.D.words.xml",
+          "bytes": 52118,
+          "sha256": "5b3668e27ad5b72a6ed2078bfa8f5bc6bfbb20eb09c76b5404837de31a0f6668"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IN1001.A.words.xml",
+          "bytes": 417349,
+          "sha256": "16d3ba76a276f6fa8c29cf548f62606a2e24112090a64f376c243a49f9ee6cb0"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IN1001.B.words.xml",
+          "bytes": 426572,
+          "sha256": "cbc7b1b44df373107814b92c0641118a3595988068e63a7d8321018f28ba44e3"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IN1001.C.words.xml",
+          "bytes": 161019,
+          "sha256": "03decc23e77bec4b1b6eea82a1e421b09311c38c5d12e14fee22c6a3558a2e76"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IN1001.D.words.xml",
+          "bytes": 131,
+          "sha256": "5be2635a80e327a32ea7364b4caae0826572fdabcd7cc425a925482d113c6ee6"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IS1000a.A.words.xml",
+          "bytes": 43858,
+          "sha256": "f065db34e9fed74c00135fea4d47f9f1e7e0f42e77e36cc78371e253c1088020"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IS1000a.B.words.xml",
+          "bytes": 157282,
+          "sha256": "c3f6bc40aab864f46ca27a5763d87b617b1ce08096d6e7fb327aed947195989f"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IS1000a.C.words.xml",
+          "bytes": 58103,
+          "sha256": "cc76fe065ee1b79bce28830172513fd54110f4d3e95ce5676db26ca652212c7f"
+        },
+        {
+          "path": "datasets/t19q/vami/words/IS1000a.D.words.xml",
+          "bytes": 49770,
+          "sha256": "15f4817b9bda95a5d97d597811c404e0d2643d338267daef29fa00a5502d9cc3"
+        },
+        {
+          "path": "datasets/t19q/vami/words/TS3003a.A.words.xml",
+          "bytes": 198550,
+          "sha256": "b343403033d4d960f2bdfc605d2425c4974956285a3191ba19ec66c74e4e3855"
+        },
+        {
+          "path": "datasets/t19q/vami/words/TS3003a.B.words.xml",
+          "bytes": 18275,
+          "sha256": "2f0600d74984f3fc925482e556bcdcd2e82ee44e518a0e0910250bba056572ec"
+        },
+        {
+          "path": "datasets/t19q/vami/words/TS3003a.C.words.xml",
+          "bytes": 8362,
+          "sha256": "6342c203442438c77906b41f8b95631ce84f85b459cb6411890a08e32d6d0e5e"
+        },
+        {
+          "path": "datasets/t19q/vami/words/TS3003a.D.words.xml",
+          "bytes": 40385,
+          "sha256": "2fb26c7afff76c7ae34bd186b1fef28a974f73d9e3a1f22e3410dc3703c53a92"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/ES2002a.A.segments.xml",
+          "bytes": 7202,
+          "sha256": "c8d26cf329af8c8917c07f4725a02c362d2471f01ea735d9016a89fccb847c02"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/ES2002a.B.segments.xml",
+          "bytes": 23321,
+          "sha256": "ff370c9b7968ee5cf76357eda8447c63f3af664c482a71843dc0fb4bd5d445c9"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/ES2002a.C.segments.xml",
+          "bytes": 3918,
+          "sha256": "6b3667b7c49ea81902a19593b21c7c74568da73f9e33dd0062a9f238a0e50f68"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/ES2002a.D.segments.xml",
+          "bytes": 24307,
+          "sha256": "655286757eab17d36aa2ff1fada19742ce1b131be94fcc655c492790aed3797e"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IB4001.A.segments.xml",
+          "bytes": 46013,
+          "sha256": "6456c77cbab557796621e494f2b5f90f362393e87d6c2f551c3bdbd6e2c65781"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IB4001.B.segments.xml",
+          "bytes": 40153,
+          "sha256": "92682624def4f3713561838a86fe972e3bbc7d8855a3af5e9285cfd0146eb9d1"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IB4001.C.segments.xml",
+          "bytes": 18375,
+          "sha256": "ee3268e2d1816626ea69a2721f1e4fd40083c7738f6938a036e25b314dc9f668"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IB4001.D.segments.xml",
+          "bytes": 15870,
+          "sha256": "567b516e873e66078df278380fd0580175e50e7fa0fc68c741c0d3d46f60a951"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IN1001.A.segments.xml",
+          "bytes": 41693,
+          "sha256": "2979d19afe360d40d7bf49a991436ef51cafc39a4abcb8605acff7d6d2048ff6"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IN1001.B.segments.xml",
+          "bytes": 50218,
+          "sha256": "e623e952d4820f856ca18bd785f99898dd93d37fda4b025f0270d79b9a37cf6d"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IN1001.C.segments.xml",
+          "bytes": 73229,
+          "sha256": "6b0f30348c914f538f13f749431af931f89d3c676845d3c03f662335f39a432c"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IN1001.D.segments.xml",
+          "bytes": 130,
+          "sha256": "abb4fd6a6713dbe427dc7d9ae75d6988deea90cadb450c854f181a58e707ccce"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IS1000a.A.segments.xml",
+          "bytes": 22314,
+          "sha256": "b639dbe188b2d012b4e5e01f3a66dac9878cc9bf44c377a307704f1db9416b7e"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IS1000a.B.segments.xml",
+          "bytes": 32831,
+          "sha256": "428044b359be8bc86ebcaeb863b5db3be72f8f0dae3749d3323a2f20607217a2"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IS1000a.C.segments.xml",
+          "bytes": 19177,
+          "sha256": "6c302d7b9df0f2a9143f21d9c60f600c266805c579c710eaed4fda6025c15e69"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/IS1000a.D.segments.xml",
+          "bytes": 17127,
+          "sha256": "fe8e141d6bb1680e9f1e2f63f28711db0e4be55252c28e8d0a3971a4b098e453"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/TS3003a.A.segments.xml",
+          "bytes": 22939,
+          "sha256": "219e8be79f717dbb26f4b0c29263c3cfd764bfce46e64a14ed5143251b95fd3e"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/TS3003a.B.segments.xml",
+          "bytes": 16601,
+          "sha256": "1de99a152df3ae7f5fbf1259b80b189b8b60be832061720ea41e1b8896cb3f39"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/TS3003a.C.segments.xml",
+          "bytes": 5795,
+          "sha256": "46863f436c1713e7137618cd6a3d30335e03c23f8d50b3c60f2a530a1b20f999"
+        },
+        {
+          "path": "datasets/t19q/vami/segments/TS3003a.D.segments.xml",
+          "bytes": 19791,
+          "sha256": "02b7b2943d4d2626bab38ed463947ac4e55d2d34b0b03b8e1b8544e60f6b1460"
+        }
+      ]
+    },
+    {
+      "id": "T19-dialogue-cut",
+      "store": "$CUTFRAME_FIXTURES",
+      "name": "Tears of Steel 05:54-07:13 dialogue cut (tos-dialogue-79s) with its OT-2 aligned words and OT-1 speaker consensus, frozen 2 Nov 2026 06:02",
+      "url": "http://ftp.nluug.nl/pub/graphics/blender/demo/movies/ToS/tears_of_steel_720p.mov",
+      "source": {
+        "path": "tears_of_steel_720p.mov",
+        "bytes": 372178639,
+        "sha256": "efa9062d9cdb7a338e40ad530dfdf234806743f29ae6a1a136b97ece4e588e8f"
+      },
+      "licence": "CC-BY-3.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "attribution": "\"Tears of Steel\" (c) Blender Foundation, mango.blender.org",
+      "use": "T19 rows \"TR-P06 tos-dialogue-79s\" and \"TR-P06 pooled incl. dialogue cut\" (Q1; reported, not gated since D28): cut by ffmpeg from the source, labelled by T00's OT-2/OT-1 code unchanged before any diarization candidate ran; derivation in the T19 notes (log 05:45-06:02); no tuning",
+      "files": [
+        {
+          "path": "datasets/t19/dialogue/tos-dialogue-79s.mp4",
+          "bytes": 13832145,
+          "sha256": "c0936460a211fce9af12db00cdf8c63226d290c28115cbecf0662b0bb4cb156e"
+        },
+        {
+          "path": "datasets/t19/dialogue/tos-dialogue-79s-aligned.json",
+          "bytes": 27719,
+          "sha256": "fb849b4c11d9d792faa95b6b0f16a52124d46768e74c8540f54009ba05e4f163"
+        },
+        {
+          "path": "datasets/t19/dialogue/tos-dialogue-79s-consensus.json",
+          "bytes": 8024,
+          "sha256": "2afccf41a08dd5097e995ff05b9cff68084d7f972bdc1f6aceb82fbc5fd4541a"
+        }
+      ]
+    },
+    {
+      "id": "OT-2",
+      "name": "Tears of Steel official English subtitles, corrected against the audio and force-aligned",
+      "url": "https://download.blender.org/demo/movies/ToS/subtitles/TOS-en.srt",
+      "licence": "CC-BY-3.0",
+      "attribution": "\"Tears of Steel\" (c) Blender Foundation, mango.blender.org",
+      "use": "T19 transcript WER and word timing on the two corpus cut ranges",
+      "files": [
+        {
+          "path": "datasets/speech/TOS-en.srt",
+          "bytes": 4764,
+          "sha256": "ce9578f6fe098a5821045a38884b229160f9e7ba27890448a92f5be330c6e6fe"
+        },
+        {
+          "path": "datasets/speech/audio-checks.json",
+          "bytes": 3020,
+          "sha256": "c2f8f93f54768acf887e7e64a9588ece8f0b86efb00ef1828e3f7da5daa8b4f4"
+        },
+        {
+          "path": "datasets/speech/coverage-scan.json",
+          "bytes": 2771,
+          "sha256": "a3412053eb4d3bc13b77283d311a18daa0cee7e4c1ea582fd6bdddefe7ebf8d2"
+        },
+        {
+          "path": "datasets/speech/downloads.json",
+          "bytes": 835,
+          "sha256": "64d57bdf7454518cb93c079206b8acc96dc77881d424ddddff6ff1bc449aeb73"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-aligned.json",
+          "bytes": 13620,
+          "sha256": "fb00c7c6999b8ddd35b3487ae598ebd9b1e7f118d79963a8e8cceaa124160e78"
+        },
+        {
+          "path": "datasets/speech/tos-speech-45s-aligned.json",
+          "bytes": 2261,
+          "sha256": "2dd80e1e4a6e1de6b140ed53e29ceaba07a8914f999697425b4406cb4ed50352"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-cue39-emission.npy",
+          "bytes": 23212,
+          "sha256": "48a6f8c84dcac3b4084b92051aeb4e37559e77b33a9a3706c6915c5d76a1b4f7"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-cue40-emission.npy",
+          "bytes": 29012,
+          "sha256": "467a60bc92c3b042c780a9bcb93ad4e0ae224b8389661307db8336c00d2932ee"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-cue41-emission.npy",
+          "bytes": 23212,
+          "sha256": "162b5937686cf692a09765937a414663280b5cf1e005cbb376c2ff60eedbc74e"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-cue42-emission.npy",
+          "bytes": 14512,
+          "sha256": "7a3b0b3964bc8cd13d1b80d4b971b6125ad57b0a0f3e02136770d404b29657fc"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-cue43-emission.npy",
+          "bytes": 11612,
+          "sha256": "1b54ecbaade255e96ff253a1217ad79109353b84f6ab650c4a559d377c135f34"
+        },
+        {
+          "path": "datasets/speech/tos-action-30s-cue44-emission.npy",
+          "bytes": 20312,
+          "sha256": "1c7c3aeebdca86a5094a5df0fe1493d642a3ee4c8f857c4a1ab0c4624a741fe1"
+        },
+        {
+          "path": "datasets/speech/tos-speech-45s-cue11-emission.npy",
+          "bytes": 23212,
+          "sha256": "b1ff10d10b697b6859247c02aefdcf32669166d6434e63d439aad313b46959c4"
+        }
+      ],
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/"
+    },
+    {
+      "id": "OT-1",
+      "name": "Speaker reference: consensus of two independent diarisation pipelines (CAM++, ERes2Net)",
+      "url": "derived from the corpus clips by datasets/prepare-speakers.py",
+      "licence": "CC-BY-3.0",
+      "attribution": "\"Tears of Steel\" (c) Blender Foundation, mango.blender.org",
+      "use": "T19 diarisation agreement on the two corpus cut ranges",
+      "files": [
+        {
+          "path": "datasets/speakers/models.json",
+          "bytes": 1197,
+          "sha256": "d6e3652c39e43a5c6c89a334cf8f0be51a6cb58c26fe6d1d77f9191e8c253e43"
+        },
+        {
+          "path": "datasets/speakers/tos-action-30s-campplus-embeddings.npy",
+          "bytes": 168064,
+          "sha256": "3d8b8a51f2f0ed9b884315519aef6fedb4d98bc873d285275df3f25ac2bc5c59"
+        },
+        {
+          "path": "datasets/speakers/tos-action-30s-campplus.json",
+          "bytes": 7823,
+          "sha256": "9ba6e14eac9dac6f8275490de13ee7210b7cf26a48bea1a0ae83997cc30cebab"
+        },
+        {
+          "path": "datasets/speakers/tos-action-30s-consensus.json",
+          "bytes": 6074,
+          "sha256": "5a82ac141a92e105b766493d62c49097e1e1c6767f323e6bc1502f190219edc0"
+        },
+        {
+          "path": "datasets/speakers/tos-action-30s-eres2net-embeddings.npy",
+          "bytes": 40832,
+          "sha256": "31efb5b4f588027925ecee0c0281966f2d6d60e961ee510e7b3daf864e9c66f3"
+        },
+        {
+          "path": "datasets/speakers/tos-action-30s-eres2net.json",
+          "bytes": 5584,
+          "sha256": "dfa6625287a811453631cd4737e59bf14d27d8988c96ba8a421304cdac9d7c13"
+        },
+        {
+          "path": "datasets/speakers/tos-speech-45s-campplus-embeddings.npy",
+          "bytes": 186496,
+          "sha256": "1ef829b5a9ec6e92fa58d5d7fcd3c9e49f3e421be0074bdf812008ea6fb9660e"
+        },
+        {
+          "path": "datasets/speakers/tos-speech-45s-campplus.json",
+          "bytes": 8535,
+          "sha256": "46087440b56b5d8a62b40279da1228edd1350412e74ad65870a9487b4b04b05e"
+        },
+        {
+          "path": "datasets/speakers/tos-speech-45s-consensus.json",
+          "bytes": 1345,
+          "sha256": "f85a94511f3bd35c426ec53085ab61702433f8a8d9dfe0188c0c0f1495a877e0"
+        },
+        {
+          "path": "datasets/speakers/tos-speech-45s-eres2net-embeddings.npy",
+          "bytes": 52352,
+          "sha256": "c6eeca74d81ebd26461f606c39ad95a934afc8c24ca3e338322e5387a06d2f9e"
+        },
+        {
+          "path": "datasets/speakers/tos-speech-45s-eres2net.json",
+          "bytes": 6844,
+          "sha256": "a0d27c2ef2519385f468a6ba27698a7c63a4823ea7aabf14784299d6cae6f69e"
+        }
+      ],
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/"
+    },
+    {
+      "id": "OT-5",
+      "name": "Google Groove MIDI Dataset v1.0.0, three released test performances (audio + MIDI + metronome grid)",
+      "url": "https://magenta.tensorflow.org/datasets/groove",
+      "licence": "CC-BY-4.0",
+      "attribution": "Gillick, Roberts, Engel, Eck, Bamman. Learning to Groove with Inverse Sequence Transformations. ICML 2019.",
+      "use": "T19 beat F-measure on annotated real music (\u00b170 ms)",
+      "files": [
+        {
+          "path": "datasets/groove/drummer1/eval_session/1_funk-groove1_138_beat_4-4.mid",
+          "bytes": 4793,
+          "sha256": "0c579a8e907ef5a9ccb7e47096f9894179a3a0ab1a2d97acb420044fc34f3562"
+        },
+        {
+          "path": "datasets/groove/drummer1/eval_session/1_funk-groove1_138_beat_4-4.wav",
+          "bytes": 4919604,
+          "sha256": "38ea8fc3ce15f1e69a14dbf25d9e6005002cc05673281d13370f8bd4ef778ad3"
+        },
+        {
+          "path": "datasets/groove/drummer3/session1/11_rock_120_beat_4-4.mid",
+          "bytes": 1688,
+          "sha256": "cf815f8e5c34dc0a6e5182a06d93d3360e45036f846b81037d4b82565abaeedf"
+        },
+        {
+          "path": "datasets/groove/drummer3/session1/11_rock_120_beat_4-4.wav",
+          "bytes": 2126308,
+          "sha256": "760a90ac7ea8888ee7e2d31c2b517f79a7003430b0da3ca4cda36316b0521634"
+        },
+        {
+          "path": "datasets/groove/drummer3/session2/10_rock_100_beat_4-4.mid",
+          "bytes": 1277,
+          "sha256": "0be1e17288f823385d54d930bb2a8118700b8c3909da2bc88c3f01e78348a6d3"
+        },
+        {
+          "path": "datasets/groove/drummer3/session2/10_rock_100_beat_4-4.wav",
+          "bytes": 3818950,
+          "sha256": "2ab8c4258153c2d30f4151fe8861180819d525de750a9a094a4b9c963efd90f1"
+        },
+        {
+          "path": "datasets/groove/groove-v1.0.0-midionly.zip",
+          "bytes": 3260318,
+          "sha256": "651cbc524ffb891be1a3e46d89dc82a1cecb09a57c748c7b45b844c4841dcc1e"
+        },
+        {
+          "path": "datasets/groove/info.csv",
+          "bytes": 206476,
+          "sha256": "3e17eef2f18012c0160c183ad5b106964eb429876cceb1eee1b746def4e6b11b"
+        },
+        {
+          "path": "datasets/groove/test-subset.json",
+          "bytes": 20355,
+          "sha256": "781ca5d66fab60ba7358cd6881df44075f7900cdbe2b5cb0dd4bfdb022ed0b85"
+        }
+      ],
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "LibriSpeech",
+      "name": "LibriSpeech test-clean",
+      "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+      "licence": "CC-BY-4.0",
+      "attribution": "Panayotov, Chen, Povey, Khudanpur. LibriSpeech. ICASSP 2015. OpenSLR SLR12.",
+      "use": "T19 WER on read speech; downloaded and verified by the T19 run (346 MB)",
+      "publisherChecksum": {
+        "md5": "32fa31d27d2e1cad72775fee3f4849a9",
+        "source": "https://www.openslr.org/resources/12/md5sum.txt"
+      },
+      "files": [],
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "GEO-1",
+      "name": "GeoNames cities15000 + countryInfo (offline reverse geocoder)",
+      "url": "https://download.geonames.org/export/dump/",
+      "licence": "CC-BY-4.0",
+      "attribution": "GeoNames (geonames.org), CC BY 4.0",
+      "use": "T14 Library location filter: GPS \u2192 \"city, country\" (datasets/prepare-geonames.py builds the bundle)",
+      "bundle": {
+        "path": "apps/web/src/media/places.json",
+        "sha256": "6c5f6b09a105488b241140c83f33df9ef5ffebc36f030e9b82d4c121a9930bf9"
+      },
+      "files": [
+        {
+          "path": "datasets/geonames/cities15000.zip",
+          "bytes": 3364082,
+          "sha256": "767af45ad4d11a21475d0cf8be377d7821030caa771b35c0a294de91ada68bca"
+        },
+        {
+          "path": "datasets/geonames/countryInfo.txt",
+          "bytes": 31690,
+          "sha256": "c55f638cfaafb4fe45a9aa15120a0f1f78e8a34a8e1847d7b9320cf740fbc9ab"
+        }
+      ],
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "T19q-beat-this-split",
+      "store": "$LOCALAPPDATA/Cutframe/analysis-cache",
+      "name": "BeatThis 8-fold cross-validation split of the Groove MIDI Dataset (CPJKU/beat_this_annotations groove_midi/8-folds.split)",
+      "url": "https://github.com/CPJKU/beat_this_annotations",
+      "licence": "MIT",
+      "licenceUrl": "https://github.com/CPJKU/beat_this_annotations/blob/fd9fcc0896cb78730bae735102c8753ef3a3badd/LICENSE",
+      "attribution": "Foscarin, Schl\u00fcter, Widmer. Beat this! Accurate beat tracking without DBN postprocessing. ISMIR 2024. Annotations: Institute of Computational Perception, JKU Linz.",
+      "use": "T19q round B4 (pre-registered 3 Nov 05:11): maps each Groove validation performance to the BeatThis fold checkpoint that held it out; the scorer checks the map against the pre-registered fold list; validation only, feeds no scored row; no tuning",
+      "files": [
+        {
+          "path": "datasets/t19q/beat-this/8-folds.split",
+          "url": "https://raw.githubusercontent.com/CPJKU/beat_this_annotations/fd9fcc0896cb78730bae735102c8753ef3a3badd/groove_midi/8-folds.split",
+          "bytes": 15278,
+          "sha256": "3e08bc0234213429b8f4add4f7fd90873e2a50b4ae7af38d911041ca70c6d318"
+        }
+      ]
+    }
+  ],
+  "models": [
+    {
+      "id": "T19a-vad",
+      "name": "onnx-community/pyannote-segmentation-3.0",
+      "url": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0",
+      "revision": "733a93b6473d019a773298e08cefa686894b1854",
+      "licence": "MIT",
+      "licenceUrl": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0/blob/733a93b6473d019a773298e08cefa686894b1854/README.md",
+      "use": "T19a local vad engine; independent of OT-1 embedding networks and OT-2 CTC aligner",
+      "files": [
+        {
+          "path": "models/t19a/onnx-community/pyannote-segmentation-3.0/config.json",
+          "url": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0/raw/733a93b6473d019a773298e08cefa686894b1854/config.json",
+          "bytes": 408,
+          "sha256": "5a4c6bb4f49f1b47c9bd398aac78b8cd4a9f30a0ff91b5c2dc68d05e13e160cf"
+        },
+        {
+          "path": "models/t19a/onnx-community/pyannote-segmentation-3.0/onnx/model.onnx",
+          "url": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0/resolve/733a93b6473d019a773298e08cefa686894b1854/onnx/model.onnx",
+          "bytes": 5986908,
+          "sha256": "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25"
+        },
+        {
+          "path": "models/t19a/onnx-community/pyannote-segmentation-3.0/preprocessor_config.json",
+          "url": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0/raw/733a93b6473d019a773298e08cefa686894b1854/preprocessor_config.json",
+          "bytes": 158,
+          "sha256": "dfc7d35a3895f8997eb94521e28b1921c03480a34fa9bcbb6bef1f1934f81480"
+        }
+      ]
+    },
+    {
+      "id": "T19a-whisper",
+      "name": "onnx-community/whisper-small_timestamped",
+      "url": "https://huggingface.co/onnx-community/whisper-small_timestamped",
+      "revision": "65caa70f294b46e1c33ff820aae6b16d048ab818",
+      "licence": "MIT",
+      "licenceUrl": "https://github.com/openai/whisper/blob/86098128c0b4f24f0e2aa2994de830614b474227/LICENSE",
+      "use": "T19a local whisper engine; independent of OT-1 embedding networks and OT-2 CTC aligner",
+      "files": [
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/added_tokens.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/added_tokens.json",
+          "bytes": 34604,
+          "sha256": "9715fd2243b6f06a5858b5e32950d2853f73dd5bc201aafcf76f5082a2d8acd1"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/config.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/config.json",
+          "bytes": 2227,
+          "sha256": "457854d452f17661e197d74aee12b8e74fb75ba30ebfaa7426d0d61ea1e08a18"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/generation_config.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/generation_config.json",
+          "bytes": 3893,
+          "sha256": "f538b28220c6a6d6f1af1458d4141cacb4ef4963df3de98a19490440c412ddf0"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/merges.txt",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/merges.txt",
+          "bytes": 493869,
+          "sha256": "2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/normalizer.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/normalizer.json",
+          "bytes": 52666,
+          "sha256": "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/onnx/decoder_model_merged_q4.onnx",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/resolve/65caa70f294b46e1c33ff820aae6b16d048ab818/onnx/decoder_model_merged_q4.onnx",
+          "bytes": 233421212,
+          "sha256": "333bf5560a548e89b03abab5c4d33a7057129b08782707cebcbdf25b63588915"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/onnx/encoder_model.onnx",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/resolve/65caa70f294b46e1c33ff820aae6b16d048ab818/onnx/encoder_model.onnx",
+          "bytes": 352791798,
+          "sha256": "c0908c1ef2326f5487d1f77e56c6925f910ae56c87fa269ed885682ac851e588"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/preprocessor_config.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/preprocessor_config.json",
+          "bytes": 339,
+          "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/quantize_config.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/quantize_config.json",
+          "bytes": 10126,
+          "sha256": "b3c4c46d19751453cf47929fc25828e39f6e46025d9d66840e4f85047640b268"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/special_tokens_map.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/special_tokens_map.json",
+          "bytes": 2194,
+          "sha256": "e67ae3a0aaa99abcd9f187138e12db1f65c16a14761c50ef10eef2c174a7a691"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/tokenizer.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/tokenizer.json",
+          "bytes": 2480466,
+          "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/tokenizer_config.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/tokenizer_config.json",
+          "bytes": 282683,
+          "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+        },
+        {
+          "path": "models/t19a/onnx-community/whisper-small_timestamped/vocab.json",
+          "url": "https://huggingface.co/onnx-community/whisper-small_timestamped/raw/65caa70f294b46e1c33ff820aae6b16d048ab818/vocab.json",
+          "bytes": 1036584,
+          "sha256": "50d6a919f0a0601d56a04eb583c780d18553aa388254ba3158eb6a00f13e2c1a"
+        }
+      ]
+    },
+    {
+      "id": "T19a-vision",
+      "name": "onnx-community/Florence-2-base-ft",
+      "url": "https://huggingface.co/onnx-community/Florence-2-base-ft",
+      "revision": "e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f",
+      "licence": "MIT",
+      "licenceUrl": "https://huggingface.co/onnx-community/Florence-2-base-ft/blob/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/README.md",
+      "use": "T19a local vision engine; independent of OT-1 embedding networks and OT-2 CTC aligner",
+      "files": [
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/added_tokens.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/added_tokens.json",
+          "bytes": 22410,
+          "sha256": "ba67457c577895525996e7a42d7da60a05856506ea4fd25ff9a023a64662f74b"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/config.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/config.json",
+          "bytes": 5432,
+          "sha256": "d90c22ed72eb55291f183fcd9b98ebd3bd3d92bfcffb6c7f6e1606085e793525"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/generation_config.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/generation_config.json",
+          "bytes": 292,
+          "sha256": "7b8eb17bbd6cf8a07f619ad83ae03881eff05b6b9237bab89005b40e77783c29"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/merges.txt",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/merges.txt",
+          "bytes": 456318,
+          "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/onnx/decoder_model_merged_q4.onnx",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/resolve/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/onnx/decoder_model_merged_q4.onnx",
+          "bytes": 64393474,
+          "sha256": "be7a2f33e65f8d65538024772fda4d1c5a7752d60a7159aadf53f9f4798b90fa"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/onnx/embed_tokens.onnx",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/resolve/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/onnx/embed_tokens.onnx",
+          "bytes": 157560044,
+          "sha256": "90cae3deb6406938c676a35b5246db02b478c9cc8cf93508361be80c05babf95"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/onnx/encoder_model_q4.onnx",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/resolve/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/onnx/encoder_model_q4.onnx",
+          "bytes": 30058778,
+          "sha256": "34b17bcf191dacb79bd482b94bad5cf1ba39bc770f6a4c9ae26f28b89c235e4b"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/onnx/vision_encoder.onnx",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/resolve/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/onnx/vision_encoder.onnx",
+          "bytes": 366549825,
+          "sha256": "d67258cdfdebfa21285dad9e7bd4bd99725236d0aaef9e474a1b24a6ec471351"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/preprocessor_config.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/preprocessor_config.json",
+          "bytes": 2673,
+          "sha256": "c892857e34a7082284983a7717717d39c9bf7e574f1f41d80d4c918c97502efa"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/special_tokens_map.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/special_tokens_map.json",
+          "bytes": 146627,
+          "sha256": "72ff172dc769bc1551b1b4211628ce3271643bc60379e4da45d85a9be9332c39"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/tokenizer.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/tokenizer.json",
+          "bytes": 2297961,
+          "sha256": "d69dcdb2323e124ac4f800cb9863ddccea0d7bb11e16125e8df3bd60f2f8aeac"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/tokenizer_config.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/tokenizer_config.json",
+          "bytes": 197658,
+          "sha256": "d8e64607233cb53b619fb46664f6cad08176c26e0e8735b2d30d888364f19600"
+        },
+        {
+          "path": "models/t19a/onnx-community/Florence-2-base-ft/vocab.json",
+          "url": "https://huggingface.co/onnx-community/Florence-2-base-ft/raw/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f/vocab.json",
+          "bytes": 1099884,
+          "sha256": "394fdc63c71aabe0a9b97117f5d62fb5fcc4d59b2b3ea929a3929e6a53217b3c"
+        }
+      ]
+    },
+    {
+      "id": "T19a-embedding",
+      "name": "Xenova/all-MiniLM-L6-v2",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2",
+      "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/blob/751bff37182d3f1213fa05d7196b954e230abad9/README.md",
+      "use": "T19a local embedding engine; independent of OT-1 embedding networks and OT-2 CTC aligner",
+      "files": [
+        {
+          "path": "models/t19a/Xenova/all-MiniLM-L6-v2/config.json",
+          "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/raw/751bff37182d3f1213fa05d7196b954e230abad9/config.json",
+          "bytes": 650,
+          "sha256": "7135149f7cffa1a573466c6e4d8423ed73b62fd2332c575bf738a0d033f70df7"
+        },
+        {
+          "path": "models/t19a/Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_quantized.onnx",
+          "bytes": 22972370,
+          "sha256": "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1"
+        },
+        {
+          "path": "models/t19a/Xenova/all-MiniLM-L6-v2/special_tokens_map.json",
+          "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/raw/751bff37182d3f1213fa05d7196b954e230abad9/special_tokens_map.json",
+          "bytes": 125,
+          "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+        },
+        {
+          "path": "models/t19a/Xenova/all-MiniLM-L6-v2/tokenizer.json",
+          "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/raw/751bff37182d3f1213fa05d7196b954e230abad9/tokenizer.json",
+          "bytes": 711661,
+          "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+        },
+        {
+          "path": "models/t19a/Xenova/all-MiniLM-L6-v2/tokenizer_config.json",
+          "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/raw/751bff37182d3f1213fa05d7196b954e230abad9/tokenizer_config.json",
+          "bytes": 366,
+          "sha256": "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3"
+        },
+        {
+          "path": "models/t19a/Xenova/all-MiniLM-L6-v2/vocab.txt",
+          "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/raw/751bff37182d3f1213fa05d7196b954e230abad9/vocab.txt",
+          "bytes": 231508,
+          "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+        }
+      ]
+    },
+    {
+      "id": "T19a-clip",
+      "name": "Xenova/clip-vit-base-patch32",
+      "url": "https://huggingface.co/Xenova/clip-vit-base-patch32",
+      "revision": "6b7c523703ae26e39be4b03774966f8571c7f523",
+      "licence": "MIT",
+      "licenceUrl": "https://huggingface.co/Xenova/clip-vit-base-patch32/blob/6b7c523703ae26e39be4b03774966f8571c7f523/README.md",
+      "use": "T19q round F8 local visual search channel (T19's F2): one CLIP image embedding per description segment (its first frame) and one CLIP text embedding of 'a photo of {query}.' per query",
+      "files": [
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/config.json",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/config.json",
+          "bytes": 4524,
+          "sha256": "493ef57ff783e42d1530c91b53469b7fdf8db8a9c1408e86998fcb7899a4f495"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/merges.txt",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/merges.txt",
+          "bytes": 524619,
+          "sha256": "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/onnx/text_model_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/6b7c523703ae26e39be4b03774966f8571c7f523/onnx/text_model_quantized.onnx",
+          "bytes": 64504507,
+          "sha256": "73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/onnx/vision_model_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/6b7c523703ae26e39be4b03774966f8571c7f523/onnx/vision_model_quantized.onnx",
+          "bytes": 89117001,
+          "sha256": "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/preprocessor_config.json",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/preprocessor_config.json",
+          "bytes": 520,
+          "sha256": "6f638fb9401a6d6296feff533ee7efe657b787c49f954f82f5906b36ef2a1b1f"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/special_tokens_map.json",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/special_tokens_map.json",
+          "bytes": 472,
+          "sha256": "c4864a9376a8401918425bed71fc14fc0e81f9b59ec45c1cf96cccb2df508eac"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/tokenizer.json",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/tokenizer.json",
+          "bytes": 2224119,
+          "sha256": "f7f3b7af117d467b58374797691a6438d3e6b9e9cef800dfd5dced7f697a90cd"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/tokenizer_config.json",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/tokenizer_config.json",
+          "bytes": 775,
+          "sha256": "60ba2912bc6344c94bc16bbdec27fa1209409167b6f2fdf3cfe9e65462ea3967"
+        },
+        {
+          "path": "models/t19a/Xenova/clip-vit-base-patch32/vocab.json",
+          "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/raw/6b7c523703ae26e39be4b03774966f8571c7f523/vocab.json",
+          "bytes": 862328,
+          "sha256": "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363"
+        }
+      ]
+    },
+    {
+      "id": "T19a-sound",
+      "name": "Xenova/ast-finetuned-audioset-10-10-0.4593",
+      "url": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593",
+      "revision": "249a1fbf0286b40e7f1ed687a8ae396997bf7dc6",
+      "licence": "BSD-3-Clause",
+      "licenceUrl": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593/blob/249a1fbf0286b40e7f1ed687a8ae396997bf7dc6/README.md",
+      "use": "T19a local sound engine; independent of OT-1 embedding networks and OT-2 CTC aligner",
+      "files": [
+        {
+          "path": "models/t19a/Xenova/ast-finetuned-audioset-10-10-0.4593/config.json",
+          "url": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593/raw/249a1fbf0286b40e7f1ed687a8ae396997bf7dc6/config.json",
+          "bytes": 26792,
+          "sha256": "49d0dce922da23685787c73a874d9b1ffa97297f8cc4dc0a4e8bef219725e44d"
+        },
+        {
+          "path": "models/t19a/Xenova/ast-finetuned-audioset-10-10-0.4593/onnx/model_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593/resolve/249a1fbf0286b40e7f1ed687a8ae396997bf7dc6/onnx/model_quantized.onnx",
+          "bytes": 90807386,
+          "sha256": "807d244b58a30eaa89f0a721fb841619c696857aabe4eac93769bd0b61497f61"
+        },
+        {
+          "path": "models/t19a/Xenova/ast-finetuned-audioset-10-10-0.4593/preprocessor_config.json",
+          "url": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593/raw/249a1fbf0286b40e7f1ed687a8ae396997bf7dc6/preprocessor_config.json",
+          "bytes": 297,
+          "sha256": "8d04ba5a9c6fca5d39d0de2b1fd05ecf79deb589fbba279728bbebac39934231"
+        },
+        {
+          "path": "models/t19a/Xenova/ast-finetuned-audioset-10-10-0.4593/quant_config.json",
+          "url": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593/raw/249a1fbf0286b40e7f1ed687a8ae396997bf7dc6/quant_config.json",
+          "bytes": 810,
+          "sha256": "d040bd7c02886d339529dff562ef93170e14f0d8e434909d9cc64778b7d117dc"
+        },
+        {
+          "path": "models/t19a/Xenova/ast-finetuned-audioset-10-10-0.4593/quantize_config.json",
+          "url": "https://huggingface.co/Xenova/ast-finetuned-audioset-10-10-0.4593/raw/249a1fbf0286b40e7f1ed687a8ae396997bf7dc6/quantize_config.json",
+          "bytes": 810,
+          "sha256": "bc776ca00558ed18407bd6465404fe351b8ab1b80f1eb89213362394b2569d8a"
+        }
+      ]
+    },
+    {
+      "id": "T19a-aligner",
+      "name": "onnx-community/wav2vec2-large-xlsr-english-ONNX",
+      "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX",
+      "revision": "a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0",
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/blob/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/README.md",
+      "use": "T19a local CTC word aligner (TR-P03 new-model round). Same family as the OT-2 timing oracle (wav2vec2 CTC, 20 ms frames) but a different checkpoint and training data: XLSR-53 fine-tuned on CommonVoice 6.0 English. Base BeebekBhz/wav2vec2-large-xlsr-english @ 6c6898b7 (Apache-2.0), a copy of jonatasgrosman/wav2vec2-large-xlsr-53-english",
+      "files": [
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/config.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/config.json",
+          "bytes": 2350,
+          "sha256": "44c1947b3602b64b41914d50a67fe53385e743c6fd9cdc317306a8deca6b67b4"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/onnx/model_quantized.onnx",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/resolve/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/onnx/model_quantized.onnx",
+          "bytes": 317343799,
+          "sha256": "3308030a66b07b135f1d9b4cfe130d0470be5225a1defd81daf99920b096dfa7"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/preprocessor_config.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/preprocessor_config.json",
+          "bytes": 262,
+          "sha256": "2c594304e9d9832162bedd5345051df29e8daf458a845cbed58c6ede23ceeae3"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/quantize_config.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/quantize_config.json",
+          "bytes": 312,
+          "sha256": "70f61db8708568fa3ee6e66ecbcfdb8a89b9069feadff679dea00b097e521c98"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/special_tokens_map.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/special_tokens_map.json",
+          "bytes": 96,
+          "sha256": "9046da57c270c8e74d0f38832b4adce269c9d914ef21d2a0925e7772152dd793"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/tokenizer.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/tokenizer.json",
+          "bytes": 2208,
+          "sha256": "31f97690209d34b75f428810efd8f8cfe496c30eb97a86d9110017c4ef204173"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/tokenizer_config.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/tokenizer_config.json",
+          "bytes": 1078,
+          "sha256": "6d87b54769a085d38bad8d6538ac15eb83719160c4d39728cc5e698c6a0c0498"
+        },
+        {
+          "path": "models/t19a/onnx-community/wav2vec2-large-xlsr-english-ONNX/vocab.json",
+          "url": "https://huggingface.co/onnx-community/wav2vec2-large-xlsr-english-ONNX/raw/a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0/vocab.json",
+          "bytes": 369,
+          "sha256": "f7a204596a4f25139bf3e0e3f6d5d205f16cd58fb6aa29e29bb70240a60401e4"
+        }
+      ]
+    },
+    {
+      "id": "T19a-wespeaker",
+      "name": "onnx-community/wespeaker-voxceleb-resnet34-LM",
+      "url": "https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM",
+      "revision": "6a61a1833ff2583aabeba044f5c8221f00b67ceb",
+      "licence": "CC-BY-4.0",
+      "licenceUrl": "https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM/blob/6a61a1833ff2583aabeba044f5c8221f00b67ceb/README.md",
+      "attribution": "Wang, Liang, Wang, Chen, Zhang, Xiang, Deng, Qian. Wespeaker: A research and production oriented speaker embedding learning toolkit. ICASSP 2023. Pretrained wespeaker-voxceleb-resnet34-LM (WeNet, trained on VoxCeleb), via pyannote/wespeaker-voxceleb-resnet34-LM, ONNX export by onnx-community.",
+      "use": "T19q round S2 local speaker embedder (replaced T19a-speaker): one 256-d WeSpeaker ResNet34 vector per transcript segment, clustered offline with average linkage at cosine distance .60",
+      "files": [
+        {
+          "path": "models/t19a/onnx-community/wespeaker-voxceleb-resnet34-LM/config.json",
+          "url": "https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM/raw/6a61a1833ff2583aabeba044f5c8221f00b67ceb/config.json",
+          "bytes": 38,
+          "sha256": "4a65a1544d2085d7819632f130583d83f6815f49ef6c8ba6c8eb460bd4085041"
+        },
+        {
+          "path": "models/t19a/onnx-community/wespeaker-voxceleb-resnet34-LM/onnx/model.onnx",
+          "url": "https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM/resolve/6a61a1833ff2583aabeba044f5c8221f00b67ceb/onnx/model.onnx",
+          "bytes": 26535549,
+          "sha256": "3955447b0499dc9e0a4541a895df08b03c69098eba4e56c02b5603e9f7f4fcbb"
+        },
+        {
+          "path": "models/t19a/onnx-community/wespeaker-voxceleb-resnet34-LM/preprocessor_config.json",
+          "url": "https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM/raw/6a61a1833ff2583aabeba044f5c8221f00b67ceb/preprocessor_config.json",
+          "bytes": 371,
+          "sha256": "a81bbded0530b1bf5c3d395d2c5c7c266686e348be5989171290ace960f24ec2"
+        }
+      ]
+    },
+    {
+      "name": "torchaudio WAV2VEC2_ASR_BASE_960H (OT-2 aligner)",
+      "url": "https://download.pytorch.org/torchaudio/models/wav2vec2_fairseq_base_ls960_asr_ls960.pth",
+      "licence": "MIT",
+      "files": [
+        {
+          "path": "models/torchaudio/wav2vec2_fairseq_base_ls960_asr_ls960.pth",
+          "bytes": 377664473,
+          "sha256": "488fd4f16de84438ffc945334278c1b9fb9b7159a806c1080b16111a958c945d"
+        }
+      ],
+      "licenceUrl": "https://github.com/pytorch/fairseq/blob/ce6c9eeae163ac04b79539c78e74f292f29eaa18/LICENSE"
+    },
+    {
+      "name": "OpenAI Whisper large-v3-turbo, sherpa-onnx ONNX export (OT-2 second audio check)",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-turbo.tar.bz2",
+      "licence": "MIT",
+      "files": [
+        {
+          "path": "models/asr/sherpa-onnx-whisper-turbo.tar.bz2",
+          "bytes": 563790207,
+          "sha256": "b11acbbcd660b44a8e0df33724feb5aaa709cf65668f2823d59f656312544f22"
+        }
+      ],
+      "licenceUrl": "https://github.com/openai/whisper/blob/main/LICENSE"
+    },
+    {
+      "name": "3D-Speaker CAM++ and ERes2Net English VoxCeleb, sherpa-onnx ONNX exports (OT-1 pipelines)",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models",
+      "licence": "Apache-2.0",
+      "files": [
+        {
+          "path": "models/speakers/3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx",
+          "bytes": 29596978,
+          "sha256": "357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b"
+        },
+        {
+          "path": "models/speakers/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",
+          "bytes": 26485263,
+          "sha256": "c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5"
+        }
+      ],
+      "licenceUrl": "https://www.apache.org/licenses/LICENSE-2.0"
+    },
+    {
+      "id": "T19a-beat-this-fold0",
+      "name": "CPJKU/beat_this fold0 (ONNX export of 8-fold cross-validation checkpoint 0)",
+      "url": "https://github.com/CPJKU/beat_this",
+      "revision": "b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c",
+      "licence": "MIT",
+      "licenceUrl": "https://github.com/CPJKU/beat_this/blob/b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c/README.md",
+      "attribution": "Foscarin, Schl\u00fcter, Widmer. Beat this! Accurate beat tracking without DBN postprocessing. ISMIR 2024.",
+      "use": "T19q round B4 learned beat tracker for dense music (BEAT-P02). Fold 0 of BeatThis's own 8-fold split never trained on the scored take drummer1/eval_session/1; it did train on the other two scored Groove takes and on the Groove validation items outside fold 0 (see notes)",
+      "files": [
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz",
+          "url": "https://codeload.github.com/CPJKU/beat_this/tar.gz/b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c",
+          "bytes": 4938005,
+          "sha256": "6c40ca7149ccfe5afba1e650eabb7c73fca5b5ac1e40b9ca60bf259d7c2048b8"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold0.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold0.ckpt",
+          "bytes": 81054590,
+          "sha256": "f5c6b6726179e20710e4be6a0fba4018f6cbc89f32f9c0dfd15072cb047578ad"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold0.onnx",
+          "bytes": 82098834,
+          "sha256": "299073a57fa547e9dda4b9f0906a72b6aad647c6eb2d9408fc1de8e9f669b1b6",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold0.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "T19a-beat-this-cv",
+      "name": "CPJKU/beat_this folds 1,2,3,4,5,6,7 (ONNX exports of the 8-fold cross-validation checkpoints; Groove validation only)",
+      "url": "https://github.com/CPJKU/beat_this",
+      "revision": "b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c",
+      "licence": "MIT",
+      "licenceUrl": "https://github.com/CPJKU/beat_this/blob/b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c/README.md",
+      "attribution": "Foscarin, Schl\u00fcter, Widmer. Beat this! Accurate beat tracking without DBN postprocessing. ISMIR 2024.",
+      "use": "T19q round B4, scorer only: each Groove validation performance is scored with the fold checkpoint that held it out (dataset row T19q-beat-this-split). Never loaded by the product",
+      "files": [
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz",
+          "url": "https://codeload.github.com/CPJKU/beat_this/tar.gz/b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c",
+          "bytes": 4938005,
+          "sha256": "6c40ca7149ccfe5afba1e650eabb7c73fca5b5ac1e40b9ca60bf259d7c2048b8"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold1.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold1.ckpt",
+          "bytes": 81054590,
+          "sha256": "617b5b9641cefa585c975c97ac4e7fb9c00165ec9827303e8a88fdbd5ff3b71f"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold2.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold2.ckpt",
+          "bytes": 81054590,
+          "sha256": "cece4323bccc50738e415c91c204c93ca7021e42ab3a24da6a84dccaa7cc0d4c"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold3.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold3.ckpt",
+          "bytes": 81054590,
+          "sha256": "849de186a21ed1cd41d0ac78dc412c61f5283dcafffa9dd32f390674c50792cf"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold4.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold4.ckpt",
+          "bytes": 81054590,
+          "sha256": "0a17b1691edbae73a7fac35f6d26d5f8f9aa483b0e3aff5d891c74140f836c52"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold5.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold5.ckpt",
+          "bytes": 81054590,
+          "sha256": "ea651e7a0d1a1b243ad3ff268969c8c3d4b7e6d06b1bfb451b020d40526275c2"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold6.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold6.ckpt",
+          "bytes": 81054590,
+          "sha256": "07b32a484f2c99b676e7061650ea2cd2f9f889d87ea6c712782c5855742070b1"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/fold7.ckpt",
+          "url": "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/fold7.ckpt",
+          "bytes": 81054590,
+          "sha256": "f26bed3c18c8f338a39b5a9524ffea7dce654e847ccf3d006e147fa7bf71d43f"
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold1.onnx",
+          "bytes": 82098834,
+          "sha256": "404ddf0dd03be09a1c6a9657904d73177660eb74af2a7be8295c11e0f450d727",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold1.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold2.onnx",
+          "bytes": 82098834,
+          "sha256": "0fdcf2efff1a6b9e7edd1f8de3ed0a59931af557b822611629c4287dcd10503b",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold2.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold3.onnx",
+          "bytes": 82098834,
+          "sha256": "af6b92df6b2c2b28eec7233c81b5c504319171d77b381c651314e21b0546c35a",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold3.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold4.onnx",
+          "bytes": 82098834,
+          "sha256": "3060373b34343a0bad3ed53431034283933f3a51f2621de5c07e30e2e7ace39d",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold4.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold5.onnx",
+          "bytes": 82098834,
+          "sha256": "c768a4f0097098c5f472f3275e27ed892937ac1981c432f3ebc35591f6f7ed71",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold5.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold6.onnx",
+          "bytes": 82098834,
+          "sha256": "6d5b010c16ac8167a19ede02783e615b61d9113cdb0a24382d0b4a0cddf9e7e1",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold6.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        },
+        {
+          "path": "models/t19a/CPJKU/beat_this/beat_this_fold7.onnx",
+          "bytes": 82098834,
+          "sha256": "98331563fb7beb6369736a507974909e2f3e37cc1b4ad7873782d237b20b249f",
+          "derived": {
+            "tool": "apps/web/src/analysis/tools/beat_export.py",
+            "toolSha256": "ce7656d012713d60de530afabf65ab95e563a733d62f49939ae5021c094f6b4c",
+            "from": [
+              "models/t19a/CPJKU/beat_this/fold7.ckpt",
+              "models/t19a/CPJKU/beat_this/beat_this-b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.tar.gz"
+            ],
+            "environment": "torch==2.6.0+cpu torchaudio==2.6.0+cpu numpy==2.2.6 einops==0.8.1 rotary-embedding-torch==0.8.6 onnx==1.17.0 onnxruntime==1.20.1 soxr==0.5.0.post1"
+          }
+        }
+      ]
+    }
+  ]
+}

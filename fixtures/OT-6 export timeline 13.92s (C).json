@@ -1,0 +1,207 @@
+{
+  "fixture": "OT-6 export timeline 13.92 s",
+  "version": 1,
+  "created": "2026-10-22",
+  "author": "claude (research agent, clean-room)",
+  "status": "our own rebuild, as a project file of our own schema, of the 13.92 s wave-2 export test timeline. No stored editor_state / autosave body of that timeline exists (the wave-2 recorder kept only app API bodies; W3-RF-08 notes say the same), so the numbers come from the sources listed under provenance, checked against our own frame measurements of the wave-2 export file.",
+  "cleanRoom": "Numbers, our own field names and ids, Tears of Steel dialogue (CC BY 3.0, Blender Foundation) and the default text 'Heading'. No Xapp code, ids or document structure copied.",
+  "usedBy": ["EX-P01 ... EX-P13 (export parity)", "EX-P04 range frames [90, 239] and [180, 329]", "EX-P11 frames vs the wave-2 export frames", "OT-7 case W2-M25 (the caption request made on this timeline)"],
+  "units": "ms on the timeline unless a field says S (seconds); trim = source ms inside the fixture file; pixel values on the 1080 x 1920 canvas. Box convention (findings part 5 section 53.1.1): width / height = the UNSCALED box (for video the source's natural size), scale multiplies them; x / y = the top-left corner of the scaled, unrotated box; rendered size = width x scale by height x scale. Track order: tracks[].stackFromTop counts from the top (0 = top); the render order is bottom to top: V1, O1, C1 (findings part 5 section 53.5.1).",
+
+  "project": {
+    "canvas": {"width": 1080, "height": 1920},
+    "fps": 30,
+    "background": "#000000",
+    "durationMs": 13927.236,
+    "durationShownInEditor": "00:13.92",
+    "expectedExportVideoFrames": 418,
+    "expectedExportNote": "418 = ceil(13.927 s x 30); wave-2 files: 418 frames (13.933 s), AAC audio 13.952 s"
+  },
+
+  "fixtureStore": "$CUTFRAME_FIXTURES/corpus (D2: C:/Users/owner/cutframe-fixtures/corpus), checked by SHA-256 per fixtures/Cutframe test fixtures (C).md",
+
+  "tracks": [
+    {"id": "C1", "kind": "caption", "stackFromTop": 0, "note": "top; drawn last"},
+    {"id": "O1", "kind": "overlay", "stackFromTop": 1},
+    {"id": "V1", "kind": "video", "stackFromTop": 2, "note": "bottom; drawn first; carries the clips' own audio"}
+  ],
+
+  "items": [
+    {
+      "id": "v1-speech",
+      "type": "video",
+      "track": "V1",
+      "source": "tos-speech-45s.mp4",
+      "displayMs": {"from": 0, "to": 5977.236},
+      "trimMs": {"from": 0, "to": 5977.236},
+      "speed": 1,
+      "properties": {"x": 0, "y": 734.71875, "scale": 0.84375, "width": 1280, "height": 534, "opacity": 1, "volume": 1, "blend": "normal"},
+      "propertiesNote": "fit to canvas width: width / height = the unscaled source box 1280 x 534; scale = 1080 / 1280; rendered size 1080 x 450.5625; y = (1920 - 534 x scale) / 2; centre (540, 960) as in the export",
+      "effects": [
+        {"kind": "vignette", "params": {"amount": 50, "midpoint": 50, "roundness": 50, "feather": 50}, "paramsNote": "added from the Effects tab and not changed (wave-2 step export-timeline-effect), so the UI defaults apply; defaults: Xapp effect parameter inventory (C).md, vignette and the section 'UI-measured ranges'; maths: Xapp code-level findings part 4 (C).md section 50.1"}
+      ]
+    },
+    {
+      "id": "v1-action",
+      "type": "video",
+      "track": "V1",
+      "source": "tos-action-30s.mp4",
+      "displayMs": {"from": 5977.236, "to": 9937.236},
+      "trimMs": {"from": 0, "to": 3960},
+      "speed": 1,
+      "properties": {"x": 0, "y": 734.71875, "scale": 0.84375, "width": 1280, "height": 534, "opacity": 1, "volume": 1, "blend": "normal"},
+      "effects": [],
+      "note": "smart-mask and background-removal layers were deleted before the exports (wave-2 step export-timeline-trim)"
+    },
+    {
+      "id": "v1-music",
+      "type": "video",
+      "track": "V1",
+      "source": "tos-credits-music-40s.mp4",
+      "displayMs": {"from": 9937.236, "to": 13927.236},
+      "trimMs": {"from": 0, "to": 3990},
+      "speed": 1,
+      "properties": {"x": 0, "y": 734.71875, "scale": 0.84375, "width": 1280, "height": 534, "opacity": 1, "blend": "normal"},
+      "volumeKeyframes": [
+        {"atItemMs": 90, "atTimelineMs": 10027.236, "value": 1.0},
+        {"atItemMs": 3590, "atTimelineMs": 13527.236, "value": 0.0}
+      ],
+      "volumeKeyframesNote": "approximate (+-30 ms): set by clicks 90 ms after the item start and 400 ms before its end, then typed 100 % and 0 % (wave-2 steps t45/t47; step log: '~100% near clip start (10.03 s) -> 0% at ~13.5 s'); interpolation assumed linear; constant before the first and after the last keyframe",
+      "effects": []
+    },
+    {
+      "id": "o1-text",
+      "type": "text",
+      "track": "O1",
+      "displayMs": {"from": 0, "to": 5000},
+      "text": "Heading",
+      "properties": {"fontFamily": "Roboto", "fontWeight": 700, "fontStyle": "normal", "fontSize": 150, "color": "#FFFFFF", "textAlign": "center", "x": 235, "y": 865, "width": 610, "height": 190, "strokeWidth": 0, "shadow": {"x": 0, "y": 0, "blur": 0}},
+      "propertiesNote": "the editor's default 'Add text' item, not edited (wave-2 step t33); values from the same default item stored in the W3-RF-12 rebuild; x = (1080 - 610) / 2, y = (1920 - 190) / 2"
+    },
+    {
+      "id": "c1-caption-1",
+      "type": "caption",
+      "track": "C1",
+      "generatedFrom": "v1-speech",
+      "displayMs": {"from": 2960, "to": 4840},
+      "text": "This is pretty freaky.",
+      "words": [
+        {"text": "This", "fromMs": 2960, "toMs": 3120},
+        {"text": "is", "fromMs": 3180, "toMs": 3320},
+        {"text": "pretty", "fromMs": 3480, "toMs": 3760},
+        {"text": "freaky.", "fromMs": 3880, "toMs": 4340}
+      ],
+      "style": "default-manual",
+      "box": {"width": 684, "height": 128, "x": 198, "y": 1344},
+      "boxNote": "box of the same default caption stored in wave 3 (W3-RF-05, findings part 3 section 44.3)"
+    },
+    {
+      "id": "c1-caption-2",
+      "type": "caption",
+      "track": "C1",
+      "generatedFrom": "v1-action",
+      "displayMs": {"from": 7457.236, "to": 9177.236},
+      "text": "You have your robotics,",
+      "words": [
+        {"text": "You", "fromMs": 7457.236, "toMs": 7517.236},
+        {"text": "have", "fromMs": 7597.236, "toMs": 7757.236},
+        {"text": "your", "fromMs": 7797.236, "toMs": 7917.236},
+        {"text": "robotics,", "fromMs": 7957.236, "toMs": 8677.236}
+      ],
+      "style": "default-manual",
+      "box": {"width": null, "height": 128, "x": null, "y": 1344},
+      "boxNote": "width not in our evidence: our renderer measures it; x = round((1080 - width) / 2). End = last word end + 500 ms; the item-end clamp (9937.236) does not bind"
+    }
+  ],
+
+  "captionStyles": {
+    "default-manual": {"fontFamily": "Open Sans", "fontWeight": 400, "fontStyle": "normal", "fontSize": 65, "color": "#FFFFFF", "background": "transparent", "strokeWidth": 3, "strokeColor": "#000000", "shadow": {"x": 0, "y": 0, "blur": 0, "color": "#000000"}, "textAlign": "center", "textTransform": "none", "letterSpacing": "normal", "top": 1344, "renderMode": "default", "animation": null, "note": "findings part 3 section 44.3 (default manual caption; top = 70 % of 1920)"}
+  },
+
+  "transitions": [
+    {"id": "t1", "kind": "fade", "look": "dip through black", "fromItem": "v1-speech", "toItem": "v1-action", "cutMs": 5977.236, "durationMs": 1000, "alignment": 0.5, "windowMs": {"from": 5477.236, "to": 6477.236},
+     "note": "added with the hover control on the cut (wave-2 step t37); 1000 ms / alignment 0.5 is that control's default (W3-RT-04); the dip through black, its length and its centre were measured on the wave-2 export (see measuredChecks)"}
+  ],
+
+  "cutPoints": [
+    {"atMs": 0, "what": "start: tos-speech-45s from source 0 s"},
+    {"atMs": 5000, "what": "text 'Heading' ends"},
+    {"atMs": 5977.236, "what": "Fade (dip through black): tos-speech-45s source 5.977 s -> tos-action-30s source 0 s"},
+    {"atMs": 9937.236, "what": "hard cut: tos-action-30s source 3.96 s -> tos-credits-music-40s source 0 s"},
+    {"atMs": 13927.236, "what": "end: tos-credits-music-40s source 3.99 s"}
+  ],
+
+  "corpusUse": [
+    {"file": "tos-speech-45s.mp4", "sourceRangeS": [0, 5.977], "inFixtureSet": true},
+    {"file": "tos-action-30s.mp4", "sourceRangeS": [0, 3.96], "inFixtureSet": true, "note": "not tos-action-90s-x3.mp4 (W3-RF-08's rebuild used that file; same footage, different bytes)"},
+    {"file": "tos-credits-music-40s.mp4", "sourceRangeS": [0, 3.99], "inFixtureSet": true}
+  ],
+
+  "fonts": {"element": "Open Sans Regular (captions) and Roboto Bold (text 'Heading')", "status": "stored in the fixture store ($CUTFRAME_FIXTURES/fonts) with SHA-256 and licence: see the Fonts table of fixtures/Cutframe test fixtures (C).md"},
+
+  "notInFixtureSet": [
+    {"element": "stock assets", "status": "none used: every media item is a corpus clip of the fixture set", "proposal": "-"}
+  ],
+
+  "provenance": [
+    {"value": "cut 5977.236 ms (speech end, action start)", "source": "OT-7 case W2-M25: the caption request made on this timeline sends clip-2 word 'You' at timeline 7.457236 s with source 1480 ms", "precision": "exact (+-0.001 ms)"},
+    {"value": "action length 3960 ms", "source": "wave2/exports/EXPORT-MATRIX.md ('action clip first 3.96 s'); our export measurement: the hard cut lies between frames 298 and 299", "precision": "+-5 ms (two-decimal source); measured window 3956-3990 ms"},
+    {"value": "music length 3990 ms", "source": "EXPORT-MATRIX.md ('music clip first 3.99 s'); total 13.927 s fits the editor's 00:13.92 and 418 frames", "precision": "+-5 ms"},
+    {"value": "trim starts 0 for all three clips", "source": "step log export-timeline-trim ('speech 0-6s, action first 4s, music first 4s'); our export measurement (frames 0-9 = speech source frames 0-9; frame 299 = music source frame 0)", "precision": "+-1 frame"},
+    {"value": "text 0-5000 ms", "source": "reference-facts section 5.1; our export measurement (text gone from frame 150 = 5.000 s)", "precision": "+-1 frame"},
+    {"value": "caption 1 2960-4840 ms, caption 2 7457.236-9177.236 ms", "source": "OT-7 case W2-M25 expected chunks (server result; the editor showed 2.96-4.84 s and 7.46-9.18 s)", "precision": "+-1 ms"},
+    {"value": "video placement x 0, y 734.71875, scale 0.84375", "source": "fit-width rule; the same numbers are stored for these clips in the W3-RF-12 rebuild", "precision": "exact"},
+    {"value": "vignette parameters", "source": "UI defaults (Xapp effect parameter inventory (C).md, vignette and 'UI-measured ranges'; maths in findings part 4 section 50.1); not edited in the wave-2 run", "precision": "exact if unedited"},
+    {"value": "Fade 1000 ms, alignment 0.5", "source": "W3-RT-04 (the cut's 'Add transition' control adds Fade 1.0 s centred); our export measurement", "precision": "+-1 frame"},
+    {"value": "music volume keyframes", "source": "wave-2 driver steps t45/t47 and the step log", "precision": "+-30 ms in time; values exact (100 % / 0 %)"}
+  ],
+
+  "measuredChecks": {
+    "source": "our own measurement (22 Oct) of wave2/exports/06-preset-custom-defaults.mp4 against the corpus clips: picture area cropped (1080 x 448 at y 736), grey, 160 x 67, compared per frame (scratch script, not archived)",
+    "checks": [
+      {"frame": 0, "timeS": 0.0, "expect": "speech source frame at 0 s (frames 0-9 match speech source frames 0-9)"},
+      {"frame": 150, "timeS": 5.0, "expect": "first frame without the 'Heading' text (frames up to 149 differ from the source by the text overlay)"},
+      {"frames": [150, 164], "expect": "speech picture at about 0.72 x the source mean level (vignette amount 50)"},
+      {"frames": [165, 194], "expect": "fade window [5477.236, 6477.236) ms, p = (frame / 30 x 1000 - 5477.236) / 1000. Each frame = opaque black, then one clip drawn over it at the alpha in fadeAlphas (findings part 5 section 55.5): frames 165-179 the speech picture (with its vignette) at cos(pi p), frames 180-194 the action picture at -cos(pi p). Expected pixel = round(alpha x that clip's own pixel), +-1 LSB. Frames 179 and 180 (alpha 0.0332 / 0.0715) are the two darkest; which of them is darker depends on the two pictures' levels, so the check compares per frame, not 'darkest'. Wave-2 measurement for reference: picture-area mean about 1 / 255 at frame 180."},
+      {"frame": 194, "timeS": 6.467, "expect": "action clip at full level; shows action source about 0.49 s"},
+      {"frame": 298, "timeS": 9.933, "expect": "action source about 3.93 s (last action frame)"},
+      {"frame": 299, "timeS": 9.967, "expect": "music source frame 0 (hard cut)"},
+      {"frame": 417, "timeS": 13.9, "expect": "music source about 3.97 s (last frame)"},
+      {"audio": "volumedetect windows from EXPORT-MATRIX.md", "expect": "-17.8 dB at 10 s, -23.0 dB at 11.5 s, -37.5 dB at 13 s (music fade-out)"},
+      {"text": "caption 1 rendered glyph box (wave-2 export 06, frame f2)", "expect": "x 243-832, y 1384-1448 on 1080 x 1920 (reference-facts section 1.5)"}
+    ],
+    "fadeAlphasNote": "computed from findings part 5 section 55.5 (fade = dip through black), 4 decimals; clip = the one drawn over black; sourceMs = the source time that clip shows (speech plays normally; action starts at source 0 at the cut, after its frozen-first-frame part, which is invisible at alpha 0)",
+    "fadeAlphas": [
+      {"frame": 165, "p": 0.0228, "clip": "speech", "alpha": 0.9974, "sourceMs": 5500.0},
+      {"frame": 166, "p": 0.0561, "clip": "speech", "alpha": 0.9845, "sourceMs": 5533.3},
+      {"frame": 167, "p": 0.0894, "clip": "speech", "alpha": 0.9608, "sourceMs": 5566.7},
+      {"frame": 168, "p": 0.1228, "clip": "speech", "alpha": 0.9265, "sourceMs": 5600.0},
+      {"frame": 169, "p": 0.1561, "clip": "speech", "alpha": 0.8821, "sourceMs": 5633.3},
+      {"frame": 170, "p": 0.1894, "clip": "speech", "alpha": 0.8281, "sourceMs": 5666.7},
+      {"frame": 171, "p": 0.2228, "clip": "speech", "alpha": 0.7649, "sourceMs": 5700.0},
+      {"frame": 172, "p": 0.2561, "clip": "speech", "alpha": 0.6934, "sourceMs": 5733.3},
+      {"frame": 173, "p": 0.2894, "clip": "speech", "alpha": 0.6143, "sourceMs": 5766.7},
+      {"frame": 174, "p": 0.3228, "clip": "speech", "alpha": 0.5285, "sourceMs": 5800.0},
+      {"frame": 175, "p": 0.3561, "clip": "speech", "alpha": 0.4368, "sourceMs": 5833.3},
+      {"frame": 176, "p": 0.3894, "clip": "speech", "alpha": 0.3404, "sourceMs": 5866.7},
+      {"frame": 177, "p": 0.4228, "clip": "speech", "alpha": 0.2403, "sourceMs": 5900.0},
+      {"frame": 178, "p": 0.4561, "clip": "speech", "alpha": 0.1375, "sourceMs": 5933.3},
+      {"frame": 179, "p": 0.4894, "clip": "speech", "alpha": 0.0332, "sourceMs": 5966.7},
+      {"frame": 180, "p": 0.5228, "clip": "action", "alpha": 0.0715, "sourceMs": 22.8},
+      {"frame": 181, "p": 0.5561, "clip": "action", "alpha": 0.1753, "sourceMs": 56.1},
+      {"frame": 182, "p": 0.5894, "clip": "action", "alpha": 0.2773, "sourceMs": 89.4},
+      {"frame": 183, "p": 0.6228, "clip": "action", "alpha": 0.3762, "sourceMs": 122.8},
+      {"frame": 184, "p": 0.6561, "clip": "action", "alpha": 0.4710, "sourceMs": 156.1},
+      {"frame": 185, "p": 0.6894, "clip": "action", "alpha": 0.5606, "sourceMs": 189.4},
+      {"frame": 186, "p": 0.7228, "clip": "action", "alpha": 0.6441, "sourceMs": 222.8},
+      {"frame": 187, "p": 0.7561, "clip": "action", "alpha": 0.7205, "sourceMs": 256.1},
+      {"frame": 188, "p": 0.7894, "clip": "action", "alpha": 0.7891, "sourceMs": 289.4},
+      {"frame": 189, "p": 0.8228, "clip": "action", "alpha": 0.8489, "sourceMs": 322.8},
+      {"frame": 190, "p": 0.8561, "clip": "action", "alpha": 0.8995, "sourceMs": 356.1},
+      {"frame": 191, "p": 0.8894, "clip": "action", "alpha": 0.9403, "sourceMs": 389.4},
+      {"frame": 192, "p": 0.9228, "clip": "action", "alpha": 0.9707, "sourceMs": 422.8},
+      {"frame": 193, "p": 0.9561, "clip": "action", "alpha": 0.9905, "sourceMs": 456.1},
+      {"frame": 194, "p": 0.9894, "clip": "action", "alpha": 0.9994, "sourceMs": 489.4}
+    ]
+  }
+}

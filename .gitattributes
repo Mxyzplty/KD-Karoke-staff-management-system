@@ -1,0 +1,11 @@
+# Preserve checksummed text bytes on every checkout (including Windows).
+fixtures/*.json text eol=lf
+datasets/*.json text eol=lf
+parity/*.json text eol=lf
+# T14: vendored builds are checksummed in vendor/manifest.json; keep their bytes exactly.
+vendor/** -text
+apps/web/src/media/places.json text eol=lf
+# T08: the d3-interpolate-path port is checksummed in vendor/manifest.json.
+apps/web/src/mg/interpolate-path.ts text eol=lf
+# T19q Q8: whisper/normalizers/english.json, byte for byte.
+apps/web/src/analysis/tools/whisper-english-spelling.json text eol=lf

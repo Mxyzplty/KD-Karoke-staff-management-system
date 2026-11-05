@@ -1,0 +1,29 @@
+{
+  "$comment": "SPDX-License-Identifier: AGPL-3.0-only",
+  "version": 1,
+  "auditFields": ["audit.savedAt", "audit.updatedAt", "audit.sessionId", "audit.journalBatchAt"],
+  "entities": {
+    "project": ["id"],
+    "track": ["tracks.*.id"],
+    "item": ["items.*.id"],
+    "group": ["groups.*.id"],
+    "transition": ["transitions.*.id"],
+    "marker": ["markers.*.id"],
+    "asset": ["assets.*.id"],
+    "agentAsset": ["assets.*.agentId", "assets.*.agent_id"],
+    "keyframe": ["items.*.properties.*.keyframes.*.id", "items.*.timeRemap.keyframes.*.id", "items.*.effects.*.parameters.*.keyframes.*.id", "items.*.masks.*.keyframes.*.keyframes.*.id"],
+    "mask": ["items.*.masks.*.id"],
+    "effect": ["items.*.effects.*.id"],
+    "cell": ["items.*.details.cells.*.id"]
+  },
+  "references": {
+    "track": ["items.*.trackId", "transitions.*.trackId", "groups.*.trackIds.*"],
+    "item": ["transitions.*.fromId", "transitions.*.toId", "items.*.metadata.captionSource.sourceItemId", "items.*.metadata.captionGeneratorSourceItemId", "selectedItems.*"],
+    "group": ["tracks.*.groupId"],
+    "asset": ["items.*.metadata.assetId", "items.*.metadata.captionSource.sourceAssetId", "items.*.details.cells.*.source.assetId"],
+    "agentAsset": ["items.*.metadata.agentId"]
+  },
+  "dynamicLayerReferences": ["layerOrder.*", "groups.*.children.*"],
+  "dictionaryEntities": { "groups": "group" },
+  "policy": "Only declared IDs and audit fields change. Unknown fields, every semantic time, exact numeric precision, and all array order are preserved. Dangling references and duplicate declarations fail. IDs form independent bijections per entity type."
+}

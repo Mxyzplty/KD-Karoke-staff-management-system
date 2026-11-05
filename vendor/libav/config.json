@@ -1,0 +1,8 @@
+[
+  "avformat", "avcodec", "avfcbridge", "swresample", "zlib", "workerfs",
+  "demuxer-mov", "demuxer-matroska", "demuxer-avi", "demuxer-mp3", "demuxer-wav", "demuxer-ogg", "demuxer-flac", "demuxer-aac", "demuxer-ac3", "demuxer-eac3",
+  "parser-h264", "parser-hevc", "parser-mpeg4video", "parser-vp9", "parser-aac", "parser-ac3", "parser-mpegaudio", "parser-opus", "parser-vorbis", "parser-flac",
+  "decoder-h264", "decoder-hevc", "decoder-prores", "decoder-mpeg4", "decoder-mjpeg", "decoder-vp8", "decoder-vp9", "decoder-tiff",
+  "decoder-aac", "decoder-ac3", "decoder-eac3", "decoder-opus", "decoder-vorbis", "decoder-mp3float", "decoder-flac", "decoder-alac",
+  "decoder-pcm_s16le", "decoder-pcm_s16be", "decoder-pcm_s24le", "decoder-pcm_s24be", "decoder-pcm_s32le", "decoder-pcm_f32le"
+]

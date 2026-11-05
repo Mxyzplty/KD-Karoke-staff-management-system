@@ -1,0 +1,23 @@
+# Paid Remotion packs: licence forbids redistribution (never commit)
+packages/remotion-packs/
+# Local agent settings (the shared lane settings file is tracked)
+.claude/*
+!.claude/settings.json
+# Raw Xapp code/exports never live in this repo (clean-room, D12); guard in case one is copied here by mistake
+xapp-rea-raw/
+# Generated T00 build, verification and fixture outputs
+node_modules/
+dist/
+parity-reports/
+test-results/
+playwright-report/
+.venv-t00/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+# T14: FFmpeg source tarball fetched by vendor/libav/build.sh (12 MB; hash recorded in vendor/manifest.json)
+vendor/libav/ffmpeg-*.tar.xz*
+vendor/libav/zlib-*.tar.gz
+vendor/libav/ffmpeg-source.sha256

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: T00 foundation
+on: [push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run licenses
+      - run: npm run licenses:negative
+      - run: npm run parity -- --self-check --no-provider
+      - run: npm run test:ui -- --workers=1

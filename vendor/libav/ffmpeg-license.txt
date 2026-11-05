@@ -1,0 +1,2 @@
+#define FFMPEG_LICENSE "LGPL version 2.1 or later"
+#define CONFIG_GPL 0

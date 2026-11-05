@@ -1,0 +1,823 @@
+{
+  "version": 1,
+  "rule": "a subtitle word changes only where wav2vec2 AND Whisper agree against it. Any word the three sources do not all agree on carries textDisputed, whichever text wins.",
+  "normalisation": "Agreement compares keys: case-folded; curly apostrophes become straight; subtitle ellipses are continuation marks, not words; hyphens split words; every other punctuation mark is dropped; leading and trailing apostrophes are stripped; integers 0-99 are spelled out in English words; contractions are compared literally, never expanded.",
+  "cueMarginS": 1.0,
+  "clips": {
+    "tos-speech-45s": [
+      58.0,
+      45.0
+    ],
+    "tos-action-30s": [
+      320.0,
+      30.0
+    ]
+  },
+  "coverageRule": "A whole-clip scan window holds possible unsubtitled speech when both models decode the same word (agreement normalisation, counted with multiplicity) that is not a subtitle word of any cue whose search window overlaps the scan window. A repeat of a subtitle word is not detected here; the cue-level disputedGaps record those.",
+  "coverageReview": [
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        0,
+        6000.0
+      ],
+      "wav2vec2Decode": "IS IS PRETTY SHREAKING",
+      "whisperDecode": "This is pretty freaky",
+      "overlappingCueWords": [
+        "freaky",
+        "is",
+        "pretty",
+        "this"
+      ],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        5000,
+        11000.0
+      ],
+      "wav2vec2Decode": "ER SED",
+      "whisperDecode": "so",
+      "overlappingCueWords": [
+        "freaky",
+        "is",
+        "pretty",
+        "this"
+      ],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        10000,
+        16000.0
+      ],
+      "wav2vec2Decode": "",
+      "whisperDecode": "so",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        15000,
+        21000.0
+      ],
+      "wav2vec2Decode": "",
+      "whisperDecode": "so",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        20000,
+        26000.0
+      ],
+      "wav2vec2Decode": "",
+      "whisperDecode": "Oh",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        25000,
+        31000.0
+      ],
+      "wav2vec2Decode": "",
+      "whisperDecode": "so",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        30000,
+        36000.0
+      ],
+      "wav2vec2Decode": "SS",
+      "whisperDecode": "so",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        35000,
+        41000.0
+      ],
+      "wav2vec2Decode": "O",
+      "whisperDecode": "*Sigh*",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-speech-45s",
+      "windowMs": [
+        40000,
+        45000.3125
+      ],
+      "wav2vec2Decode": "RE",
+      "whisperDecode": "so",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-action-30s",
+      "windowMs": [
+        0,
+        6000.0
+      ],
+      "wav2vec2Decode": "YOU HAVE YOUR ROBADICS",
+      "whisperDecode": "You have your robotics and I",
+      "overlappingCueWords": [
+        "and",
+        "awesome",
+        "be",
+        "have",
+        "i",
+        "in",
+        "just",
+        "robotics",
+        "space",
+        "to",
+        "want",
+        "you",
+        "your"
+      ],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-action-30s",
+      "windowMs": [
+        5000,
+        11000.0
+      ],
+      "wav2vec2Decode": "I JUST WANT TO BE OSSIMIT SPACE",
+      "whisperDecode": "And I just want to be awesome in space.",
+      "overlappingCueWords": [
+        "and",
+        "awesome",
+        "be",
+        "i",
+        "in",
+        "just",
+        "space",
+        "to",
+        "want"
+      ],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-action-30s",
+      "windowMs": [
+        10000,
+        16000.0
+      ],
+      "wav2vec2Decode": "W",
+      "whisperDecode": "*music*",
+      "overlappingCueWords": [],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-action-30s",
+      "windowMs": [
+        15000,
+        21000.0
+      ],
+      "wav2vec2Decode": "HE  FMERI CAT HER COMIN TWO MINUTES LEF",
+      "whisperDecode": "Get her coming. Two minutes left.",
+      "overlappingCueWords": [
+        "coming",
+        "left",
+        "minutes",
+        "okay",
+        "they're",
+        "two"
+      ],
+      "bothModelWordsOutsideCues": [
+        "her"
+      ],
+      "verdict": "possible unsubtitled speech"
+    },
+    {
+      "clip": "tos-action-30s",
+      "windowMs": [
+        20000,
+        26000.0
+      ],
+      "wav2vec2Decode": "TWO MINUTES LESS ENO MANIT ATOTAS O HART ATTTPE E HI",
+      "whisperDecode": "Two minutes left. Two minutes. Stay in the afternoon. Viva Cissio!",
+      "overlappingCueWords": [
+        "coming",
+        "it",
+        "left",
+        "minutes",
+        "okay",
+        "speed",
+        "they're",
+        "thom",
+        "two",
+        "up",
+        "vivacissimo"
+      ],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    },
+    {
+      "clip": "tos-action-30s",
+      "windowMs": [
+        25000,
+        30000.1875
+      ],
+      "wav2vec2Decode": "N WHY NOT CHANGEST THAT MA THAT YOUR FREAT GOT BY BY RO BUT HAND",
+      "whisperDecode": "Why don't you just admit that you're freaked out by my robot hand?",
+      "overlappingCueWords": [
+        "admit",
+        "by",
+        "don't",
+        "freaked",
+        "hand",
+        "just",
+        "my",
+        "out",
+        "robot",
+        "that",
+        "vivacissimo",
+        "why",
+        "you",
+        "you're"
+      ],
+      "bothModelWordsOutsideCues": [],
+      "verdict": "no unsubtitled speech"
+    }
+  ],
+  "coverageSha256": "a3412053eb4d3bc13b77283d311a18daa0cee7e4c1ea582fd6bdddefe7ebf8d2",
+  "deletionGuard": "A both-ASR deletion applies only when both models decoded some text in the window.",
+  "subtitleSha256": "ce9578f6fe098a5821045a38884b229160f9e7ba27890448a92f5be330c6e6fe",
+  "audioChecksSha256": "c2f8f93f54768acf887e7e64a9588ece8f0b86efb00ef1828e3f7da5daa8b4f4",
+  "utterances": [
+    {
+      "clip": "tos-speech-45s",
+      "cue": 11,
+      "subtitleText": "This is pretty freaky.",
+      "subtitleMs": [
+        3000.0,
+        5000.0
+      ],
+      "searchWindowMs": [
+        2000.0,
+        6000.0
+      ],
+      "wav2vec2Decode": "IS IS PRETTY SHRAKING",
+      "whisperDecode": "This is pretty freaky",
+      "correctedText": "This is pretty freaky.",
+      "words": [
+        {
+          "text": "This",
+          "key": "this",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "this",
+          "wav2vec2": "is",
+          "whisper": "this"
+        },
+        {
+          "text": "is",
+          "key": "is",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "is",
+          "wav2vec2": "is",
+          "whisper": "is"
+        },
+        {
+          "text": "pretty",
+          "key": "pretty",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "pretty",
+          "wav2vec2": "pretty",
+          "whisper": "pretty"
+        },
+        {
+          "text": "freaky.",
+          "key": "freaky",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "freaky",
+          "wav2vec2": "shraking",
+          "whisper": "freaky"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": []
+    },
+    {
+      "clip": "tos-action-30s",
+      "cue": 39,
+      "subtitleText": "You have your robotics...",
+      "subtitleMs": [
+        1000.0,
+        3000.0
+      ],
+      "searchWindowMs": [
+        0,
+        4000.0
+      ],
+      "wav2vec2Decode": "YOU HAVE YOUR ROBADICS",
+      "whisperDecode": "You have your robotics.",
+      "correctedText": "You have your robotics",
+      "words": [
+        {
+          "text": "You",
+          "key": "you",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "you",
+          "wav2vec2": "you",
+          "whisper": "you"
+        },
+        {
+          "text": "have",
+          "key": "have",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "have",
+          "wav2vec2": "have",
+          "whisper": "have"
+        },
+        {
+          "text": "your",
+          "key": "your",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "your",
+          "wav2vec2": "your",
+          "whisper": "your"
+        },
+        {
+          "text": "robotics",
+          "key": "robotics",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "robotics",
+          "wav2vec2": "robadics",
+          "whisper": "robotics"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": []
+    },
+    {
+      "clip": "tos-action-30s",
+      "cue": 40,
+      "subtitleText": "...and I just want to be awesome in space.",
+      "subtitleMs": [
+        5000.0,
+        8000.0
+      ],
+      "searchWindowMs": [
+        4000.0,
+        9000.0
+      ],
+      "wav2vec2Decode": "I JUST WANT TO BE OSIMIT SPACE",
+      "whisperDecode": "And I just want to be awesome in space.",
+      "correctedText": "and I just want to be awesome in space.",
+      "words": [
+        {
+          "text": "and",
+          "key": "and",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "and",
+          "wav2vec2": null,
+          "whisper": "and"
+        },
+        {
+          "text": "I",
+          "key": "i",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "i",
+          "wav2vec2": "i",
+          "whisper": "i"
+        },
+        {
+          "text": "just",
+          "key": "just",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "just",
+          "wav2vec2": "just",
+          "whisper": "just"
+        },
+        {
+          "text": "want",
+          "key": "want",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "want",
+          "wav2vec2": "want",
+          "whisper": "want"
+        },
+        {
+          "text": "to",
+          "key": "to",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "to",
+          "wav2vec2": "to",
+          "whisper": "to"
+        },
+        {
+          "text": "be",
+          "key": "be",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "be",
+          "wav2vec2": "be",
+          "whisper": "be"
+        },
+        {
+          "text": "awesome",
+          "key": "awesome",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "awesome",
+          "wav2vec2": null,
+          "whisper": "awesome"
+        },
+        {
+          "text": "in",
+          "key": "in",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "in",
+          "wav2vec2": "osimit",
+          "whisper": "in"
+        },
+        {
+          "text": "space.",
+          "key": "space",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "space",
+          "wav2vec2": "space",
+          "whisper": "space"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": []
+    },
+    {
+      "clip": "tos-action-30s",
+      "cue": 41,
+      "subtitleText": "Okay, they're coming. Two minutes left!",
+      "subtitleMs": [
+        19000.0,
+        21000.0
+      ],
+      "searchWindowMs": [
+        18000.0,
+        22000.0
+      ],
+      "wav2vec2Decode": "MERICATER COM IN TWO MINUTES LEFT O MANIT",
+      "whisperDecode": "Get her coming. Two minutes left. Two minutes.",
+      "correctedText": "Okay, they're coming. Two minutes left!",
+      "words": [
+        {
+          "text": "Okay,",
+          "key": "okay",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "okay",
+          "wav2vec2": "mericater",
+          "whisper": "get"
+        },
+        {
+          "text": "they're",
+          "key": "they're",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "they're",
+          "wav2vec2": "com",
+          "whisper": "her"
+        },
+        {
+          "text": "coming.",
+          "key": "coming",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "coming",
+          "wav2vec2": "in",
+          "whisper": "coming"
+        },
+        {
+          "text": "Two",
+          "key": "two",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "two",
+          "wav2vec2": "two",
+          "whisper": "two"
+        },
+        {
+          "text": "minutes",
+          "key": "minutes",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "minutes",
+          "wav2vec2": "minutes",
+          "whisper": "minutes"
+        },
+        {
+          "text": "left!",
+          "key": "left",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "left",
+          "wav2vec2": "left",
+          "whisper": "left"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": [
+        {
+          "beforeWord": 6,
+          "kind": "one-model insertion",
+          "wav2vec2": [
+            "o",
+            "manit"
+          ],
+          "whisper": [
+            "two",
+            "minutes"
+          ]
+        }
+      ]
+    },
+    {
+      "clip": "tos-action-30s",
+      "cue": 42,
+      "subtitleText": "Speed it up, Thom!",
+      "subtitleMs": [
+        23000.0,
+        24000.0
+      ],
+      "searchWindowMs": [
+        22000.0,
+        24500.0
+      ],
+      "wav2vec2Decode": "S HAR LIKE HA",
+      "whisperDecode": "Steady up top!",
+      "correctedText": "Speed it up, Thom!",
+      "words": [
+        {
+          "text": "Speed",
+          "key": "speed",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "speed",
+          "wav2vec2": "s",
+          "whisper": null
+        },
+        {
+          "text": "it",
+          "key": "it",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "it",
+          "wav2vec2": "har",
+          "whisper": "steady"
+        },
+        {
+          "text": "up,",
+          "key": "up",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "up",
+          "wav2vec2": "like",
+          "whisper": "up"
+        },
+        {
+          "text": "Thom!",
+          "key": "thom",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "thom",
+          "wav2vec2": "ha",
+          "whisper": "top"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": []
+    },
+    {
+      "clip": "tos-action-30s",
+      "cue": 43,
+      "subtitleText": "Vivacissimo!",
+      "subtitleMs": [
+        25000.0,
+        26000.0
+      ],
+      "searchWindowMs": [
+        24500.0,
+        26500.0
+      ],
+      "wav2vec2Decode": "HERTISE",
+      "whisperDecode": "Let's go!",
+      "correctedText": "Vivacissimo!",
+      "words": [
+        {
+          "text": "Vivacissimo!",
+          "key": "vivacissimo",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "vivacissimo",
+          "wav2vec2": "hertise",
+          "whisper": "go"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": [
+        {
+          "beforeWord": 0,
+          "kind": "one-model insertion",
+          "wav2vec2": [],
+          "whisper": [
+            "let's"
+          ]
+        }
+      ]
+    },
+    {
+      "clip": "tos-action-30s",
+      "cue": 44,
+      "subtitleText": "Why don't you just admit that you're freaked out by my robot hand?",
+      "subtitleMs": [
+        27000.0,
+        30000.0
+      ],
+      "searchWindowMs": [
+        26500.0,
+        30000.0
+      ],
+      "wav2vec2Decode": "WHY DON'T YOU JUST THAT ME THAT YOUR FREAT GO BY BY RO BUT HAND",
+      "whisperDecode": "Why don't you just admit that you're freaked out by my robot hand?",
+      "correctedText": "Why don't you just admit that you're freaked out by my robot hand?",
+      "words": [
+        {
+          "text": "Why",
+          "key": "why",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "why",
+          "wav2vec2": "why",
+          "whisper": "why"
+        },
+        {
+          "text": "don't",
+          "key": "don't",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "don't",
+          "wav2vec2": "don't",
+          "whisper": "don't"
+        },
+        {
+          "text": "you",
+          "key": "you",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "you",
+          "wav2vec2": "you",
+          "whisper": "you"
+        },
+        {
+          "text": "just",
+          "key": "just",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "just",
+          "wav2vec2": "just",
+          "whisper": "just"
+        },
+        {
+          "text": "admit",
+          "key": "admit",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "admit",
+          "wav2vec2": "me",
+          "whisper": "admit"
+        },
+        {
+          "text": "that",
+          "key": "that",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "that",
+          "wav2vec2": "that",
+          "whisper": "that"
+        },
+        {
+          "text": "you're",
+          "key": "you're",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "you're",
+          "wav2vec2": "freat",
+          "whisper": "you're"
+        },
+        {
+          "text": "freaked",
+          "key": "freaked",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "freaked",
+          "wav2vec2": "go",
+          "whisper": "freaked"
+        },
+        {
+          "text": "out",
+          "key": "out",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "out",
+          "wav2vec2": "by",
+          "whisper": "out"
+        },
+        {
+          "text": "by",
+          "key": "by",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "by",
+          "wav2vec2": "by",
+          "whisper": "by"
+        },
+        {
+          "text": "my",
+          "key": "my",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "my",
+          "wav2vec2": "ro",
+          "whisper": "my"
+        },
+        {
+          "text": "robot",
+          "key": "robot",
+          "decision": "subtitle",
+          "textDisputed": true,
+          "subtitle": "robot",
+          "wav2vec2": "but",
+          "whisper": "robot"
+        },
+        {
+          "text": "hand?",
+          "key": "hand",
+          "decision": "subtitle",
+          "textDisputed": false,
+          "subtitle": "hand",
+          "wav2vec2": "hand",
+          "whisper": "hand"
+        }
+      ],
+      "deletedWords": [],
+      "disputedGaps": [
+        {
+          "beforeWord": 4,
+          "kind": "one-model insertion",
+          "wav2vec2": [
+            "that"
+          ],
+          "whisper": []
+        },
+        {
+          "beforeWord": 6,
+          "kind": "one-model insertion",
+          "wav2vec2": [
+            "your"
+          ],
+          "whisper": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "T08a authored runtime adapter probe",
+  "inputMode": "fixture-free",
+  "project": {"width": 2, "height": 2, "fps": 30, "graphics": []},
+  "edits": [{"tool": "mg.add", "input": {"id": "graphic:authored", "summary": "A red square", "code": "export const Graphic = () => <AbsoluteFill style={{backgroundColor:'#ff0000'}} />;"}}],
+  "sampleTimesMs": [0, 1000],
+  "expected": {
+    "project": {"width": 2, "height": 2, "fps": 30, "graphics": [{"id": "graphic:authored", "summary": "A red square", "code": "export const Graphic = () => <AbsoluteFill style={{backgroundColor:'#ff0000'}} />;"}]},
+    "sampleTimesMs": [0, 1000], "timeUnit": "ms",
+    "frames": [{"width": 2, "height": 2, "rgba": [1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1]}, {"width": 2, "height": 2, "rgba": [1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1]}],
+    "commandResults": [{"success": true}],
+    "exportMetadata": {"kind": "motion-graphic-runtime-frames", "width": 2, "height": 2, "fps": 30}
+  },
+  "tolerance": {"maxPixelError": 0, "minSsim": 1}
+}
