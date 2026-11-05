@@ -20,10 +20,10 @@ const manifest: { models: ManifestModel[] } = STORE ? JSON.parse(readFileSync(pa
 // -> CTC alignment -> diarize (speaker); beats() classifies (sound) for an audio asset; describe()+footage
 // use vision and CLIP (frame vectors, T19q round F8) then the shared embedder. sync needs the same five transcription models.
 const MODELS_FOR: Record<'transcription' | 'beats' | 'footage' | 'sync', string[]> = {
-  transcription: ['T19a-whisper', 'T19a-aligner', 'T19a-sound', 'T19a-vad', 'T19a-wespeaker'],
+  transcription: ['T19a-whisper', 'T19a-qwen3-asr', 'T19a-aligner', 'T19a-sound', 'T19a-vad', 'T19a-wespeaker'],
   beats: ['T19a-sound', 'T19a-beat-this-fold0'],
   footage: ['T19a-vision', 'T19a-clip', 'T19a-embedding'],
-  sync: ['T19a-whisper', 'T19a-aligner', 'T19a-sound', 'T19a-vad', 'T19a-wespeaker'],
+  sync: ['T19a-whisper', 'T19a-qwen3-asr', 'T19a-aligner', 'T19a-sound', 'T19a-vad', 'T19a-wespeaker'],
 };
 
 const hashCache = new Map<string, string>();

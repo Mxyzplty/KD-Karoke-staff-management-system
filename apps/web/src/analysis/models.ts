@@ -5,6 +5,8 @@ import type { InferenceSession } from 'onnxruntime-web';
 import { averageLinkage } from './speakers';
 import { AnalysisError, type Frame, type Pair, type Transcript } from './types';
 import { MODEL_IDS } from './model-ids';
+import { ctcAlign, spell, CTC_FRAME } from './align';
+import type { Qwen3AsrRecognizer } from './qwen-asr';
 
 export { MODEL_IDS };
 export type ModelOptions = { modelRoot: string; device?: 'auto' | 'wasm' | 'cpu'; wasm?: { mjs: string; wasm: string } };
@@ -26,6 +28,7 @@ export class LocalModels {
   private aligner?: Promise<{ model: PreTrainedModel; vocab: Map<string, number>; blank: number; delimiter: number }>;
   private beatThis = new Map<string, Promise<{ ort: typeof import('onnxruntime-web'); session: InferenceSession }>>();
   private clip?: Promise<{ vision: PreTrainedModel; text: PreTrainedModel; processor: Processor; tokenizer: PreTrainedTokenizer }>;
+  private qwen?: Promise<Qwen3AsrRecognizer>;
   readonly backends: Record<string, string> = {};
   constructor(private options: ModelOptions) {
     env.allowRemoteModels = false; env.allowLocalModels = true; env.useBrowserCache = false; env.useFSCache = false; env.useWasmCache = false;
@@ -110,8 +113,12 @@ export class LocalModels {
     const { beat } = await session.run({ spect: new ort.Tensor('float32', spect, [1, frames, 128]) });
     return beat.data as Float32Array;
   }
+  /** T19q T5: whisper and Qwen3-ASR never share the 4 GiB wasm heap; releasing is idempotent. */
+  private async releaseQwen() { if (this.qwen) { const q = this.qwen; this.qwen = undefined; try { await (await q).dispose(); } catch { /* already down */ } } }
+  private async releaseWhisper() { if (this.asr) { const w = this.asr; this.asr = undefined; try { await (await w).dispose(); } catch { /* already down */ } } }
   private whisper() {
     return this.asr ??= retryable(this.load('transcription', async device => {
+      await this.releaseQwen();
       if (env.version !== DTW_PATCHED_VERSION) throw new AnalysisError('TRANSCRIPTION_FAILED', `Word timing is verified on Transformers.js ${DTW_PATCHED_VERSION}, not ${env.version}.`);
       const asr = await pipeline('automatic-speech-recognition', MODEL_IDS.whisper, { device, dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }, local_files_only: true });
       // Two Transformers.js 4.3.2 DTW defects, corrected against the reference word-timing algorithm:
@@ -256,6 +263,89 @@ export class LocalModels {
     }
     return { logProbs: data, frames, classes, vocab, blank, delimiter };
   }
+  /** T19q T5: Qwen3-ASR recognizer (English only). Whisper is released before loading. Its sessions always run on the
+   * wasm EP, so it reports that backend under the transcription label itself, as BeatThis does for beats. */
+  private qwenRecognizer() {
+    return this.qwen ??= retryable((async () => {
+      await this.releaseWhisper();
+      const { loadQwen3Asr } = await import('./qwen-asr');
+      const qwen = await loadQwen3Asr({ modelId: MODEL_IDS.qwen3Asr, wasm: this.options.wasm });
+      this.backends.transcription = 'wasm';
+      return qwen;
+    })(), failed => { if (this.qwen === failed) this.qwen = undefined; });
+  }
+  /** ≤ 30 s windows cut at the latest VAD gap (midpoint) in [cursor + 1 s, cursor + 30 s]; single long span cut at 30 s. */
+  private qwenWindows(voice: Pair[], duration: number): [number, number][] {
+    const CAP = 30, MIN_IN = 1;
+    const windows: [number, number][] = [];
+    let cursor = 0;
+    while (cursor < duration - 1e-6) {
+      const hard = Math.min(duration, cursor + CAP);
+      if (hard - cursor < CAP - 1e-6) { windows.push([cursor, hard]); break; }
+      let latest = -1;
+      for (let i = 0; i + 1 < voice.length; i++) {
+        const ge = voice[i][1], gs = voice[i + 1][0];
+        if (gs <= ge) continue;
+        const mid = (ge + gs) / 2;
+        if (mid > cursor + MIN_IN && mid <= hard && mid > latest) latest = mid;
+      }
+      const cut = latest > 0 ? latest : hard;
+      windows.push([cursor, cut]);
+      cursor = cut;
+    }
+    return windows;
+  }
+  /** T19q T5 English path: Qwen3-ASR per ≤ 30 s window; word times from the T19a aligner with char-count interpolation
+   *  for unplaceable words, and whole-window char-count spread when alignment yields no path. Chunks are in local time. */
+  async qwenTranscribe(samples: Float32Array, voice: Pair[], duration: number) {
+    const qwen = await this.qwenRecognizer();
+    const windows = this.qwenWindows(voice, duration);
+    const chunks: { text: string; timestamp: [number | null, number | null] }[] = [];
+    for (const [winStart, winEnd] of windows) {
+      const winDur = winEnd - winStart;
+      if (winDur < 0.1) continue;
+      const winSamples = samples.subarray(Math.max(0, Math.round(winStart * 16000)), Math.min(samples.length, Math.round(winEnd * 16000)));
+      if (winSamples.length < 320) continue;
+      const { text } = await qwen.decode(winSamples, 'en');
+      const words = text.split(/\s+/).map(w => w.trim()).filter(Boolean);
+      if (!words.length) continue;
+      const { logProbs, frames, classes, vocab, blank, delimiter } = await this.ctcLogProbs(winSamples);
+      const spellable = words.map((w, i) => [spell(w, vocab), i] as const).filter(([tokens]) => tokens.length);
+      const spans = spellable.length ? ctcAlign(logProbs, frames, classes, spellable.map(([t]) => t), blank, delimiter) : null;
+      const anchors: ([number, number] | null)[] = words.map(() => null);
+      const lens = words.map(w => Math.max(1, w.length));
+      if (spans) spans.forEach(([s, e], i) => { anchors[spellable[i][1]] = [s * CTC_FRAME, e * CTC_FRAME]; });
+      if (!spans || anchors.every(a => a === null)) {
+        const total = lens.reduce((a, b) => a + b, 0);
+        let cur = 0;
+        for (let k = 0; k < words.length; k++) {
+          const sf = cur / total; cur += lens[k]; const ef = cur / total;
+          anchors[k] = [sf * winDur, ef * winDur];
+        }
+      } else {
+        let i = 0;
+        while (i < words.length) {
+          if (anchors[i]) { i++; continue; }
+          let j = i;
+          while (j < words.length && !anchors[j]) j++;
+          const left = i === 0 ? 0 : anchors[i - 1]![1];
+          const right = j === words.length ? winDur : anchors[j]![0];
+          const total = Math.max(1, lens.slice(i, j).reduce((a, b) => a + b, 0));
+          let cur = 0;
+          for (let k = i; k < j; k++) {
+            const sf = cur / total; cur += lens[k]; const ef = cur / total;
+            anchors[k] = [left + sf * (right - left), left + ef * (right - left)];
+          }
+          i = j;
+        }
+      }
+      for (let k = 0; k < words.length; k++) {
+        const [s, e] = anchors[k]!;
+        chunks.push({ text: words[k], timestamp: [winStart + s, winStart + e] });
+      }
+    }
+    return { chunks };
+  }
   async embed(texts: string[]) {
     if (!texts.length) return [];
     this.embedding ??= retryable(this.load('embedding', async device => pipeline('feature-extraction', MODEL_IDS.embedding, { device, dtype: 'q8', local_files_only: true })), failed => { if (this.embedding === failed) this.embedding = undefined; });
@@ -306,6 +396,7 @@ export class LocalModels {
     if (this.aligner) await (await this.aligner).model.dispose();
     for (const pending of this.beatThis.values()) await (await pending).session.release();
     this.beatThis.clear();
-    this.asr = undefined; this.sound = undefined; this.embedding = undefined; this.vision = undefined; this.vad = undefined; this.speaker = undefined; this.aligner = undefined; this.clip = undefined;
+    if (this.qwen) await (await this.qwen).dispose();
+    this.asr = undefined; this.sound = undefined; this.embedding = undefined; this.vision = undefined; this.vad = undefined; this.speaker = undefined; this.aligner = undefined; this.clip = undefined; this.qwen = undefined;
   }
 }

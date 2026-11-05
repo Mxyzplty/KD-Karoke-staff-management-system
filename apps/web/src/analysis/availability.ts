@@ -16,15 +16,17 @@ export const UNAVAILABLE: Record<Capability, string> = {
 export const unavailableError = (capability: Capability) => new AnalysisError('ANALYSIS_UNAVAILABLE', UNAVAILABLE[capability]);
 /** The MODEL_IDS keys each capability loads (models.ts). Keys missing from MODEL_IDS are ignored, so a model round that
  *  adds a key must list it here. Beats need the sound classifier (music gate) and BeatThis (dense music, T19q B4).
- *  Visual analysis also needs CLIP (T19q round F8), which gives each description segment its frame vector. */
+ *  Visual analysis also needs CLIP (T19q round F8), which gives each description segment its frame vector. Transcription
+ *  lists Qwen3-ASR because an English file the sound classifier marks as music runs it (T19q T8); every other file does not. */
 export const CAPABILITY_MODELS: Record<Capability, string[]> = {
   analysis: ['vision', 'clip'],
-  transcription: ['sound', 'vad', 'whisper', 'aligner', 'speaker'],
+  transcription: ['sound', 'vad', 'whisper', 'aligner', 'speaker', 'qwen3Asr'],
   embeddings: ['embedding'],
   beats: ['sound', 'beats'],
 };
-/** BeatThis ships no config.json: its weights file is probed instead, by HEAD so the 82 MB file is not downloaded. */
-const PROBE_FILE: Record<string, string> = { beats: 'beat_this_fold0.onnx' };
+/** Neither BeatThis nor Qwen3-ASR ships a config.json: a weights file is probed instead, by HEAD so the 82 MB BeatThis
+ *  checkpoint and the 44 MB Qwen conv frontend are never downloaded. */
+const PROBE_FILE: Record<string, string> = { beats: 'beat_this_fold0.onnx', qwen3Asr: 'conv_frontend.onnx' };
 export async function modelAvailability(modelRoot: string, ids: Record<string, string> = MODEL_IDS, fetcher: typeof fetch = (input, init) => fetch(input, init)): Promise<Availability> {
   const base = typeof location === 'undefined' ? null : new URL(modelRoot.endsWith('/') ? modelRoot : `${modelRoot}/`, location.href);
   const present = new Map<string, Promise<boolean>>();

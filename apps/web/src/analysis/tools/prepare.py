@@ -30,15 +30,25 @@ CATALOG = [
     ("wespeaker", "onnx-community/wespeaker-voxceleb-resnet34-LM", "CC-BY-4.0", {"model.onnx"}, "6a61a1833ff2583aabeba044f5c8221f00b67ceb"),
     ("aligner", "onnx-community/wav2vec2-large-xlsr-english-ONNX", "Apache-2.0", {"model_quantized.onnx"}, "a5a0efbf15dec1a4a0d46e8b9c0d207f0fc755e0"),
     ("clip", "Xenova/clip-vit-base-patch32", "MIT", {"vision_model_quantized.onnx", "text_model_quantized.onnx"}, "6b7c523703ae26e39be4b03774966f8571c7f523"),
+    # A sherpa-onnx layout: the ONNX files and the tokenizer folder are named with their repo paths.
+    ("qwen3-asr", "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25", "Apache-2.0", {
+        "conv_frontend.onnx", "encoder.int8.onnx", "decoder.int8.onnx",
+        "tokenizer/vocab.json", "tokenizer/merges.txt", "tokenizer/tokenizer_config.json"}, "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a"),
 ]
 USE = {
     "wespeaker": "T19q round S2 local speaker embedder (replaced T19a-speaker): one 256-d WeSpeaker ResNet34 vector per transcript segment, clustered offline with average linkage at cosine distance .60",
+    "qwen3-asr": "T19q round T5 local speech recognizer for English decodes (whisper-small keeps language identification and every other language): Qwen3-ASR-0.6B int8, word times from the T19a CTC aligner",
     "aligner": "T19a local CTC word aligner (TR-P03 new-model round). Same family as the OT-2 timing oracle (wav2vec2 CTC, 20 ms frames) but a different checkpoint and training data: XLSR-53 fine-tuned on CommonVoice 6.0 English. Base BeebekBhz/wav2vec2-large-xlsr-english @ 6c6898b7 (Apache-2.0), a copy of jonatasgrosman/wav2vec2-large-xlsr-53-english",
     "clip": "T19q round F8 local visual search channel (T19's F2): one CLIP image embedding per description segment (its first frame) and one CLIP text embedding of 'a photo of {query}.' per query",
 }
 # CC-BY models need a credit line (taken from the upstream model card).
 ATTRIBUTION = {
     "wespeaker": "Wang, Liang, Wang, Chen, Zhang, Xiang, Deng, Qian. Wespeaker: A research and production oriented speaker embedding learning toolkit. ICASSP 2023. Pretrained wespeaker-voxceleb-resnet34-LM (WeNet, trained on VoxCeleb), via pyannote/wespeaker-voxceleb-resnet34-LM, ONNX export by onnx-community.",
+    "qwen3-asr": "Qwen Team. Qwen3-ASR Technical Report. arXiv:2601.21337, 2026. Qwen/Qwen3-ASR-0.6B @ 5eb14417 (Apache-2.0); int8 ONNX export by Wasser1462 (github.com/Wasser1462/Qwen3-ASR-onnx), published as ModelScope zengshuishui/Qwen3-ASR-onnx (Apache-2.0) and mirrored by the sherpa-onnx project.",
+}
+# Rows whose mirror's card states no licence point at the upstream card that does.
+LICENCE_URL = {
+    "qwen3-asr": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B/blob/5eb144179a02acc5e5ba31e748d22b0cf3e303b0/README.md",
 }
 
 
@@ -102,7 +112,7 @@ def lock(out, only=None):
             if name.startswith("onnx/"):
                 if name[5:] not in weights:
                     continue
-            elif "/" in name or not (name in weights or name.endswith(".json") or name in {"merges.txt", "vocab.txt", "LICENSE", "LICENSE.txt"}):
+            elif name not in weights and ("/" in name or not (name.endswith(".json") or name in {"merges.txt", "vocab.txt", "LICENSE", "LICENSE.txt"})):
                 continue
             lfs = item.get("lfs")
             route = "resolve" if lfs else "raw"
@@ -114,12 +124,12 @@ def lock(out, only=None):
                     data = stream.read()
                 sha, size = hashlib.sha256(data).hexdigest(), len(data)
             files.append({"path": f"models/t19a/{repo}/{name}", "url": url, "bytes": size, "sha256": sha})
-        found = {f["path"].rsplit("/", 1)[-1] for f in files}
+        found = {f["path"].rsplit("/", 1)[-1] for f in files} | {f["path"][len(f"models/t19a/{repo}/"):] for f in files}
         if not weights <= found:
             raise RuntimeError(f"Missing weights for {repo}: {weights - found}")
         rows.append({"id": f"T19a-{key}", "name": repo, "url": f"https://huggingface.co/{repo}",
                      "revision": meta["sha"], "licence": licence,
-                     "licenceUrl": WHISPER_LICENCE if key.startswith("whisper") else f"https://huggingface.co/{repo}/blob/{meta['sha']}/README.md",
+                     "licenceUrl": WHISPER_LICENCE if key.startswith("whisper") else LICENCE_URL.get(key, f"https://huggingface.co/{repo}/blob/{meta['sha']}/README.md"),
                      **({"attribution": ATTRIBUTION[key]} if key in ATTRIBUTION else {}),
                      "use": USE.get(key, f"T19a local {key} engine; independent of OT-1 embedding networks and OT-2 CTC aligner"), "files": files})
         print(f"Locked {repo}: {len(files)} files, {sum(f['bytes'] for f in files)} bytes", flush=True)

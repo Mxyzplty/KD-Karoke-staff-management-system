@@ -58,6 +58,7 @@ describe('transcription alignment wiring', () => {
     vi.spyOn(engine.models, 'classify').mockResolvedValue({ isMusic: false, hasVocals: true, labels: [] } as never);
     vi.spyOn(engine.models, 'speechRegions').mockResolvedValue([[0, 2]]);
     vi.spyOn(engine.models, 'transcribe').mockResolvedValue({ text: ' A $ b', chunks } as never);
+    vi.spyOn(engine.models, 'qwenTranscribe').mockResolvedValue({ chunks } as never);
     const ctc = vi.spyOn(engine.models, 'ctcLogProbs').mockResolvedValue(emissions(path));
     let seen: Transcript | undefined;
     const diarize = vi.spyOn(engine.models, 'diarize').mockImplementation(async (_audio, transcript) => { seen = structuredClone(transcript); });

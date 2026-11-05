@@ -1,15 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { resample } from './audio';
-import { ctcAlign, spell, CTC_FRAME } from './align';
+import { ctcAlign, ctcScore, spell, spellOut, CTC_FRAME } from './align';
 import { detectBeats } from './beats';
 import { learnedBeats } from './beatthis';
 import { makeTranscript } from './transcript';
 import { LocalModels, type ModelOptions } from './models';
 import { FootageIndex, SEARCH_THRESHOLDS, VISUAL_THRESHOLD } from './search';
-import { AnalysisError, grid, type AssetInput, type Frame, type Pcm, type Transcript, type TranscriptionResult, type VisualAnalysis } from './types';
+import { AnalysisError, grid, type AssetInput, type Frame, type Pair, type Pcm, type Transcript, type TranscriptionResult, type VisualAnalysis } from './types';
 export { syncOffset } from './sync';
 export { snapCuts, planSilenceRemoval, readBeats } from './helpers';
 export * from './types';
+
+type AsrChunk = { text: string; timestamp: [number | null, number | null] };
+/** T19q T6: the index of the voice region containing the word's midpoint, else of the nearest region (the earlier on a
+ * tie). A word without times goes to the first region. */
+export function voiceRegion(word: AsrChunk, voice: Pair[]) {
+  const middle = ((word.timestamp[0] ?? NaN) + (word.timestamp[1] ?? NaN)) / 2;
+  let region = 0, distance = Infinity;
+  voice.forEach(([start, end], i) => {
+    const d = middle < start ? start - middle : middle > end ? middle - end : 0;
+    if (d < distance) { distance = d; region = i; }
+  });
+  return region;
+}
+/** T19q T6: equal word sequences after lowercasing and stripping punctuation other than apostrophes (’ read as ') and
+ * hyphens. */
+export function sameWords(a: AsrChunk[], b: AsrChunk[]) {
+  const normal = (words: AsrChunk[]) => words.map(w => w.text).join(' ').toLowerCase().replace(/’/g, "'").replace(/[^\P{P}'-]/gu, '').split(/\s+/).filter(Boolean).join(' ');
+  return normal(a) === normal(b);
+}
 
 export class AnalysisEngine {
   readonly models: LocalModels;
@@ -23,19 +42,62 @@ export class AnalysisEngine {
     // Whisper invents text over long stretches without a voice (e.g. a closing phrase over a music
     // intro). Decoding continuously, not region by region, keeps the language-model context.
     const voice = await this.models.speechRegions(audio);
-    const chunks: { text: string; timestamp: [number | null, number | null] }[] = [];
+    const chunks: AsrChunk[] = [];
     if (voice.length) {
       const start = Math.max(0, voice[0][0] - 0.25), end = Math.min(duration, voice.at(-1)![1] + 0.25), voiced = audio.subarray(Math.floor(start * 16000), Math.ceil(end * 16000));
       // Without a requested language, Whisper identifies it on the voiced audio.
       if (!language) language = await this.models.detectLanguage(voiced);
-      const output = await this.models.transcribe(voiced, language);
-      for (const chunk of output.chunks ?? []) chunks.push({ text: chunk.text, timestamp: [chunk.timestamp[0] === null ? null : start + chunk.timestamp[0], chunk.timestamp[1] === null ? null : start + chunk.timestamp[1]] });
+      const inFile = (output: { chunks?: AsrChunk[] }) => (output.chunks ?? []).map((chunk): AsrChunk => ({ text: chunk.text, timestamp: [chunk.timestamp[0] === null ? null : start + chunk.timestamp[0], chunk.timestamp[1] === null ? null : start + chunk.timestamp[1]] }));
+      const whisper = inFile(await this.models.transcribe(voiced, language));
+      // T19q T6: an English decode also runs Qwen3-ASR (T5's path, which releases whisper first) and takes, per voice
+      // region, whichever model's words the CTC aligner prefers. Every other language stays on whisper-small.
+      // T19q T8: only on a file the sound classifier marks as music; any other file never loads Qwen3-ASR.
+      if (language === 'en' && classification.isMusic) {
+        const voicedDuration = voiced.length / 16000;
+        const localVoice: Pair[] = voice.map(([s, e]) => [Math.max(0, s - start), Math.min(voicedDuration, e - start)] as Pair).filter(([s, e]) => e > s);
+        chunks.push(...await this.arbitrate(audio, voice, whisper, inFile(await this.models.qwenTranscribe(voiced, localVoice, voicedDuration))));
+      } else chunks.push(...whisper);
     }
     // With no voice at all there is nothing to identify; the empty transcript keeps the 'en' default.
     const transcript = makeTranscript(chunks, audio, duration, language || 'en', voice);
     await this.realign(audio, transcript);
     await this.models.diarize(audio, transcript);
     return { status: 'complete', transcript };
+  }
+  /**
+   * T19q T6: per voice region, whisper-small's words, unless Qwen3-ASR's differ from them and the CTC aligner scores
+   * their spelling higher over the region ± 0.25 s (clamped to the neighbouring regions). A tie, or a sequence with no
+   * path, keeps whisper's. Digits are spelled out for the score only; each model's words keep their own text. The result
+   * is whisper's chunk sequence with each region Qwen wins substituted in place.
+   */
+  private async arbitrate(audio: Float32Array, voice: Pair[], whisper: AsrChunk[], qwen: AsrChunk[]) {
+    const rate = 16000, pad = 0.25, duration = audio.length / rate;
+    const byRegion = (words: AsrChunk[]) => {
+      const groups = voice.map((): AsrChunk[] => []);
+      for (const word of words) groups[voiceRegion(word, voice)].push(word);
+      return groups;
+    };
+    const w = byRegion(whisper), q = byRegion(qwen), qwenWins = new Set<number>();
+    for (const [r, [start, end]] of voice.entries()) {
+      if (sameWords(w[r], q[r])) continue;
+      const from = Math.max(0, start - pad, voice[r - 1]?.[1] ?? 0), to = Math.min(duration, end + pad, voice[r + 1]?.[0] ?? duration);
+      const { logProbs, frames, classes, vocab, blank, delimiter } = await this.models.ctcLogProbs(audio.subarray(Math.round(from * rate), Math.round(to * rate)));
+      const score = (words: AsrChunk[]) => ctcScore(logProbs, frames, classes, words.flatMap(word => word.text.split(/\s+/)).flatMap(spellOut).map(word => spell(word, vocab)).filter(letters => letters.length), blank, delimiter);
+      const whisperScore = score(w[r]), qwenScore = score(q[r]);
+      if (whisperScore !== null && qwenScore !== null && qwenScore > whisperScore) qwenWins.add(r);
+    }
+    // Whisper's chunk sequence stands as it is, so where whisper wins everywhere the chunks are the whisper-only path's.
+    // A region Qwen wins takes Qwen's words at whisper's first word of that region and drops whisper's others there;
+    // where whisper has none, before whisper's first word of a later region, else at the end.
+    const chosen: AsrChunk[] = [], placed = new Set<number>(), pending = [...qwenWins].filter(r => !w[r].length);
+    for (const word of whisper) {
+      const r = voiceRegion(word, voice);
+      while (pending.length && pending[0] < r) chosen.push(...q[pending.shift()!]);
+      if (!qwenWins.has(r)) chosen.push(word);
+      else if (!placed.has(r)) { placed.add(r); chosen.push(...q[r]); }
+    }
+    for (const r of pending) chosen.push(...q[r]);
+    return chosen;
   }
   /** TR-P03: re-time each segment's words with the CTC aligner. ASR times stand wherever it cannot align. */
   private async realign(audio: Float32Array, transcript: Transcript) {

@@ -132,6 +132,7 @@ describe('AnalysisEngine.realign M3: each CTC window is clamped to its neighbour
     vi.spyOn(engine.models, 'classify').mockResolvedValue({ isMusic: false, hasVocals: true, labels: [] } as never);
     vi.spyOn(engine.models, 'speechRegions').mockResolvedValue([[0, seconds]]);
     vi.spyOn(engine.models, 'transcribe').mockResolvedValue({ text: asr.map(c => c.text).join(''), chunks: asr } as never);
+    vi.spyOn(engine.models, 'qwenTranscribe').mockResolvedValue({ chunks: asr } as never);
     const windows: [number, number][] = [];
     const ctc = vi.spyOn(engine.models, 'ctcLogProbs').mockImplementation(async (audio: Float32Array) => {
       const from = audio.byteOffset / Float32Array.BYTES_PER_ELEMENT / rate;
