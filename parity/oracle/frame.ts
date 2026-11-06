@@ -56,7 +56,7 @@ export function displaySize(stream: { width: number; height: number; sample_aspe
 // browser export uses inputs decoded the same way.
 export function fixtureSource(store = process.env.CUTFRAME_FIXTURES): Deps['source'] {
   if (!store) throw Error('CUTFRAME_FIXTURES must name the fixture store');
-  const probe = new Map<string, { width: number; height: number; sar: number; timestampsMs: number[] }>();
+  const probe = new Map<string, { width: number; height: number; sar: number; transfer: string; timestampsMs: number[] }>();
   const resolve = (item: Item) => {
     const src = String(item.details?.src ?? '');
     if (!src.startsWith('fixture://')) throw Error(`Item ${item.id}: only fixture:// sources are supported`);
@@ -67,9 +67,9 @@ export function fixtureSource(store = process.env.CUTFRAME_FIXTURES): Deps['sour
   return (item, sourceTimeMs) => {
     const file = resolve(item);
     if (!probe.has(file)) {
-      const out = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,sample_aspect_ratio:stream_side_data=rotation:frame=best_effort_timestamp_time', '-of', 'json', file], { maxBuffer: 1 << 28 }).toString();
+      const out = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,sample_aspect_ratio,color_transfer:stream_side_data=rotation:frame=best_effort_timestamp_time', '-of', 'json', file], { maxBuffer: 1 << 28 }).toString();
       const json = JSON.parse(out);
-      probe.set(file, { ...displaySize(json.streams[0]), timestampsMs: (json.frames ?? []).map((f: any) => Number(f.best_effort_timestamp_time) * 1000) });
+      probe.set(file, { ...displaySize(json.streams[0]), transfer: json.streams[0].color_transfer ?? 'bt709', timestampsMs: (json.frames ?? []).map((f: any) => Number(f.best_effort_timestamp_time) * 1000) });
     }
     const { width, height, sar, timestampsMs } = probe.get(file)!;
     const index = timestampsMs.length > 1 ? pickFrame(timestampsMs, sourceTimeMs) : 0;
@@ -77,6 +77,7 @@ export function fixtureSource(store = process.env.CUTFRAME_FIXTURES): Deps['sour
     const raw = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-vf', filter, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'], { maxBuffer: 1 << 28 });
     if (raw.length !== width * height * 4) throw Error(`Decoded frame of ${file} has the wrong size`);
     const image = createImage(width, height);
+    image.transfer = probe.get(file)!.transfer;
     for (let i = 0; i < raw.length; i++) image.data[i] = raw[i] / 255;
     return image;
   };

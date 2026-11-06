@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Export decoders (findings §7 frame loop, master plan §1b budgets): T15's decoder worker file (render/decoder.worker.ts,
-// unchanged) with the export's own instances, one worker per open source and at most 4 alive. A source opens lazily when
+// export-colour request flag) with the export's own instances, one worker per open source and at most 4 alive. A source opens lazily when
 // one of its frames is due within the 2 s prefetch window and its worker ends once no item needs it in that window.
 // Prefetch per source = the one frame the worker pulls ahead (≤ 2 s). WebCodecs first, WASM second: T14's videoFrames
 // picks by canDecode, and a source whose WebCodecs stream fails is reopened once with forceWasm. A request that times out,
@@ -81,7 +81,7 @@ export class ExportDecoders {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.stats.timeouts++; this.fail(slot, Object.assign(new Error(`Frame decoding timed out after ${REQUEST_TIMEOUT_MS / 1000} s.`), { transient: true })); }, hang ? 0 : REQUEST_TIMEOUT_MS);
       slot.waiting.set(id, { resolve, reject, timer });
-      const message: DecodeRequest = { id, key: ref.key, blob: ref.blob, timeS, rotation: ref.rotation, forceWasm: slot.wasm, raw: !!ref.stackedAlpha };
+      const message: DecodeRequest = { id, key: ref.key, blob: ref.blob, timeS, rotation: ref.rotation, forceWasm: slot.wasm, raw: !!ref.stackedAlpha, exportColour: true };
       if (!hang) slot.worker.postMessage(message);
     });
   }

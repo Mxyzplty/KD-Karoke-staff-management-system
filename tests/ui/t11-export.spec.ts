@@ -20,6 +20,7 @@ import { fixtureSource, oracleDeps } from '../../parity/oracle/frame';
 import { quantise8 } from '../../parity/oracle/image';
 import type { Item } from '../../parity/oracle/item';
 import { renderFrame, type Deps } from '../../parity/oracle/render';
+import { transferBytes } from '../../parity/oracle/transfer';
 import { MIN_SSIM, alphaFit, ssim } from '../../parity/transition-metrics';
 import { dipOverlay, fadeAlpha } from '../../apps/web/src/render/transitions';
 import { createProject, linkClip, skipTour } from './t02-support';
@@ -58,7 +59,7 @@ const D = oracleDeps((item: Item, sourceTimeMs: number, cell?: number) => {
   const k = `${String(it.details?.src)}@${sourceTimeMs}`;
   if (!memo.has(k)) memo.set(k, raw(it, sourceTimeMs));
   return memo.get(k)!;
-});
+}, { exportColour: true });
 /** The document for the oracle: the same items, the sources as fixture:// files of MEDIA_DIR, the record as the only transition. */
 function oracleProject(doc: any, files: Record<string, string>, ...records: object[]) {
   const p = structuredClone(doc);
@@ -90,7 +91,8 @@ async function holdToOracle(page: Page, id: string, doc: any, files: Record<stri
     sims.push(s);
     expect.soft(s, `${label}: frame ${f} (p ${p === null ? 'null' : p.toFixed(5)}) SSIM vs the T00 oracle`).toBeGreaterThanOrEqual(SSIM_OK);
     if (p !== null && (r.kind === 'fade' || r.kind === 'dipToColorDissolve')) {
-      const alpha = r.kind === 'fade' ? fadeAlpha(p) : dipOverlay(p), fits = r.kind === 'fade' ? alpha >= 0.1 : alpha <= 0.9, fit = alphaFit(r.kind, p, r.params, asU8(ours), theirs);
+      // D34: fit alpha in the sRGB blend domain, reversing the output table on both decoded export frames.
+      const alpha = r.kind === 'fade' ? fadeAlpha(p) : dipOverlay(p), fits = r.kind === 'fade' ? alpha >= 0.1 : alpha <= 0.9, fit = alphaFit(r.kind, p, r.params, transferBytes(asU8(ours), 'input'), transferBytes(theirs, 'input'));
       expect.soft(fit !== null, `${label}: frame ${f}: alphaFit is ${fits ? 'defined' : 'null'} at alpha ${alpha.toFixed(4)}`).toBe(fits);
       if (fit) expect.soft(Math.abs(fit.fitted - fit.alpha), `${label}: frame ${f} (p ${p.toFixed(5)}): fitted alpha ${fit.fitted.toFixed(4)} against the formula's ${fit.alpha.toFixed(4)}`).toBeLessThanOrEqual(FIT_TOL);
     }
@@ -192,7 +194,7 @@ function frameMap(file: string, frames: number[], width: number, height: number)
   expect(buf.length, `${frames.length} frames of ${width} x ${height}`).toBe(frames.length * size);
   return new Map(frames.map((n, k) => [n, new Uint8Array(buf.buffer, buf.byteOffset + k * size, size)]));
 }
-test('E4 OT-6 fade slice: the fitted alpha of each fade frame 165-194 against the same frame without the fade is within +-0.02 of the fixture alpha (own, provisional; formula oracle: the fixture fadeAlphas)', async ({ page }) => {
+test('E4 OT-6 fade slice: the fitted alpha in the sRGB blend domain of each fade frame 165-194 against the same frame without the fade is within +-0.02 of the fixture alpha (D34; formula oracle: the fixture fadeAlphas)', async ({ page }) => {
   test.skip(!hasStore, NO_STORE);
   const sliced = spawnSync(process.execPath, [TSX, 'tests/ui/t11-export-slice.ts', STORE], { encoding: 'utf8', maxBuffer: 1 << 28, timeout: 120_000 });
   expect(sliced.status, sliced.stderr).toBe(0);
@@ -209,7 +211,7 @@ test('E4 OT-6 fade slice: the fitted alpha of each fade frame 165-194 against th
   expect(fade.fadeAlphas.length).toBe(n);
   const worst: number[] = [];
   for (const row of fade.fadeAlphas) {
-    const k = row.frame - FIRST, f = F.get(k)!, c = C.get(k)!;
+    const k = row.frame - FIRST, f = transferBytes(F.get(k)!, 'input'), c = transferBytes(C.get(k)!, 'input');
     let sxy = 0, sxx = 0;
     for (let i = 0; i < c.length; i += 4) for (let j = 0; j < 3; j++) { sxy += f[i + j] * c[i + j]; sxx += c[i + j] ** 2; }
     const fit = sxy / sxx; worst.push(Math.abs(fit - row.alpha));

@@ -6,7 +6,7 @@
 // straight (not premultiplied) alpha unless a function says otherwise.
 import type { RGBA } from './math';
 
-export type Image = { width: number; height: number; data: Float32Array };
+export type Image = { width: number; height: number; data: Float32Array; transfer?: string };
 // timeS: seconds since the item's start. seed: the per-render random value in
 // [0, 1000) that glitch/vhs draw; the oracle takes it as an explicit input.
 export type EffectContext = { timeS: number; seed?: number };

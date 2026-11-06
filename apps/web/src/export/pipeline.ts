@@ -15,6 +15,8 @@ import type { Source } from '../render/compositor';
 import { encodedTime, framePlan, isStackedAlpha, planTime } from '../render/model';
 import type { Draw, Pending, Size } from '../render/model';
 import { picture } from '../render/sources';
+import { graphicPicture } from '../mg/frames';
+import { graphicBitmap } from './graphic';
 import { loadTextFonts } from '../text/fonts';
 import { sourceTime } from '../timeline/properties';
 import { withCellItems } from '../timeline/layouts';
@@ -204,12 +206,14 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
         void refOf(u).then(ref => decoders.frame(ref.ref, sourceTime(u, 0), current)).catch(() => undefined);
       }
       // The transition key is the draw's own item's; a layout's cells (T07) keep their own keys.
-      const sources: Source[] = await Promise.all(draws.map(d => drawSource(o.store, d, item => refOf(item, item === d.item ? drawKey(d, draws) : undefined), decoders, current, assets.get(String(d.item.metadata?.assetId)))));
-      lap('sourcesMs');
-      // An item T10's effect stage could not draw is missing from the frame: the export fails with its code (§12 rows
-      // WEBGL_UNSUPPORTED, CANVAS_TAINTED) rather than writing the file without it.
-      const failed = composite(ctx, draws, sources, size, 'black');
-      if (failed.length) throw new ExportError(failed[0].code ?? 'CLIENT_BUG', `${failed[0].message ?? failed[0].what} (item ${failed[0].itemId})`);
+      const owned: ImageBitmap[] = [];
+      try {
+        const sources = await settledSources(draws.map(d => drawSource(o.store, d, item => refOf(item, item === d.item ? drawKey(d, draws) : undefined), decoders, current, assets.get(String(d.item.metadata?.assetId)), owned)));
+        lap('sourcesMs');
+        // An effect failure fails the export rather than writing a file without the item (§12).
+        const failed = composite(ctx, draws, sources, size, 'black');
+        if (failed.length) throw new ExportError(failed[0].code ?? 'CLIENT_BUG', `${failed[0].message ?? failed[0].what} (item ${failed[0].itemId})`);
+      } finally { for (const bitmap of owned) bitmap.close(); }
       decoders.sweep();
       lap('compositeMs');
       const image = ctx.getImageData(0, 0, size.width, size.height);
@@ -284,17 +288,25 @@ async function videoRef(store: ProjectStore, item: RecordData, asset: Asset | un
 const PICTURE_KINDS: Record<Exclude<Draw['kind'], 'video'>, true> = { image: true, motionGraphic: true, shape: true, text: true, layout: true };
 /** One draw's picture. Video: the export decoders; a decode failure fails the export (§12 DECODE_ERROR and the rest), it
  *  is never drawn grey. A motion graphic that still fails fails the export as MG_RENDER_FAILED with T08's text naming it.
+ *  owned receives fresh graphic bitmaps, including layout cells: the frame closes them after composition or failure.
  *  A kind the export does not know fails it as CLIENT_BUG, never as a video decode. */
-export async function drawSource(store: ProjectStore, d: Draw, refOf: (i: RecordData) => Promise<VideoRef>, decoders: ExportDecoders, current: Set<string>, asset: Asset | undefined): Promise<Source> {
+export async function drawSource(store: ProjectStore, d: Draw, refOf: (i: RecordData) => Promise<VideoRef>, decoders: ExportDecoders, current: Set<string>, asset: Asset | undefined, owned: ImageBitmap[] = []): Promise<Source> {
   if (d.kind === 'video') {
     const r = await refOf(d.item), f = await decoders.frame(r.ref, d.sourceMs, current);
     return { image: f.bitmap, width: r.fit?.width ?? f.width, height: r.fit?.height ?? f.height };
   }
   if (PICTURE_KINDS[d.kind] !== true) throw new ExportError('CLIENT_BUG', `The export cannot draw item ${d.item.id}: draw kind '${d.kind}' is not supported by the export.`);
-  if (d.kind === 'layout') return { cells: await Promise.all((d.layout?.cells ?? []).map(c => c.media ? drawSource(store, c.media.draw, refOf, decoders, current, undefined) : null)) };
-  const s = await picture(store, d, asset, 'capture');
+  if (d.kind === 'layout') return { cells: await settledSources((d.layout?.cells ?? []).map(c => c.media ? drawSource(store, c.media.draw, refOf, decoders, current, undefined, owned) : Promise.resolve(null))) };
+  const s = d.kind === 'motionGraphic' ? await graphicPicture(store, d, 'capture', graphicBitmap) : await picture(store, d, asset, 'capture');
   if (s !== null && s !== 'failed' && 'error' in s) throw new ExportError('MG_RENDER_FAILED', s.error);
+  if (d.kind === 'motionGraphic' && s && s !== 'failed' && 'image' in s) owned.push(s.image as ImageBitmap);
   return s;
+}
+/** Await siblings before throwing: a late graphic must be owned before the frame's finally closes its bitmaps. */
+async function settledSources(sources: Promise<Source>[]): Promise<Source[]> {
+  const results = await Promise.allSettled(sources), failure = results.find(r => r.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+  return results.map(r => (r as PromiseFulfilledResult<Source>).value);
 }
 function progress(o: ExportOptions, phase: Progress['phase'], frame: number, frames: number, t0: number) {
   if (!o.onProgress) return;

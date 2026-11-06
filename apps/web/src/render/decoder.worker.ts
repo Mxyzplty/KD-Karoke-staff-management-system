@@ -7,8 +7,9 @@
 import { frameToRgba, videoFrames } from '../media/decode';
 import type { RawVideoFrame } from '../media/decode';
 import type { MediaCode } from '../media/codes';
+import { applyExportInputTransfer } from '../export/colour';
 
-export type DecodeRequest = { id: number; key: string; blob: Blob; timeS: number; rotation: 0 | 90 | 180 | 270; forceWasm: boolean; raw: boolean };
+export type DecodeRequest = { id: number; key: string; blob: Blob; timeS: number; rotation: 0 | 90 | 180 | 270; forceWasm: boolean; raw: boolean; exportColour?: boolean };
 export type DecodeReply =
   | { id: number; ok: true; ts: number; nextTs: number | null; first: boolean; width: number; height: number; bitmap?: ImageBitmap; data?: ArrayBuffer }
   | { id: number; ok: false; message: string; code?: MediaCode };
@@ -54,9 +55,10 @@ self.onmessage = (event: MessageEvent<DecodeRequest>) => {
   queues.set(key, run);
   void run.then(() => { if (queues.get(key) === run) queues.delete(key); });
 };
-async function answer({ id, key, blob, timeS, rotation, forceWasm, raw }: DecodeRequest) {
+async function answer({ id, key, blob, timeS, rotation, forceWasm, raw, exportColour }: DecodeRequest) {
   try {
     const s = await frameAt(key, blob, timeS, forceWasm), rgba = frameToRgba(s.cur, rotation);
+    if (exportColour) applyExportInputTransfer(rgba.data, rgba.width, rgba.height, s.cur.colour.transfer, raw);
     const meta = { id, ok: true as const, ts: s.cur.timestamp, nextTs: s.ahead?.timestamp ?? null, first: s.first, width: rgba.width, height: rgba.height };
     if (raw) { const data = rgba.data.slice().buffer; return post({ ...meta, data }, [data]); }
     const bitmap = await createImageBitmap(new ImageData(rgba.data as Uint8ClampedArray<ArrayBuffer>, rgba.width, rgba.height));

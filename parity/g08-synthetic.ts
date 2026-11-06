@@ -101,7 +101,7 @@ export async function writeSyntheticExportFrames(dir: string, media: { dir: stri
   const project = { fps: 30, size: { ...size }, duration: 30000, background: { type: 'color', value: 'transparent' }, tracks: [{ id: TRACK, kind: 'video' }], layerOrder: [{ type: 'track', id: TRACK }],
     items: [clip(A, media.S1, 0, size), clip(B, media.S2c, 10000, size), clip(C, media.S1, 20000, size)],
     transitions: [{ id: T1, trackId: TRACK, fromId: A, toId: B, kind: 'wipe', durationMs: 1000, alignment: 0.5, direction: 'from-left', params: { softness: 20 } }] } as unknown as Project;
-  const folder = path.join(dir, 'frames', 'export'), deps = oracleDeps(fixtureSource(media.dir)), start = 9500, length = 1000, written: string[] = [];
+  const folder = path.join(dir, 'frames', 'export'), deps = oracleDeps(fixtureSource(media.dir), { exportColour: true }), start = 9500, length = 1000, written: string[] = [];
   await mkdir(folder, { recursive: true });
   for (const at of [0, 0.25, 0.5, 0.75, 1]) {
     const ms = start + at * length, frame = Math.round(ms * 30 / 1000), name = `E-${ms}.png`;

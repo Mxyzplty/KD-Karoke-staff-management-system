@@ -16,6 +16,7 @@ import { cssFilters as distortCss } from './distort';
 import { recolorActive } from './colour';
 import { PER_GRAPHEME, PRESET_MS, applyTextChannels, graphemeStates, textChannels, type GraphemeState, type TextAnimation } from './text';
 import { captionSettings, wordState, type Word, type WordState } from './captions';
+import { transferImage, videoInput } from './transfer';
 
 // A transition pair's combined surface (project px, full canvas), drawn source-over once, at the
 // first of its items in the draw order; those items are then not drawn on their own (§53.5.3, §55.4).
@@ -34,6 +35,7 @@ export type TransitionDraw = { itemIds: string[]; image: Image };
 //   applies the item opacity), colour null = the item colour. deps.text MUST apply them.
 export type TextTarget = { timeMs: number; m: Mat; size: Size; graphemes: GraphemeState[] | null; words: WordState[] | null };
 export type Deps = {
+  exportColour?: boolean; // D34/D35 video + graphic input tables and final all-pixel output; omitted for preview/canvas
   effects: Record<string, Effect>; // GPU effects by kind, run in stack order on the W × H item canvas
   cssFilters: Record<string, Effect>; // CSS-rendered stack effects by kind, run on the frame-sized layer (the item's blur and brightness are built in)
   source(item: Item, sourceTimeMs: number, cell?: number): Image | null; // decoded frame / bitmap (layout: cell index); null = decode error → grey box
@@ -142,7 +144,7 @@ function content(item: Item, t: number, deps: Deps, size: Size, m: Mat, box: Box
   const local = t - item.display.from, ease = deps.ease ?? linear, boxRect = stretch(box.W, box.H);
   const grey = (): Layer[] => [{ image: fillLayer(size, m, [[rectRing(boxRect)]], MISSING_MEDIA), alpha: opacity }];
   if (item.type === 'video') {
-    const src = deps.source(item, sourceTime(item, local, ease));
+    const decoded = deps.source(item, sourceTime(item, local, ease)), src = decoded && deps.exportColour ? videoInput(decoded) : decoded;
     if (!src) return grey();
     const r = cover(src.width, src.height, box.W, box.H);
     return r ? [{ image: drawRaster(size, src, r, m, [[rectRing(boxRect)]]), alpha: opacity }] : [];
@@ -163,7 +165,12 @@ function content(item: Item, t: number, deps: Deps, size: Size, m: Mat, box: Box
     return (d.cells ?? []).map((cell: any, i: number): Layer => {
       const c = cellRect(cell.bounds, box.W, box.H, gap), clip = radius > 0 ? roundedRing(c, radius) : rectRing(c), alpha = cellAlpha(cell, opacity);
       if (!cell.source?.url) return { image: fillLayer(size, m, [[clip]], EMPTY_CELL), alpha };
-      const kind = cell.source.type === 'image' ? 'image' : 'video', src = deps.source(item, cellSourceTime(cell, local), i);
+      const kind = cell.source.type === 'image' ? 'image' : 'video';
+      let src = deps.source(item, cellSourceTime(cell, local), i);
+      if (src && deps.exportColour) {
+        if (cell.source.type === 'motionGraphic') src = transferImage(src, 'input');
+        else if (kind === 'video') src = videoInput(src);
+      }
       if (!src) throw Error(`layout ${item.id} cell ${i}: source unavailable`);
       return { image: drawRaster(size, src, cellMedia(kind, cell.fillMode, src.width, src.height, c, cell.zoom ?? 100, cell.panX ?? 0, cell.panY ?? 0), m, [[clip]]), alpha };
     });
@@ -180,7 +187,8 @@ export function itemDraws(project: Project, item: Item, t: number, deps: Deps, o
   if (anim != null && item.type !== 'text' && item.type !== 'caption') throw Error(`${item.type} item ${item.id}: textAnimation is defined for text and caption items only (§56.1)`);
   if (item.type === 'audio' || opacity <= 0) return { mode, draws: [] };
   if (item.type === 'motionGraphic') { // default server render: a full-canvas stacked-alpha video; only the blend mode is carried (§53.3.4)
-    const p = projectSize(project), src = deps.source(item, sourceTime(item, local, ease));
+    const p = projectSize(project), decoded = deps.source(item, sourceTime(item, local, ease));
+    const src = decoded && deps.exportColour ? transferImage(decoded, 'input') : decoded;
     return { mode, draws: src ? [drawRaster(out, src, stretch(p.width, p.height), frameScale(project, out, IDENTITY))] : [] };
   }
   // Step 6: the text-animation channels move, scale, rotate and skew the box and multiply the opacity (§56.3).
@@ -240,5 +248,5 @@ export function renderFrame(project: Project, timeMs: number, deps: Deps, out: S
     const { mode, draws } = itemDraws(project, item, timeMs, deps, out);
     for (const d of draws) frame = compositeImage(frame, d, mode);
   }
-  return frame;
+  return deps.exportColour ? transferImage(frame, 'output') : frame;
 }

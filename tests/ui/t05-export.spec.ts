@@ -3,8 +3,8 @@
 // in-page "preview capture" (render/model.framePlan + render/compositor.composite — the one path the paused preview, the playing
 // preview, captureFrame and the export all draw through), decoded back from the exported MP4 by ffmpeg. The text oracle is this
 // capture, not parity/oracle/renderFrame: a float CPU reference cannot rasterise glyphs, so drawText is checked against the same
-// composite() that produced the preview, per-frame SSIM >= 0.98 (Rec. 709 luma, 8x8 windows, t10a-support.ssim). The only gap
-// between the two is the 8-bit YUV420 H.264 encode (grayscale text / a black->white gradient carry no chroma, so BT.709/601 does
+// composite() that produced the preview, followed by D34's output transfer table, per-frame SSIM >= 0.98 (Rec. 709 luma,
+// 8x8 windows, t10a-support.ssim). After that table the remaining gap is the 8-bit YUV420 H.264 encode (grayscale text / a black->white gradient carry no chroma, so BT.709/601 does
 // not enter); drawText itself is byte-identical because it is the identical code path.
 //   (a) a Roboto 700 white text on black: glyph pixels inside the text box, none 8 px clear of it, and the exported frame ==
 //       the preview capture (SSIM >= 0.98).
@@ -19,6 +19,7 @@ import { ffmpegAvailable } from '../media-fixtures';
 import { skipTour } from './t02-support';
 import { compare, ssim } from './t10a-support';
 import { completed, decodeRgba, runExport, setup, type Run } from './t16a-support';
+import { outputCode, transferBytes } from '../../parity/oracle/transfer';
 // fonts.ts cannot be imported into the Node test process (its `?url` font imports need Vite); CJK_NOTICE is read from the page.
 
 test.skip(!ffmpegAvailable(), 'ffmpeg decodes the exported file for the capture comparison');
@@ -92,10 +93,10 @@ test.describe('T05 text export (drawText == the preview capture)', () => {
     const { id } = await setup(page, textDoc(), {});
     const { frame } = await exportFrame(page, id);
     const preview = await previewRgba(page, id, W, H);
-    const diff = compare(frame, preview, W, H);
+    const diff = compare(frame, transferBytes(preview, 'output'), W, H);
     expect(litWhere(frame, inBox), 'glyph pixels inside the text box').toBeGreaterThan(300);
     expect(litWhere(frame, farOutside), 'a blank area outside the text box').toBe(0);
-    expect(diff.ssim, `SSIM ${diff.ssim} (meanErr ${diff.meanErr})`).toBeGreaterThanOrEqual(0.98); // only the YUV420 encode differs
+    expect(diff.ssim, `SSIM ${diff.ssim} (meanErr ${diff.meanErr})`).toBeGreaterThanOrEqual(0.98); // D34 table applied to preview, then only the YUV420 encode differs
   });
 
   test('(b) the acceptance gradient (linear 180deg #000 -> #fff) renders in the export', async ({ page }) => {
@@ -104,18 +105,19 @@ test.describe('T05 text export (drawText == the preview capture)', () => {
     const { frame } = await exportFrame(page, id);
     const preview = await previewRgba(page, id, W, H);
     // the solid box fill (a corner clear of the glyphs) reads mid-gray: the text item drew in the export
-    expect(lumaAt(frame, 44, 34)).toBeGreaterThan(112); expect(lumaAt(frame, 44, 34)).toBeLessThan(144);
+    const grey = outputCode(128);
+    expect(lumaAt(frame, 44, 34)).toBeGreaterThan(grey - 16); expect(lumaAt(frame, 44, 34)).toBeLessThan(grey + 16);
     // a black -> white gradient on the glyphs: among the glyph pixels (far from the 128 box), the top half is darker than the bottom
     const glyphMean = (y0: number, y1: number) => {
       let sum = 0, n = 0;
-      for (let y = y0; y < y1; y++) for (let x = 40; x < 280; x++) { const l = lumaAt(frame, x, y); if (Math.abs(l - 128) > 40) { sum += l; n++; } }
-      return { mean: n ? sum / n : 128, n };
+      for (let y = y0; y < y1; y++) for (let x = 40; x < 280; x++) { const l = lumaAt(frame, x, y); if (Math.abs(l - grey) > 40) { sum += l; n++; } }
+      return { mean: n ? sum / n : grey, n };
     };
     const top = glyphMean(30, 90), bottom = glyphMean(90, 150);
     expect(top.n, 'glyph pixels in the top half').toBeGreaterThan(50);
     expect(bottom.n, 'glyph pixels in the bottom half').toBeGreaterThan(50);
     expect(bottom.mean - top.mean, `top glyph luma ${top.mean} vs bottom ${bottom.mean}`).toBeGreaterThan(40);
-    expect(ssim(frame, preview, W, H)).toBeGreaterThanOrEqual(0.98); // matches the known-good preview gradient render
+    expect(ssim(frame, transferBytes(preview, 'output'), W, H)).toBeGreaterThanOrEqual(0.98); // D34 output table after the known-good gradient render
   });
 
   test('(c) a CJK font that cannot load is a message only: CJK_NOTICE in result.messages, export completes', async ({ page }) => {

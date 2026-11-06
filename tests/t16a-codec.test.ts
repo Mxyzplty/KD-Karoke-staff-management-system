@@ -10,6 +10,7 @@ import { exportPlan } from '../apps/web/src/render/model';
 import { AUDIO, audioSupported, avcCodec, avcLevel, negotiateAudio, negotiateVideo, OPUS, OPUS_MESSAGE, PROFILES } from '../apps/web/src/export/probe';
 import { remuxCandidate } from '../apps/web/src/export/remux';
 import { rgbaToI420 } from '../apps/web/src/export/i420';
+import { outputCode } from '../parity/oracle/transfer';
 
 describe('T16a avcLevel (written-spec oracle: H.264 Table A-1)', () => {
   it('picks the lowest level that holds the frame size, the macroblock rate and the bitrate', () => {
@@ -228,6 +229,7 @@ describe('T16a rgbaToI420 (formula oracle: float BT.709 limited-range reference)
   const KR = 0.2126, KG = 0.7152, KB = 0.0722;
   /** The float reference: Y from each pixel, Cb / Cr from the mean of the 2 × 2 block, Math.round. */
   function reference(rgba: Uint8ClampedArray, w: number, h: number) {
+    rgba = rgba.map((v, i) => i % 4 === 3 ? v : outputCode(v)); // D34: sRGB canvas → BT.709 before the matrix
     const out = new Float64Array(w * h * 3 / 2), cw = w >> 1, uOff = w * h, vOff = uOff + cw * (h >> 1);
     for (let i = 0; i < w * h; i++) out[i] = 16 + 219 * (KR * rgba[i * 4] + KG * rgba[i * 4 + 1] + KB * rgba[i * 4 + 2]) / 255;
     for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) {

@@ -7,7 +7,8 @@
 // `parity --ot6-fade <export file> [--output <dir>]` exports frames 165–194 with Cutframe (parity/g08-export.ts exportRanges)
 // and compares each with the same frame of the given file (a full OT-6 export, frame n at n / 30 s): mean SSIM >= 0.98 and,
 // where the fade leaves enough picture (alpha >= 0.1), the least-squares alpha within ±0.06 of the fixture's fadeAlphas (QE2).
-// Xapp's export is measured darker, about alpha^1.15 (Q15, Author): this check is where that shows. The run reads only the
+// D34: video is tabled BT.709 → sRGB before blending and every pixel sRGB → BT.709 before I420; no fade exponent. This
+// comparison uses that export as its reference. The run reads only the
 // file it is given; the real Xapp file is Author's (D2). The media are the store's corpus files as they are (untagged colour,
 // as Xapp was given them); the given file's colour tags are reported.
 import { readFile } from 'node:fs/promises';
@@ -68,8 +69,8 @@ export function compareOt6Frames(fadeAlphas: FadeAlpha[], ours: Map<number, Uint
     const want = fadeAlphas.find(x => x.frame === f), mine = ours.get(f - a)!, given = theirs.get(f)!, row: { [key: string]: Json } = { frame: f, ssim: ssim(mine, given, W, H) };
     if (want) {
       row.clip = want.clip; row.alpha = want.alpha;
-      // As alphaFit (g08-export.ts) for a fade, with the fixture's alpha: Cutframe's frame is that alpha × the clip, so the
-      // given frame's alpha is alpha × Σ(theirs · ours) / Σ(ours²).
+      // Reference-normalised alpha diagnostic: alpha × Σ(theirs · ours) / Σ(ours²). Under D34 the output values are
+      // nonlinear in blend alpha; this reports the given frame's scale relative to our tabled formula reference.
       if (want.alpha >= 0.1) { let sxy = 0, sxx = 0; for (let i = 0; i < mine.length; i += 4) for (let k = 0; k < 3; k++) { sxy += given[i + k] * mine[i + k]; sxx += mine[i + k] ** 2; } row.fittedAlpha = sxx ? want.alpha * sxy / sxx : null; }
     }
     if ((row.ssim as number) < MIN_SSIM) failures.push({ frame: f, check: 'ssim', expected: `>= ${MIN_SSIM}`, actual: row.ssim });
@@ -90,7 +91,7 @@ export async function runOt6Fade(file: string, o: { output?: string; store?: str
   const { minSsim, alphaTolerance, failures, rows } = compareOt6Frames(slice.fadeAlphas, ours, theirs, W, H);
   const report = { version: 1, check: 'OT-6 fade slice (frames 165-194)', status: failures.length ? 'failed' : 'passed', minSsim, alphaTolerance,
     given: { file: theirsFile, stream: colourTags(theirsFile) }, ours: { file: run.file, stream: colourTags(run.file) }, media: slice.files as unknown as Json, failures, rows,
-    note: 'Provisional, not Xapp parity until Author runs it on the stored export (D2). Xapp\'s export is measured darker, about alpha^1.15 (Q15). Under that model |alpha - alpha^1.15| peaks at .051 (alpha about .39), inside the 0.06 tolerance, so "passed" does not rule out ^1.15: read rows[].fittedAlpha.' };
+    note: 'Provisional, not Xapp parity until the research agent re-runs the stored export (D2, D34). The candidate uses BT.709 → sRGB on video and sRGB → BT.709 on every output pixel, with the plain fade formula. rows[].fittedAlpha is the reference-normalised output-domain diagnostic; SSIM and alpha gates are unchanged.' };
   await atomicJson(out, 'report.json', report);
   return report;
 }

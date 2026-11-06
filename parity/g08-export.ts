@@ -7,7 +7,7 @@
 // frame frames/export/<name> (results §11: frame index = round(t × 30)), and each pair is compared:
 //   - mean SSIM over 8 × 8 windows of Rec. 709 luma >= 0.98, the same metric as T16a's export checks (tests/ui/t10a-support.ts);
 //   - for fade and dip, the least-squares alpha within ±0.06 of the formula (QE2; results §11 decision 2: for these two kinds the
-//     stored frames decide parity, and Xapp's export is measured darker, about the formula^1.15: Q15, Author).
+//     stored frames decide parity; D34 adds the export colour tables around the plain formula, with no fade exponent).
 // Every window of frames/export/_windows.json is matched with a Cutframe transition window (start and length within 1 frame,
 // own provisional tolerance). With --export-ffprobe, the stored export's video frame count is compared with Cutframe's.
 // The docs leave open the frame file names, the unit of their time and the schema of _windows.json (T00 harness runbook

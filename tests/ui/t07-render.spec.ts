@@ -12,6 +12,7 @@ import { quantise8 } from '../../parity/oracle/image';
 import { exportPlan, planTime } from '../../parity/oracle/item';
 import { renderFrame } from '../../parity/oracle/render';
 import { fixtureSource, oracleDeps } from '../../parity/oracle/frame';
+import { outputCode, transferBytes } from '../../parity/oracle/transfer';
 import { LAYOUT_TYPES, type LayoutType } from '../../apps/web/src/timeline/layouts';
 import { completed, decodeRgba, genMedia, mimeOf, openAndIngest, runExport } from './t16a-support';
 import { seekMs, shown, uploadAsset } from './t15-support';
@@ -60,12 +61,12 @@ async function open(page: Page, types: LayoutType[], look: Look = {}) {
 }
 const u8 = (a: Uint8ClampedArray) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
 /** The oracle's frame n (the export plan's own frame times) of the stored document; cell k decodes FILES[k % 4]. */
-function oracleFrame(doc: any, n: number, w = SIZE.width, h = SIZE.height, pick: Record<number, number> = {}) {
+function oracleFrame(doc: any, n: number, w = SIZE.width, h = SIZE.height, pick: Record<number, number> = {}, exportColour = false) {
   const files = FILES(), dir = path.dirname(files[0]), plan = exportPlan(doc), fx = fixtureSource(dir);
   const deps = oracleDeps((item, t, cell) => {
     const fi = (pick[cell ?? 0] ?? cell ?? 0) % 4, f = files[fi];
     return fx({ ...item, type: fi === 3 ? 'image' : 'video', details: { ...item.details, src: `fixture://${path.basename(f)}` } }, t);
-  });
+  }, { exportColour });
   return u8(quantise8(renderFrame(doc, planTime(plan, plan.first + n), deps, { width: w, height: h })));
 }
 /** What the preview shows: every `canvas.run` composited in DOM (z) order, as RGBA at the canvas size. */
@@ -90,7 +91,7 @@ const note = (type: string, description: string) => test.info().annotations.push
 function roundedCorner(d: Uint8Array | Buffer, w: number, h: number, doc: any, what: 'preview' | 'export') {
   const at = (img: Uint8Array | Buffer) => rgbAt(img, w, Math.round(170 * w / SIZE.width), Math.round(10 * h / SIZE.height)), limit = what === 'export' ? 40 : 4;
   const square = JSON.parse(JSON.stringify(doc)); square.items[0].details.borderRadius = 0;
-  const got = at(d), flat = at(oracleFrame(square, 15, w, h));
+  const got = at(d), flat = at(oracleFrame(square, 15, w, h, {}, what === 'export'));
   note('corner', `${what} (170, 10): ${got.join(',')}; oracle at radius 0: ${flat.join(',')}`);
   expect(Math.max(...flat), 'the sample point shows picture when the corner is square (oracle, radius 0)').toBeGreaterThan(30);
   for (const c of got) expect(c, `${what}: outside cell 2's rounded corner, inside its rectangle`).toBeLessThanOrEqual(limit);
@@ -124,7 +125,7 @@ test.describe('T07 layouts: preview and export pixels', () => {
     roundedCorner(a.data, a.w, a.h, doc, 'preview');
   });
 
-  test('export: every preset, cells filled, frames match the formula oracle (SSIM >= 0.98) and the preview on the same frames; the video cells decode through the export decoders', async ({ page }) => {
+  test('export: every preset, cells filled, export and preview match their D34 formula oracle (SSIM >= 0.98) on the same frames; the video cells decode through the export decoders', async ({ page }) => {
     const { id, doc } = await open(page, [...LAYOUT_TYPES]);
     const run = await runExport(page, id, {}), r = completed(run), plan = exportPlan(doc);
     expect(r.frames, 'frame count').toBe(plan.count);
@@ -135,14 +136,14 @@ test.describe('T07 layouts: preview and export pixels', () => {
     const frames = decodeRgba(run.file!, SIZE.width, SIZE.height); expect(frames.length).toBe(plan.count);
     const low: string[] = [], scores: string[] = [];
     for (const [k, t] of LAYOUT_TYPES.entries()) {
-      const n = k * 30 + 15, s = ssim(new Uint8Array(frames[n]), oracleFrame(doc, n), SIZE.width, SIZE.height);
+      const n = k * 30 + 15, s = ssim(new Uint8Array(frames[n]), oracleFrame(doc, n, SIZE.width, SIZE.height, {}, true), SIZE.width, SIZE.height);
       scores.push(`${t}:${s.toFixed(4)}`); if (s < 0.98) low.push(`${t}: ${s.toFixed(4)}`);
     }
     note('ssim export', scores.join(' ')); expect(low, 'presets below SSIM 0.98 in the export').toEqual([]);
-    // Preview = export on the same frames (three presets).
+    // D34: preview keeps its own domain; images and empty cells in the export take the output table only.
     for (const k of [0, 4, 5]) {
-      const got = await previewAt(page, k * SLOT + 500), s = ssim(got.data, new Uint8Array(frames[k * 30 + 15]), got.w, got.h);
-      expect(s, `preview vs export, ${LAYOUT_TYPES[k]}`).toBeGreaterThanOrEqual(0.98);
+      const got = await previewAt(page, k * SLOT + 500), s = ssim(got.data, oracleFrame(doc, k * 30 + 15, got.w, got.h), got.w, got.h);
+      expect(s, `preview vs its oracle, ${LAYOUT_TYPES[k]}`).toBeGreaterThanOrEqual(0.98);
     }
   });
 
@@ -152,13 +153,14 @@ test.describe('T07 layouts: preview and export pixels', () => {
     const run = await runExport(page, id, {}); completed(run);
     const frames = decodeRgba(run.file!, SIZE.width, SIZE.height); expect(frames.length).toBe(exportPlan(doc).count);
     for (const [k, t] of types.entries()) {
-      const n = k * 30 + 15; expect(ssim(new Uint8Array(frames[n]), oracleFrame(doc, n), SIZE.width, SIZE.height), `${t} export vs oracle`).toBeGreaterThanOrEqual(0.98);
+      const n = k * 30 + 15; expect(ssim(new Uint8Array(frames[n]), oracleFrame(doc, n, SIZE.width, SIZE.height, {}, true), SIZE.width, SIZE.height), `${t} export vs oracle`).toBeGreaterThanOrEqual(0.98);
       const got = await previewAt(page, k * SLOT + 500);
-      expect(ssim(got.data, new Uint8Array(frames[n]), got.w, got.h), `${t} preview vs export`).toBeGreaterThanOrEqual(0.98);
+      expect(ssim(got.data, oracleFrame(doc, n, got.w, got.h), got.w, got.h), `${t} preview vs its oracle`).toBeGreaterThanOrEqual(0.98);
     }
-    // Split horizontal, frame 15: the empty cell (left half) is about 15 / 255; the gap strip in the middle is empty canvas.
+    // D34: split horizontal's 6 % white empty cell takes the output table (15 → 5); the old bounds 10…22 go through it too (3…9).
     const f = frames[15], at = (x: number, y: number) => rgbAt(f, SIZE.width, Math.round(x * SIZE.width), Math.round(y * SIZE.height));
-    for (const c of at(0.25, 0.5)) expect(c, 'empty cell in the export').toBeGreaterThanOrEqual(10), expect(c).toBeLessThanOrEqual(22);
+    note('empty cell', `export (0.25, 0.5): ${at(0.25, 0.5).join(',')}`);
+    for (const c of at(0.25, 0.5)) expect(c, 'empty cell in the export').toBeGreaterThanOrEqual(outputCode(10)), expect(c).toBeLessThanOrEqual(outputCode(22));
     for (const c of at(0.5, 0.5)) expect(c, 'gap in the export').toBeLessThanOrEqual(4);
     roundedCorner(f, SIZE.width, SIZE.height, doc, 'export');
   });
@@ -169,15 +171,17 @@ test.describe('T07 layouts: preview and export pixels', () => {
     expect(doc.items[0].details.cells.map((c: any) => [c.playbackRate, c.fillMode])).toEqual([[2, 'fill'], [1, 'fit']]);
     const run = await runExport(page, id, {}); completed(run);
     const frames = decodeRgba(run.file!, SIZE.width, SIZE.height), fr = new Uint8Array(frames[15]);
-    // (a) preview = export on frame 15.
+    // (a) D34: the opaque still in the right cell takes output-only; video in the left cell round-trips.
     const got = await previewAt(page, 500);
-    expect(ssim(got.data, fr, got.w, got.h), 'preview vs export').toBeGreaterThanOrEqual(0.98);
+    const expected = transferBytes(got.data, 'output');
+    for (let y = 0; y < got.h; y++) expected.set(got.data.subarray(y * got.w * 4, (y * got.w + got.w / 2) * 4), y * got.w * 4);
+    expect(ssim(expected, fr, got.w, got.h), 'D34 preview-derived expectation vs export').toBeGreaterThanOrEqual(0.98);
     // (b) Speed applied. The oracle ignores the speed: the same document scored as is shows source time 0.5 s in cell 0, the export shows 1.0 s.
     const cell0 = (d: Uint8Array) => { const out = new Uint8Array(160 * 180 * 4); for (let y = 0; y < 180; y++) out.set(d.subarray(y * 320 * 4, y * 320 * 4 + 160 * 4), y * 160 * 4); return out; };
-    const ignoring = ssim(cell0(fr), cell0(oracleFrame(doc, 15, SIZE.width, SIZE.height, pick)), 160, 180);
+    const ignoring = ssim(cell0(fr), cell0(oracleFrame(doc, 15, SIZE.width, SIZE.height, pick, true)), 160, 180);
     // The oracle at rate 1 sampled at the matching source time: the layout stretched to 2 s, frame 30 = 1.0 s into the cell's source.
     const slow = JSON.parse(JSON.stringify(doc)); slow.items[0].display.to = 2000; slow.duration = 2000; slow.items[0].details.cells[0].playbackRate = 1;
-    const doubled = ssim(cell0(fr), cell0(oracleFrame(slow, 30, SIZE.width, SIZE.height, pick)), 160, 180);
+    const doubled = ssim(cell0(fr), cell0(oracleFrame(slow, 30, SIZE.width, SIZE.height, pick, true)), 160, 180);
     note('speed', `cell 0 region SSIM: vs oracle ignoring speed (source 0.5 s) ${ignoring.toFixed(4)}; vs oracle at source 1.0 s ${doubled.toFixed(4)}`);
     expect(doubled, 'cell 0 shows source time doubled').toBeGreaterThanOrEqual(0.98);
     expect(ignoring, 'cell 0 differs from the oracle that ignores speed').toBeLessThan(0.9);

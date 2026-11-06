@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Motion-graphic pictures for T15's render model. The paused preview, frame capture and the export draw the same graphic
-// frame (render/model.ts graphicDraw) rendered at the item box size (D25), so the preview shows the export's frame. The
+// frame (render/model.ts graphicDraw) rendered at the item box size (D25); export applies its own D35 colour decode. The
 // renderer (index.ts, which carries the sandbox bundle) loads on first use. While playing, a frame takes about 250 ms at
 // 1080 × 1920 (T08 notes), so the latest finished frame stays up and the next one is asked for where the clock will be when
 // it is done (provisional, not Xapp parity: Xapp's preview is a live DOM render).
@@ -34,14 +34,17 @@ async function assetMap(store: ProjectStore, code: string): Promise<Record<strin
   return out;
 }
 /** The frame of one motion-graphic draw as a bitmap of the item box size; throws the renderer's MotionGraphicError. The frame
- *  is already on the graphic clock, so no trim start is passed (T08a: a frame or a frame + trim, never both). */
-export async function renderGraphic(store: ProjectStore, d: Draw, frame = d.graphic!.frame): Promise<ImageBitmap> {
+ *  is already on the graphic clock, so no trim start is passed (T08a: a frame or a frame + trim, never both).
+ *  decode lets export table straight PNG bytes; omitting it keeps the shared preview/capture bitmap path. */
+export async function renderGraphic(store: ProjectStore, d: Draw, frame = d.graphic!.frame, decode?: (png: string) => Promise<ImageBitmap>): Promise<ImageBitmap> {
   const g = d.graphic!, r = await (renderer ??= import('./index').then(m => m.createMotionGraphicRenderer()));
   const result = await r.render({ code: g.code, frame, width: g.canvas.width, height: g.canvas.height, fps: g.fps, durationInFrames: g.durationInFrames,
     fieldValues: g.fieldValues, assetMap: await assetMap(store, g.code), itemSize: { width: d.box.W, height: d.box.H } },
     // One rule for the paused preview, playback, capture and the export: an id the code does not name as a literal is
     // looked up when the render asks for it (index.ts render).
     id => attachedUrl(store, id));
+  // Export can consume the straight PNG bytes; shared preview/capture keep their original bitmap decode.
+  if (decode) return decode(result.image);
   const image = new Image(); image.src = result.image; await image.decode();
   return createImageBitmap(image);
 }
@@ -77,9 +80,9 @@ const codeOf = (e: unknown) => { const code = (e as { code?: unknown })?.code; r
  *  failure is static, or MG_WATCHDOG on a preview frame (a runaway graphic holds the editor's thread for one budget, not two;
  *  capture asks again). If it fails again, nothing is drawn and the failure names the graphic, for the caller to report
  *  (capture: notRendered). */
-export async function graphicPicture(store: ProjectStore, d: Draw, purpose: 'preview' | 'capture' = 'preview'): Promise<Source> {
+export async function graphicPicture(store: ProjectStore, d: Draw, purpose: 'preview' | 'capture' = 'preview', decode?: (png: string) => Promise<ImageBitmap>): Promise<Source> {
   const from = epoch; let error: unknown;
-  try { const b = await renderWithRetry(() => renderGraphic(store, d), purpose); setError(d.item.id, null, from); return { image: b, width: b.width, height: b.height }; }
+  try { const b = await renderWithRetry(() => renderGraphic(store, d, d.graphic!.frame, decode), purpose); setError(d.item.id, null, from); return { image: b, width: b.width, height: b.height }; }
   catch (e) { error = e; }
   const code = codeOf(error), message = messageOf(error);
   setError(d.item.id, message, from);

@@ -53,7 +53,7 @@ async function renderRow(page: Page, doc: any, files: Record<string, string>, sa
   const range = opts.range as { startS: number; endS: number } | undefined, plan = exportPlan(project, range);
   const frames = decodeRgba(run.file!, w, h);
   expect(frames.length, 'frames in the file (§53.8.4)').toBe(plan.count);
-  const deps = oracleDeps(fixtureSource(dir)), idx = sample === 'all' ? [...frames.keys()] : sample;
+  const deps = oracleDeps(fixtureSource(dir), { exportColour: true }), idx = sample === 'all' ? [...frames.keys()] : sample;
   const scores = idx.map(k => {
     const exp = u8(quantise8(renderFrame(project, planTime(plan, plan.first + k), deps, { width: w, height: h })));
     return { k, exp, ssim: ssim(new Uint8Array(frames[k]), exp, w, h) };
@@ -225,7 +225,7 @@ test('A/V S1 (store, frame-number clip, 1080x1920): the exported frame k shows s
   const x = await renderRow(page, doc, { v: s1 }, [0, 29, 30, 89]);
   expect(x.r.frames).toBe(90); expectSsim(x);
   // A neighbouring source frame must match worse than frame k itself: the numbers prove the export is not off by one.
-  const deps = oracleDeps(fixtureSource(path.dirname(s1))), size = { width: x.w, height: x.h };
+  const deps = oracleDeps(fixtureSource(path.dirname(s1)), { exportColour: true }), size = { width: x.w, height: x.h };
   for (const k of [29, 30]) for (const n of [k - 1, k + 1]) {
     const other = ssim(new Uint8Array(x.frames[k]), u8(quantise8(renderFrame(x.project, planTime(x.plan, n), deps, size))), x.w, x.h), own = x.scores.find(s => s.k === k)!.ssim;
     test.info().annotations.push({ type: 'S1 frame identity', description: `export frame ${k}: own ${own.toFixed(4)}, oracle frame ${n} ${other.toFixed(4)}` });
