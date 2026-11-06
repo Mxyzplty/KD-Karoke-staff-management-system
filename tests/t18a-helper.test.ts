@@ -3,9 +3,10 @@
 // Every test starts its own helper on a free port with its own temporary config directory.
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { randomInt } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { request } from 'node:http';
-import { connect, createServer as createNetServer } from 'node:net';
+import { connect } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,7 +59,28 @@ function wsStatus(url: string, opts: ConstructorParameters<typeof WebSocket>[2] 
     ws.on('error', e => { if (!/Unexpected server response/.test(e.message)) reject(e); });
   });
 }
-const freePort = () => new Promise<number>(resolve => { const s = createNetServer(); s.listen(0, '127.0.0.1', () => { const p = (s.address() as { port: number }).port; s.close(() => resolve(p)); }); });
+/** A helper that touches no real port: its server's listen() refuses with `codes` in order, then succeeds on the port it was given. */
+function refusing(codes: string[], options: ConstructorParameters<typeof Helper>[0]) {
+  const helper = new Helper({ configDir: tmp(), log: () => {}, ...options }), server = helper['http'], tried: number[] = [];
+  server.listen = ((port: number) => {
+    tried.push(port);
+    const code = codes[tried.length - 1];
+    queueMicrotask(() => code ? server.emit('error', Object.assign(new Error(`listen ${code}`), { code })) : server.emit('listening'));
+    return server;
+  }) as typeof server.listen;
+  server.address = () => ({ address: '127.0.0.1', family: 'IPv4', port: tried.at(-1)! });
+  cleanups.push(() => helper.close());
+  return { helper, tried };
+}
+/** A helper with `port + 1` seen free, both below every default dynamic range (49152+ on Windows and macOS, 32768+ on Linux): no bind(0) or
+ *  outbound connection gets a port there, so nothing takes `port + 1` before the test binds it (D34: in the dynamic range another process
+ *  took it about 1 run in 15). */
+async function startLow() {
+  let held: Awaited<ReturnType<typeof start>>;
+  do held = await start({ port: 20_000 + randomInt(10_000), range: 100 });
+  while (!await startHelper({ port: held.helper.port + 1, range: 1, configDir: tmp(), log: () => {} }).then(next => next.close().then(() => true), () => false));
+  return held;
+}
 
 describe('t18a helper process (row 1)', () => {
   it('row 1: /hello answers {app, version, pairing} with the package version; pairing follows the code', async () => {
@@ -83,11 +105,29 @@ describe('t18a helper process (row 1)', () => {
   });
 
   it('row 1: with the first port taken the next one in the range is used', async () => {
-    const a = await start();
+    const a = await startLow();
     const b = await start({ port: a.helper.port, range: 2 });
     expect(b.helper.port).toBe(a.helper.port + 1);
     expect(JSON.parse((await http(a.helper.port, { path: '/hello' })).body).app).toBe('cutframe-helper');
     expect(JSON.parse((await http(b.helper.port, { path: '/hello' })).body).app).toBe('cutframe-helper');
+  });
+
+  it('row 1: a port refused with EACCES does not stop the walk any more than one with EADDRINUSE: exactly the next free port is used', async () => {
+    const { helper, tried } = refusing(['EACCES', 'EADDRINUSE'], { port: 47820 });
+    expect(await helper.listen()).toBe(47822);
+    expect(tried).toEqual([47820, 47821, 47822]);
+  });
+
+  it('row 1: any other listen error stops the walk and is thrown', async () => {
+    const { helper, tried } = refusing(['EADDRNOTAVAIL'], { port: 47820 });
+    await expect(helper.listen()).rejects.toMatchObject({ code: 'EADDRNOTAVAIL' });
+    expect(tried).toEqual([47820]);
+  });
+
+  it('row 1: every port in the range refused, with either code → PORTS_BUSY', async () => {
+    const { helper, tried } = refusing(['EACCES', 'EADDRINUSE'], { port: 47820, range: 2 });
+    await expect(helper.listen()).rejects.toMatchObject({ code: 'PORTS_BUSY' });
+    expect(tried).toEqual([47820, 47821]);
   });
 
   it('row 1: every port in the range busy → PORTS_BUSY with the fixed sentence', async () => {
@@ -241,13 +281,10 @@ describe('t18a CLI process (row 1)', () => {
   }, 40_000);
 
   it('row 1: the second terminal-mode helper moves to the next port instead of failing', async () => {
-    const port = await freePort();
-    const first = run(['--port', String(port), '--config-dir', tmp()]);
-    await first.waitFor(/listening on/);
+    const { port } = (await startLow()).helper;
     const second = run(['--port', String(port), '--config-dir', tmp()]);
     expect(await second.waitFor(/listening on/)).toBe(`Cutframe helper ${VERSION} listening on http://127.0.0.1:${port + 1}`);
-    first.proc.stdin!.write('quit\n'); second.proc.stdin!.write('quit\n');
-    expect(await first.exited).toBe(0);
+    second.proc.stdin!.write('quit\n');
     expect(await second.exited).toBe(0);
   }, 60_000);
 });

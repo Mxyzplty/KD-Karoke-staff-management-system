@@ -34,7 +34,7 @@ class RawTab {
   closed: Promise<{ code: number; reason: string }>;
   private wake?: () => void;
   private constructor(readonly ws: WebSocket) {
-    ws.on('message', (d, binary) => { this.inbox.push(binary ? { binary: true } : JSON.parse(String(d))); this.wake?.(); });
+    ws.on('message', (d, binary) => { this.inbox.push(binary ? { binary: true } : JSON.parse(String(d))); this.wake?.(); this.wake = undefined; });
     this.closed = new Promise(resolve => ws.on('close', (code, reason) => resolve({ code, reason: reason.toString() })));
     ws.on('error', () => {});
   }
@@ -46,13 +46,17 @@ class RawTab {
     return tab;
   }
   send(m: unknown) { this.ws.send(typeof m === 'string' || Buffer.isBuffer(m) ? m : JSON.stringify(m)); }
-  /** The next message, in arrival order; fails when it is not of `type`. */
-  async next(type?: string, ms = 2000): Promise<any> {
-    const end = Date.now() + ms;
-    while (!this.inbox.length) {
-      if (Date.now() > end) throw new Error(`no ${type ?? 'message'} within ${ms} ms`);
-      await new Promise<void>(resolve => { this.wake = resolve; setTimeout(resolve, 20); });
+  /** The next message, in arrival order; fails when it is not of `type`. D34: pure event-driven (ws 'message' wakes us), and the wait
+   *  only has to outlast TokenStore's first write: Contract A has no cap, the helper runs in this process, and under load whoami + 2×icacls
+   *  blocked the event loop for 9.8 s (13.2 s with the write before), so the timer fired ahead of the reply. 25 s stays inside vitest's 30 s. */
+  async next(type?: string, ms = 25_000): Promise<any> {
+    if (!this.inbox.length) {
+      await new Promise<void>(resolve => {
+        const timer = setTimeout(() => { this.wake = undefined; resolve(); }, ms);
+        this.wake = () => { clearTimeout(timer); resolve(); };
+      });
     }
+    if (!this.inbox.length) throw new Error(`no ${type ?? 'message'} within ${ms} ms`);
     const m = this.inbox.shift();
     if (type) expect(m.type, JSON.stringify(m)).toBe(type);
     return m;
@@ -430,7 +434,7 @@ describe('t18a pairing (row 2)', () => {
   });
 
   it('row 2: a deleted token file revokes too, noticed by the helper itself within one tick (no ping from the tab)', async () => {
-    const { helper } = await start({ pingMs: 20, stallMs: 5000 });
+    const { helper } = await start({ pingMs: 20 });
     const tab = await RawTab.open(helper.port);
     await pair(helper, tab);
     rmSync(helper.store.file);

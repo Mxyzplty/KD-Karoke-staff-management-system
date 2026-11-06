@@ -13,6 +13,7 @@ import { LINK_ERRORS, PING_MS, STALL_MS } from '../../apps/web/src/agent/protoco
 import { createProject, guard, richDoc, skipTour } from './t02-support';
 
 test.use({ viewport: { width: 1400, height: 900 } });
+test.setTimeout(60_000); // D34: runFor pays one real macrotask per fake timer, so row 4's 120 s of fake time took up to 27.7 s of the default 30 s under load
 
 const NO_HELPER = 'No helper answered on 127.0.0.1:47820–47829. Run npx cutframe-connect in a terminal, then press Connect tab.';
 const LINK_KEY = 'cutframe:agent-link:v1';
@@ -407,7 +408,11 @@ test.describe('Chromium and the link (row 4)', () => {
   test('row 4: a helper that goes silent for more than 60 s (STALL_MS) is dropped and redialled; one that answers pings is kept', async ({ page }) => {
     expect(STALL_MS).toBe(60_000);
     const fake = await fakeHelper({ answerPings: false });
+    // D34: install keeps real wall time flowing through the fake clock; pauseAt freezes it so the 250 ms reconnect does not
+    // slip past the 'connecting' assertion. pauseAt only goes forward and real time may have moved the clock on by the time it
+    // lands, so it takes a time an hour later, out of real time's reach; no page timers exist yet for the jump to fire.
     await page.clock.install({ time: new Date('2026-11-01T10:00:00Z') });
+    await page.clock.pauseAt(new Date('2026-11-01T11:00:00Z'));
     await recordSockets(page);
     await seedLink(page, fake.port, true);
     await openProject(page);

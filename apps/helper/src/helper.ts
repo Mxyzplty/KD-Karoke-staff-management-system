@@ -109,7 +109,7 @@ export class Helper implements Link {
         this.port = (this.http.address() as AddressInfo).port;
         this.ticker = setInterval(() => this.tick(), this.options.pingMs ?? PING_MS);
         return this.port;
-      } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw e; }
+      } catch (e) { const code = (e as NodeJS.ErrnoException).code; if (code !== 'EADDRINUSE' && code !== 'EACCES') throw e; } // EACCES: a Windows exclusion, or a socket held exclusively
     }
     throw Object.assign(new Error(`Ports ${first}–${first + count - 1} on 127.0.0.1 are all in use. Stop the other program or pass --port <n>.`), { code: 'PORTS_BUSY' });
   }
