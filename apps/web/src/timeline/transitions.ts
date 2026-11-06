@@ -6,7 +6,7 @@
 // Provisional, not Xapp parity (T11 notes): the tie rule of atSeconds, the wordings marked "own", a record whose clips no
 // longer meet is kept and not drawn (Xapp's repair only covers length), the agent `update` label "Edit transition".
 import type { ProjectDocument, RecordData } from '../store/model';
-import { fail, item, itemsOn, span, track, trackLocked } from './model';
+import { fail, item, itemsOn, span, trackLocked } from './model';
 import type { ToolContext, ToolResult } from './tools';
 
 export const KINDS = ['fade', 'dissolve', 'additiveDissolve', 'dipToColorDissolve', 'slide', 'wipe'] as const;
@@ -215,7 +215,7 @@ export function applyTransition(ctx: ToolContext, args: RecordData): ToolResult 
 export function addAtCut(doc: ProjectDocument, fromId: string, toId: string): RecordData {
   const from = item(doc, fromId), to = item(doc, toId);
   if (!from || !to || !meets(from, to)) fail('CUT_NOT_FOUND', 'Cut not resolved', { message: 'These clips no longer meet at a cut.' }); // own wording
-  if (track(doc, from.trackId)?.locked) fail('TRACK_LOCKED', `Track ${from.trackId} is locked`);
+  if (trackLocked(doc, from.trackId)) fail('TRACK_LOCKED', `Track ${from.trackId} is locked`);
   if (transitionAt(doc, fromId, toId)) fail('INVALID_PAIR', 'Transition rejected', { message: 'This cut already has a transition.' }); // own wording; the UI hides the diamond
   const record = resolved(doc, from, to, null, { kind: DEFAULT_KIND, durationMs: DEFAULT_MS, alignment: 0.5 }, newTransitionId());
   write(doc, record);

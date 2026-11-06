@@ -18,6 +18,7 @@
 //   INVALID_TOOL_INPUT (helper schema)             → 'applyTransition helper schema' block (validate(), whole body)
 //   TRACK_LOCKED "Track L1 is locked"              → 'addTransition refusals' (intent addAtCut)
 //   TRACK_LOCKED "Track L1 is locked"              → D32 Q17 agent lock refusals (add, replace, update, remove, absent cut record)
+//   TRACK_LOCKED "Track L1 is locked"              → D34 UI group lock (intent addAtCut, lock only on an enclosing group)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validate } from '../apps/helper/src/schemas';
 import { Executor } from '../apps/web/src/agent/executor';
@@ -80,6 +81,15 @@ describe('D32 Q17 applyTransition locked resolved tracks', () => {
     doc.layerOrder = [{ type: 'group', id: 'outer' }];
     const e = editor(doc), before = structuredClone(e.doc), bytes = json(e.doc), rev = e.doc.rev;
     expect(ap(e, { action: 'add', betweenItems: ['l1', 'l2'] })).toStrictEqual({ success: false, error: 'Track L1 is locked', code: 'TRACK_LOCKED' });
+    expect(e.doc).toStrictEqual(before); expect(json(e.doc)).toBe(bytes); expect(e.doc.rev).toBe(rev); untouched(e, bytes);
+  });
+  it('D34: addAtCut (UI intent) refuses a track locked only through an enclosing group', () => {
+    const doc = base();
+    doc.tracks.find(t => t.id === 'L1')!.locked = false;
+    doc.groups = { outer: { id: 'outer', name: 'Outer', locked: true, hidden: false, children: [{ type: 'group', id: 'inner' }] }, inner: { id: 'inner', name: 'Inner', locked: false, hidden: false, children: [{ type: 'track', id: 'L1' }] } };
+    doc.layerOrder = [{ type: 'group', id: 'outer' }];
+    const e = editor(doc), before = structuredClone(e.doc), bytes = json(e.doc), rev = e.doc.rev;
+    expect(e.intent({ type: 'addTransition', fromId: 'l1', toId: 'l2' })).toStrictEqual({ ok: false, code: 'TRACK_LOCKED', message: 'Track L1 is locked' });
     expect(e.doc).toStrictEqual(before); expect(json(e.doc)).toBe(bytes); expect(e.doc.rev).toBe(rev); untouched(e, bytes);
   });
 });
