@@ -5,14 +5,15 @@ import { useEffect, useState } from 'react';
 import { projectStore } from '../store/database';
 import type { Asset } from '../store/model';
 import { cancelPreparation, prepareAsset, preparingHere } from '../media/prepare';
+import { cancelMaskJob, dismissMaskJob, useMaskJobs } from '../masks/jobs';
+import type { MaskJob } from '../masks/jobs';
 import { Dialog, reportError } from '../ui';
 import { SHORTCUTS } from './keymap';
 import { setView, useView } from './view';
 
-/** A background job. Media preparation (T14) is the job kind that exists today; later kinds (smart masks, background
- *  removal: T12) add their own rows and actions. A running preparation that this tab runs can be cancelled (T14's
+/** A background job: media preparation (T14), smart masks and background removal (T12, `maskRows`). A running preparation that this tab runs can be cancelled (T14's
  *  CLIENT_PREPARATION_CANCELLED path: no retry budget used, not resumed automatically); one running in another tab cannot. */
-export type Job = { id: string; label: string; state: 'running' | 'failed' | 'cancelled' | 'done'; progress: number | null; detail?: string; retry?: () => Promise<unknown>; cancel?: () => void };
+export type Job = { id: string; label: string; state: 'waiting' | 'running' | 'failed' | 'cancelled' | 'done'; progress: number | null; detail?: string; retry?: () => Promise<unknown>; cancel?: () => void; dismiss?: () => void };
 /** T19's steps follow T14's (part 3 §44.5 names; a failed T19 step does not stop the job, so it counts as done). */
 const STEPS = ['upload', 'probe', 'thumbnails', 'waveform', 'proxy'], T19_STEPS = ['analysis', 'transcription', 'embeddings_description', 'embeddings_transcript'];
 export function preparationJobs(assets: Asset[], here: (id: string) => boolean = preparingHere): Job[] {
@@ -26,10 +27,15 @@ export function preparationJobs(assets: Asset[], here: (id: string) => boolean =
       cancel: a.processing_status === 'processing' && here(a.id) ? () => { cancelPreparation(a.id); } : undefined };
   });
 }
+/** T12's jobs: waiting, processing n %, done, failed; a job can be cancelled until it ends. */
+export const maskRows = (jobs: MaskJob[]): Job[] => jobs.map(j => {
+  const live = j.state === 'waiting' || j.state === 'processing';
+  return { id: j.id, label: j.label, state: j.state === 'processing' ? 'running' : j.state, progress: j.state === 'processing' ? j.percent / 100 : null, detail: j.state === 'processing' ? `Processing mask ${j.percent} %` : j.detail, cancel: live ? () => cancelMaskJob(j.id) : undefined, dismiss: live ? undefined : () => dismissMaskJob(j.id) };
+});
 /** Background Jobs (preview corner): count badge (running / failed), collapsible list, Retry / Cancel / Dismiss. */
 export function JobsPanel({ assets, refresh }: { assets: Asset[]; refresh: () => void }) {
   const [open, setOpen] = useState(false), [dismissed, setDismissed] = useState<string[]>([]);
-  const jobs = preparationJobs(assets).filter(j => !dismissed.includes(`${j.id}:${j.state}`)), failed = jobs.some(j => j.state === 'failed');
+  const masks = useMaskJobs(s => s.jobs), jobs = [...preparationJobs(assets), ...maskRows(masks)].filter(j => !dismissed.includes(`${j.id}:${j.state}`)), failed = jobs.some(j => j.state === 'failed');
   return <section className="jobs" aria-label="Background Jobs">
     <button className="jobs-header" aria-expanded={open} onClick={() => setOpen(!open)}>Background Jobs <span className={`count ${failed ? 'failed' : jobs.length ? 'running' : ''}`} aria-label={`${jobs.length} jobs${failed ? ', some failed' : ''}`}>{jobs.length}</span></button>
     {open && (jobs.length ? <ul aria-label="Jobs">{jobs.map(j => <li key={j.id} data-state={j.state}>
@@ -37,7 +43,7 @@ export function JobsPanel({ assets, refresh }: { assets: Asset[]; refresh: () =>
       {j.progress !== null && <progress max={1} value={j.progress} aria-label={`${j.label} progress`} />}
       {j.retry && <button onClick={() => void j.retry!().catch(reportError).finally(refresh)}>Retry</button>}
       {j.cancel && <button onClick={() => { j.cancel!(); setTimeout(refresh, 200); }}>Cancel</button>}
-      {j.state !== 'running' && <button onClick={() => setDismissed(d => [...d, `${j.id}:${j.state}`])}>Dismiss</button>}
+      {j.state !== 'running' && j.state !== 'waiting' && <button onClick={() => j.dismiss ? j.dismiss() : setDismissed(d => [...d, `${j.id}:${j.state}`])}>Dismiss</button>}
     </li>)}</ul> : <p>No active jobs</p>)}
   </section>;
 }

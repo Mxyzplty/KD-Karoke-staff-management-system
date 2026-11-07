@@ -20,19 +20,23 @@ export const RECONNECT_STABLE_MS = 5000;
 /** WebSocket close codes the helper uses (4000–4999 are application codes). */
 export const CLOSE = { superseded: 4409, unauthorized: 4401, replaced: 4410, protocol: 4400, shutdown: 4503 } as const;
 
-/** The 30 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
+/** The 38 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
  *  (addMotionGraphic, editMotionGraphic), T19's syncAndSwap and viewItemDetails (transcript, keyframes, beats), T10's
  *  writeEffects, T06's addShape and writeShapePoints, T07's addLayout and editLayout, T11's applyTransition, T05's addText,
- *  and `context` (layout L). Every other T18 name stays unserved (searchProjectAssets / searchUserLibrary too: Q6; `fonts`
- *  too: T05 ruling Q2). */
-export const SERVED_TOOLS = ['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'deleteItems', 'editLayout', 'editMotionGraphic', 'editProperties', 'manageMarkers', 'manageTrack',
-  'manageTrackGroup', 'moveItem', 'reorderItems', 'resizeCanvas', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails',
-  'writeEffects', 'writeKeyframes', 'writeShapePoints'] as const;
+ *  T12's createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask and
+ *  removeBackground, and `context` (layout L). Every other T18 name stays unserved (searchProjectAssets / searchUserLibrary
+ *  too: Q6; `fonts` too: T05 ruling Q2). */
+export const SERVED_TOOLS = ['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'createMask', 'deleteItems', 'editLayout', 'editMaskProperties', 'editMotionGraphic', 'editProperties', 'manageMarkers', 'manageTrack',
+  'manageTrackGroup', 'moveItem', 'removeMask', 'reorderItems', 'resizeCanvas', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails',
+  'writeEffects', 'writeKeyframes', 'writeMaskPoints', 'writeShapePoints', 'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground'] as const;
+/** Calls that wait for a mask job: they have no client time-out shorter than the job (T12) and do not hold up other mutating calls;
+ *  the job queue runs them one at a time. */
+export const LONG_TOOLS = new Set(['trackSmartMask', 'removeBackground']);
 /** The 15 easing preset names (timeline/properties `EASINGS`; the helper's schemas cannot import that module). */
 export const EASING_NAMES = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'easeInQuad', 'easeOutQuad', 'easeInOutQuad', 'easeInCubic', 'easeOutCubic', 'easeInOutCubic',
   'easeInBack', 'easeOutBack', 'easeInOutBack', 'easeOutElastic', 'easeOutBounce'] as const;
 /** Read-only set: skips the execution ledger and `timelineChanges` (agent tool results A0.2 item 1). */
-export const READ_ONLY = new Set(['viewItemDetails', 'context', 'fonts', 'listEffects', 'getEffectDetails', 'captureFrame', 'viewMaskFrame', 'listAllowedDir',
+export const READ_ONLY = new Set(['viewItemDetails', 'context', 'fonts', 'listEffects', 'getEffectDetails', 'captureFrame', 'viewMaskFrame', 'previewSmartMask', 'listAllowedDir',
   'listCaptionTemplates', 'getMotionGraphicCode', 'searchStockMedia']);
 /** Timeline-scope stale-read gate (agent tool results A0.2 item 3): always checked for these tools. */
 export const TIMELINE_GATED = new Set(['addMedia', 'addText', 'addShape', 'addCaptions', 'addMotionGraphic', 'addLayout', 'changeTrack', 'cloneItem', 'consolidateTracks',

@@ -2,11 +2,13 @@
 // Applies routed keyboard actions (keymap.route) and the toolbar actions they share. View actions change view state only;
 // edits go to their owner through the intent seam.
 import type { ProjectDocument } from '../store/model';
+import { activeRuntime } from '../timeline/runtime';
 import { notify } from '../ui';
 import { dispatch } from './commands';
 import { frameAt, stepFrame, zoomAround } from './geometry';
 import { focusZone, route } from './keymap';
 import type { Action, FocusTarget, Zone } from './keymap';
+import { enterMaskEdit } from './mask-state';
 import { setUi, setView, view } from './view';
 
 export function splitSelection() { const s = view(); if (s.selection.length) dispatch({ type: 'splitItems', itemIds: s.selection, atMs: s.playheadMs }); }
@@ -40,6 +42,10 @@ export function perform(action: Action, doc: ProjectDocument) {
     case 'deleteMarker': if (s.markerId) dispatch({ type: 'removeMarker', markerId: s.markerId }); break;
     case 'deleteItems': deleteSelection(); break;
     case 'addMarker': dispatch({ type: 'addMarker', timeMs: frameAt(s.playheadMs, doc.fps) }); break;
+    case 'enterMask':
+      enterMaskEdit(doc, s.selection[0]);
+      if (action.marker) dispatch({ type: 'addMarker', timeMs: frameAt(s.playheadMs, doc.fps) });
+      break;
     case 'clearMarkers': clearMarkers(doc); break;
     case 'swallow': break;
   }
@@ -55,9 +61,11 @@ export const zoneOf = (target: EventTarget | null): Zone => focusZone(describeTa
 /** One key press through one handler: the window ('global') or the timeline root ('timeline'). */
 export function handleKey(e: KeyboardEvent, handler: 'global' | 'timeline', doc: ProjectDocument): boolean {
   if (e.defaultPrevented || e.isComposing) return false;
-  const s = view(), action = route({ key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey }, {
+  const s = view(), selected = s.selection.length === 1 ? doc.items.find(i => i.id === s.selection[0]) : undefined;
+  const action = route({ key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey }, {
     zone: zoneOf(e.target), handler, modes: { ...s.modes, groupSelection: !!s.groupSelection }, selectedItems: s.selection.length,
     markerSelected: !!s.markerId, keyframeSelected: s.keyframeSelected, ripple: s.toolMode === 'ripple',
+    maskTarget: selected?.type === 'video' || selected?.type === 'image', maskMarker: activeRuntime?.bus.options.maskMarker === 'both',
   });
   if (!action) return false;
   e.preventDefault(); perform(action, doc); return true;

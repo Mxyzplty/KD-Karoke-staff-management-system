@@ -13,6 +13,7 @@ import { resolveSource } from '../media/resolver';
 import { composite } from '../render/compositor';
 import type { Source } from '../render/compositor';
 import { encodedTime, framePlan, isStackedAlpha, planTime } from '../render/model';
+import { readyMasks } from '../masks/render';
 import type { Draw, Pending, Size } from '../render/model';
 import { picture } from '../render/sources';
 import { graphicPicture } from '../mg/frames';
@@ -210,6 +211,8 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
       try {
         const sources = await settledSources(draws.map(d => drawSource(o.store, d, item => refOf(item, item === d.item ? drawKey(d, draws) : undefined), decoders, current, assets.get(String(d.item.metadata?.assetId)), owned)));
         lap('sourcesMs');
+        // T12 (part 5 §54.10): the export waits for a smart mask's frame and fails rather than write the item unmasked.
+        try { await readyMasks(draws); } catch (e) { throw new ExportError('WORKSPACE_FILE_MISSING', `Smart mask frame unavailable: ${(e as Error).message}`); }
         // An effect failure fails the export rather than writing a file without the item (§12).
         const failed = composite(ctx, draws, sources, size, 'black');
         if (failed.length) throw new ExportError(failed[0].code ?? 'CLIENT_BUG', `${failed[0].message ?? failed[0].what} (item ${failed[0].itemId})`);

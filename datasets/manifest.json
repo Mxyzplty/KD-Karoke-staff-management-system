@@ -894,6 +894,122 @@
           "sha256": "3e08bc0234213429b8f4add4f7fd90873e2a50b4ae7af38d911041ca70c6d318"
         }
       ]
+    },
+    {
+      "id": "T12-composites",
+      "store": "$CUTFRAME_FIXTURES",
+      "name": "Tears of Steel actors with production alpha over people-free plates of clip 2 (BG-P01, BG-P03), exact alpha beside each file",
+      "url": "https://ftp.lysator.liu.se/pub/xiph/media/tearsofsteel/tearsofsteel-cleaned-exr",
+      "source": "fixtures/make-t12-composites.py",
+      "licence": "CC-BY-3.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "attribution": "(CC) Blender Foundation | mango.blender.org",
+      "use": "T12 matte oracle: BG-P01 and the D26 default of BG-P03 (tests/ui/t12-oracle.spec.ts); never shipped",
+      "files": [
+        {
+          "path": "datasets/t12/composites/bg-p01-arms-alpha.bin.gz",
+          "bytes": 587330,
+          "sha256": "516ba2b7eb9e678b32b4a41978b5031ff1cb8f63fb72665e0c8d60d2e394526f"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-arms.mp4",
+          "bytes": 1464390,
+          "sha256": "fb4021d83325afed5df9daef854d99526ce7dc21b86fc5cdbc1a2f7298c96a0c"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-crouching-alpha.bin.gz",
+          "bytes": 588829,
+          "sha256": "e14d43d024f5212c0b3fd423b55afd7517cf051f9b1ba190b18b522b3c8257a9"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-crouching.mp4",
+          "bytes": 1098510,
+          "sha256": "686ffd65d81e429adf55825159578049651e17cb78f7bf29efeedf9bbd592baa"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-group-alpha.bin.gz",
+          "bytes": 1092687,
+          "sha256": "9ea147239f8e891ab4b69d375d9f5df21f5bdd279c9f4f302ed0bcd9183b4390"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-group.mp4",
+          "bytes": 1123059,
+          "sha256": "d0bf197886a575c500e9eb32f79719aaffa0a247937d6e1131c1fa085fabae24"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-half-alpha.bin.gz",
+          "bytes": 757050,
+          "sha256": "2c1c1dcf96aa80c1feac78f80641a88d0ac49c1d4c4f42b49411b8d2e157e354"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-half.mp4",
+          "bytes": 1656597,
+          "sha256": "582820ca85d674e11aec3991d008c8f48169424b736ad169af6c92e294693af5"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-standing-alpha.bin.gz",
+          "bytes": 484217,
+          "sha256": "e44464e42b86fe441ab46bd24954118652838ffec56263b2b6c5b8ecfa5aab5a"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p01-standing.mp4",
+          "bytes": 1059807,
+          "sha256": "65f3b4bf102ab6f3cf25ee3a530971776d8b5978f5d0d73537e84d9b40b4aee2"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p03-balusters-alpha.bin.gz",
+          "bytes": 524309,
+          "sha256": "ec76fd72ecfd5492ce32b7ffcdc9df6a3a240e86f2da58bb6aad551394db9931"
+        },
+        {
+          "path": "datasets/t12/composites/bg-p03-balusters.mp4",
+          "bytes": 871252,
+          "sha256": "eebd694d2642bc8b232ce4011fd9912e3951d5e5ee97298b76796b4de8554dc3"
+        }
+      ]
+    },
+    {
+      "id": "T12-labels",
+      "store": "$CUTFRAME_FIXTURES",
+      "name": "Hand outlines with GrabCut edges on six frames of clip 2 (SM-P02, SM-P03)",
+      "url": "https://mango.blender.org/",
+      "source": "fixtures/make-t12-labels.py",
+      "licence": "CC-BY-3.0",
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "attribution": "(CC) Blender Foundation | mango.blender.org",
+      "use": "T12 smart-mask oracle (tests/ui/t12-oracle.spec.ts); never shipped",
+      "files": [
+        {
+          "path": "datasets/t12/labels/c2-f12.png",
+          "bytes": 4083,
+          "sha256": "21b55ab660dcdb10a2ec26fd177fd8a968b78a7a5baeecb682dd65977c79475b"
+        },
+        {
+          "path": "datasets/t12/labels/c2-f36.png",
+          "bytes": 4082,
+          "sha256": "cbe9829600c54c7de559879a483f7c1e0f602fb393ce06e1c45e8d882bc69158"
+        },
+        {
+          "path": "datasets/t12/labels/c2-f48.png",
+          "bytes": 4064,
+          "sha256": "42eafb1c724a4029160f5444da382c26f6226c91e1356c9c63bfa44e80728cbe"
+        },
+        {
+          "path": "datasets/t12/labels/c2-f62.png",
+          "bytes": 3113,
+          "sha256": "661f83541eca9e4cf57ccad7bf1ae0d24e9594710e94409e1476844f46d0b787"
+        },
+        {
+          "path": "datasets/t12/labels/c2-f648.png",
+          "bytes": 4249,
+          "sha256": "597253ff971c934d38a644ddadbfdfa64a03858437dd56d3610da0c4d884e985"
+        },
+        {
+          "path": "datasets/t12/labels/c2-f672.png",
+          "bytes": 4201,
+          "sha256": "52fa502366c5449a8652f8e90e88968b082c405cf1d324985391ba1b460ded5c"
+        }
+      ]
     }
   ],
   "models": [
@@ -1631,6 +1747,99 @@
           "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/tokenizer/vocab.json",
           "bytes": 2776833,
           "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      ]
+    },
+    {
+      "id": "T12-sam2-tiny",
+      "name": "diffusionstudio/sam2.1-tiny-video-onnx-fp16",
+      "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16",
+      "revision": "66673b5db39371b7dd7847f4d3bc0d4f4179b79e",
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/blob/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/README.md",
+      "use": "T12 smart-mask preview and tracking: SAM 2.1 Hiera-Tiny video graphs (512 input, fp16), exported from facebook/sam2.1-hiera-tiny (Apache-2.0)",
+      "files": [
+        {
+          "path": "models/t12/diffusionstudio/sam2.1-tiny-video-onnx-fp16/constants.json",
+          "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/raw/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/constants.json",
+          "bytes": 9781,
+          "sha256": "67583810f4b80b762285377a5cc1066bbe19cdf8ef7fc87ff6aa78fc79830ef2"
+        },
+        {
+          "path": "models/t12/diffusionstudio/sam2.1-tiny-video-onnx-fp16/onnx/mask_decoder.onnx",
+          "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/mask_decoder.onnx",
+          "bytes": 8898805,
+          "sha256": "6bc158b0d028777ca2e25203ece0f27429c436de39a5c7fe301b3858d6059789"
+        },
+        {
+          "path": "models/t12/diffusionstudio/sam2.1-tiny-video-onnx-fp16/onnx/memory_attention.onnx",
+          "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/memory_attention.onnx",
+          "bytes": 13029470,
+          "sha256": "67c4e4da01bc7f501b88294bb19a8200362915ece04e9d7e367a437658f342c9"
+        },
+        {
+          "path": "models/t12/diffusionstudio/sam2.1-tiny-video-onnx-fp16/onnx/memory_encoder.onnx",
+          "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/memory_encoder.onnx",
+          "bytes": 2807753,
+          "sha256": "8b2bb6810444cee684ef938b7464c5645653f236014f5497c3db3654818cc7ce"
+        },
+        {
+          "path": "models/t12/diffusionstudio/sam2.1-tiny-video-onnx-fp16/onnx/pointer_tpos.onnx",
+          "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/pointer_tpos.onnx",
+          "bytes": 34228,
+          "sha256": "3ab5bfce40ed01208301b2d8f596b9c9f7f493dcd7e09ef01ec22e5be3694bd7"
+        },
+        {
+          "path": "models/t12/diffusionstudio/sam2.1-tiny-video-onnx-fp16/onnx/vision_encoder.onnx",
+          "url": "https://huggingface.co/diffusionstudio/sam2.1-tiny-video-onnx-fp16/resolve/66673b5db39371b7dd7847f4d3bc0d4f4179b79e/onnx/vision_encoder.onnx",
+          "bytes": 58385353,
+          "sha256": "24e9ccf5994be5c8dd93ebe771a4cc4f8bb122d0524555ac3ba4e7141710b133"
+        }
+      ]
+    },
+    {
+      "id": "T12-rfdetr-seg-nano",
+      "name": "10sai-studio/rf-detr-seg-nano-onnx",
+      "url": "https://huggingface.co/10sai-studio/rf-detr-seg-nano-onnx",
+      "revision": "c1519ade55213bfb35c8d3bf265430d247e0e341",
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://huggingface.co/10sai-studio/rf-detr-seg-nano-onnx/blob/c1519ade55213bfb35c8d3bf265430d247e0e341/README.md",
+      "use": "T12 background removal: person instance masks as the seed (a person wins over the most salient object, BG-P03); unchanged export of Roboflow's RF-DETR-Seg Nano (Apache-2.0, https://github.com/roboflow/rf-detr)",
+      "files": [
+        {
+          "path": "models/t12/10sai-studio/rf-detr-seg-nano-onnx/rfdetr-seg-nano.onnx",
+          "url": "https://huggingface.co/10sai-studio/rf-detr-seg-nano-onnx/resolve/c1519ade55213bfb35c8d3bf265430d247e0e341/rfdetr-seg-nano.onnx",
+          "bytes": 136814436,
+          "sha256": "e45a68b8d656a878b0f69eb57588c2e93d50cf7c965eba9ad49103ccb33b7466"
+        }
+      ]
+    },
+    {
+      "id": "T12-isnet",
+      "name": "onnx-community/ISNet-ONNX",
+      "url": "https://huggingface.co/onnx-community/ISNet-ONNX",
+      "revision": "3fe6e3db3e32c69aadde61fe388ddb1a0574440c",
+      "licence": "AGPL-3.0",
+      "licenceUrl": "https://huggingface.co/onnx-community/ISNet-ONNX/blob/3fe6e3db3e32c69aadde61fe388ddb1a0574440c/README.md",
+      "use": "T12 background removal: salient-object seed on a shot's first frame when no person is found",
+      "files": [
+        {
+          "path": "models/t12/onnx-community/ISNet-ONNX/config.json",
+          "url": "https://huggingface.co/onnx-community/ISNet-ONNX/raw/3fe6e3db3e32c69aadde61fe388ddb1a0574440c/config.json",
+          "bytes": 27,
+          "sha256": "d0b94ab052ace79177085c66a00a3f014a973edb09999cb0108bb01e65ded060"
+        },
+        {
+          "path": "models/t12/onnx-community/ISNet-ONNX/onnx/model_fp16.onnx",
+          "url": "https://huggingface.co/onnx-community/ISNet-ONNX/resolve/3fe6e3db3e32c69aadde61fe388ddb1a0574440c/onnx/model_fp16.onnx",
+          "bytes": 88116798,
+          "sha256": "dffe20331551dcc5d7601563e472448424821f2df41f5bad395848826c5b5be5"
+        },
+        {
+          "path": "models/t12/onnx-community/ISNet-ONNX/preprocessor_config.json",
+          "url": "https://huggingface.co/onnx-community/ISNet-ONNX/raw/3fe6e3db3e32c69aadde61fe388ddb1a0574440c/preprocessor_config.json",
+          "bytes": 339,
+          "sha256": "7f6ea1f0aa49cdc77487e172f3dd67820a842512b4a203b14ffadfb8bd027d40"
         }
       ]
     }

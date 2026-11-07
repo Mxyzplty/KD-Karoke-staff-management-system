@@ -103,9 +103,10 @@ describe('T19 C5 executor viewItemDetails', () => {
       expect(await ex.execute(call('viewItemDetails', { itemId: 'nope', include: 'transcript' }, { session: 's' }))).toMatchObject({ success: false, code: 'ITEM_NOT_FOUND' });
       expect(refused(await ex.execute(move()))).toBe(true);
     });
+    // T12 (C8 assertion-only edit): masks is served now, so NOT_IMPLEMENTED is exercised via `effects` (still T18-owned) instead.
     it('NOT_IMPLEMENTED and INVALID_TOOL_INPUT mark nothing', async () => {
       const { ex } = rig();
-      expect(await ex.execute(call('viewItemDetails', { itemId: 'v1', include: 'masks' }, { session: 's' }))).toMatchObject({ code: 'NOT_IMPLEMENTED' });
+      expect(await ex.execute(call('viewItemDetails', { itemId: 'v1', include: 'effects' }, { session: 's' }))).toMatchObject({ code: 'NOT_IMPLEMENTED' });
       expect(await ex.execute(call('viewItemDetails', { include: 'transcript' }, { session: 's' }))).toMatchObject({ code: 'INVALID_TOOL_INPUT' });
       expect(refused(await ex.execute(move()))).toBe(true);
     });

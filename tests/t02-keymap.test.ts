@@ -73,6 +73,11 @@ const NORMAL: Row[] = [
   { name: 'M adds a marker with items selected', k: key('m'), c: { selectedItems: 3 }, expect: { kind: 'addMarker' } },
   { name: 'Shift+M toggles markers', k: key('M', shift), expect: { kind: 'toggleMarkers' } },
   { name: 'Alt+M nothing', k: key('m', { alt: true }), expect: null },
+  // T12 (part 2 §36): with exactly one video or image selected (maskTarget), M enters mask edit instead of adding a marker.
+  { name: 'M enters mask edit when a video/image is the mask target', k: key('m'), c: { maskTarget: true }, expect: { kind: 'enterMask', marker: false } },
+  { name: 'M enters mask edit and adds the marker too in maskMarker parity mode', k: key('m'), c: { maskTarget: true, maskMarker: true }, expect: { kind: 'enterMask', marker: true } },
+  { name: 'Alt+M with a mask target still nothing (Alt wins over M)', k: key('m', { alt: true }), c: { maskTarget: true }, expect: null },
+  { name: 'Shift+M with a mask target still toggles markers (Shift wins over M)', k: key('M', shift), c: { maskTarget: true }, expect: { kind: 'toggleMarkers' } },
   { name: '+ zooms in', k: key('+', shift), expect: { kind: 'zoom', direction: 'in' } },
   { name: '= zooms in', k: key('='), expect: { kind: 'zoom', direction: 'in' } },
   { name: '- zooms out', k: key('-'), expect: { kind: 'zoom', direction: 'out' } },

@@ -8,13 +8,15 @@
 export type Zone = 'typing' | 'control' | 'page' | 'timeline' | 'preview' | 'outside';
 export type Key = { key: string; ctrl: boolean; meta: boolean; shift: boolean; alt: boolean };
 export type Modes = { graphEditorOpen: boolean; smartMask: boolean; timelineLocked: boolean; groupSelection: boolean };
-export type KeyContext = { zone: Zone; handler: 'global' | 'timeline'; modes: Modes; selectedItems: number; markerSelected: boolean; keyframeSelected: boolean; ripple: boolean };
+export type KeyContext = { zone: Zone; handler: 'global' | 'timeline'; modes: Modes; selectedItems: number; markerSelected: boolean; keyframeSelected: boolean; ripple: boolean;
+  /** T12 (part 2 §36): exactly one video or image is selected, so M enters mask edit; `maskMarker` = parity mode, M also adds the marker. */
+  maskTarget?: boolean; maskMarker?: boolean };
 export type Action =
   | { kind: 'stepFrame'; direction: 1 | -1 } | { kind: 'zoom'; direction: 'in' | 'out' } | { kind: 'toggleMarkers' } | { kind: 'togglePerformance' }
   | { kind: 'exitGroupSelection' } | { kind: 'copy' } | { kind: 'shortcuts' }
   | { kind: 'togglePlayback' } | { kind: 'undo' } | { kind: 'redo' } | { kind: 'paste' } | { kind: 'duplicate' } | { kind: 'split' }
   | { kind: 'nudge'; dx: number; dy: number } | { kind: 'deleteKeyframe' } | { kind: 'deleteMarker' } | { kind: 'deleteItems'; ripple: boolean }
-  | { kind: 'addMarker' } | { kind: 'clearMarkers' }
+  | { kind: 'addMarker' } | { kind: 'clearMarkers' } | { kind: 'enterMask'; marker: boolean }
   | { kind: 'swallow' };
 /** null = this handler does not act (the browser default stays, and the other handler may act). */
 export type Route = Action | null;
@@ -96,7 +98,7 @@ function normal(k: Key, c: KeyContext): Route {
     if (c.markerSelected) return { kind: 'deleteMarker' };
     return c.selectedItems > 0 ? { kind: 'deleteItems', ripple: c.ripple } : null;
   }
-  if (key === 'm' && !k.alt) return k.shift ? { kind: 'toggleMarkers' } : { kind: 'addMarker' };
+  if (key === 'm' && !k.alt) return k.shift ? { kind: 'toggleMarkers' } : c.maskTarget ? { kind: 'enterMask', marker: !!c.maskMarker } : { kind: 'addMarker' };
   if (k.key === '+' || k.key === '=') return { kind: 'zoom', direction: 'in' };
   if (k.key === '-' || k.key === '_') return { kind: 'zoom', direction: 'out' };
   if (k.key === '?') return { kind: 'shortcuts' };
@@ -108,6 +110,6 @@ export const SHORTCUTS: [string, string][] = [
   ['Space', 'Play / pause'], ['← / →', 'Step one frame (no selection)'], ['Arrow keys', 'Nudge the selection 5 px (Shift: 20 px)'],
   ['Ctrl/Cmd+Z', 'Undo'], ['Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y', 'Redo'], ['Ctrl/Cmd+C', 'Copy'], ['Ctrl/Cmd+V', 'Paste at the playhead'],
   ['Ctrl/Cmd+D', 'Duplicate'], ['Ctrl/Cmd+B', 'Split at the playhead'], ['Delete / Backspace', 'Delete the selected keyframe, else marker, else items'],
-  ['M', 'Add a marker'], ['Shift+M', 'Show or hide markers'], ['Ctrl/Cmd+Shift+M', 'Clear all markers'], ['+ / =', 'Zoom in'], ['−', 'Zoom out'],
+  ['M', 'Add a marker; with one video or image selected, edit its masks'], ['Shift+M', 'Show or hide markers'], ['Ctrl/Cmd+Shift+M', 'Clear all markers'], ['+ / =', 'Zoom in'], ['−', 'Zoom out'],
   ['Ctrl+Shift+P', 'Performance overlay'], ['?', 'This list'], ['Alt+N', 'Focus notifications'],
 ];

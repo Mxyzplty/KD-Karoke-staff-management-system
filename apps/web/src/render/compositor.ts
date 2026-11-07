@@ -4,6 +4,7 @@
 import { cellMediaRect, cover, effectiveRadius, EMPTY_CELL, MISSING_MEDIA } from './model';
 import type { Draw, LayoutDraw, Pending } from './model';
 import { EFFECT_FAILURES, runEffects, type EffectFailure } from './effects';
+import { maskCanvas } from '../masks/render';
 import { segments } from '../timeline/shapes';
 import type { ShapeDraw } from './model';
 import { drawText } from '../text/draw';
@@ -83,13 +84,26 @@ function content(ctx: Ctx, d: Draw, src: Source) {
     ctx.restore();
   } catch { /* A source closed or reset under the draw shows nothing this frame. */ }
 }
-/** §53.4.1 effect path (a CSS chain or GPU effects): the content is drawn into the item canvas first, then the GPU effects
- *  run on it (T10: WebGPU, else WebGL2). */
+let maskedCanvas: OffscreenCanvas | null = null;
+/** T12 (part 5 §54.1): the item's masks multiply the picture's alpha, RGB unchanged, after the GPU effects and before the box
+ *  transform. A GPU result is not a 2D canvas, so it is copied to one first. */
+function masked(picture: OffscreenCanvas, d: Draw): OffscreenCanvas {
+  const W = picture.width, H = picture.height, canvas = picture === itemCanvas ? picture : maskedCanvas ??= new OffscreenCanvas(1, 1);
+  if (canvas !== picture) { canvas.width = W; canvas.height = H; }
+  const c = canvas.getContext('2d')!;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  if (canvas !== picture) c.drawImage(picture, 0, 0);
+  c.globalCompositeOperation = 'destination-in'; c.drawImage(maskCanvas(d.item.id, d.masks!, W, H), 0, 0); c.globalCompositeOperation = 'source-over';
+  return canvas;
+}
+/** §53.4.1 effect path (a CSS chain, GPU effects or masks): the content is drawn into the item canvas first, then the GPU
+ *  effects run on it (T10: WebGPU, else WebGL2), then the masks. */
 function effectPicture(d: Draw, src: Source): OffscreenCanvas | EffectFailure {
   const ic = itemContext(d.box.W, d.box.H);
   ic.setTransform(1, 0, 0, 1, 0, 0); ic.clearRect(0, 0, ic.canvas.width, ic.canvas.height);
   content(ic, d, src);
-  return d.effects.length ? runEffects(ic.canvas, d.effects, { timeS: d.local / 1000 }) : ic.canvas;
+  const picture = d.effects.length ? runEffects(ic.canvas, d.effects, { timeS: d.local / 1000 }) : ic.canvas;
+  return d.masks?.length && typeof picture !== 'string' ? masked(picture, d) : picture;
 }
 /** One item's draw (§53.4.2); blend overrides the item's own (a transition surface neutralises it, §55.4). */
 function drawItem(ctx: Ctx, d: Draw, src: Source, failed: Pending[], blend = d.blend) {

@@ -14,6 +14,7 @@ import { EffectsRail, EffectsTab } from './effects-ui';
 import { AppearanceBody, BasicBody, ShadowBody, SpeedBody, TransformBody, VolumeBody } from './inspector';
 import { FillBody, ShapePathBody, ShapesPanel, ShapeTransformBody, StrokeBody } from './shape-ui';
 import { CellsBody, LayoutsPanel, LayoutStyleBody, LayoutTransformBody } from './layout-ui';
+import { maskHeader, MaskBody, RemoveBackground } from './mask-ui';
 import { cellsOf, layoutLabel } from '../timeline/layouts';
 import { openGraph, setView, TOOLS, useView } from './view';
 import type { Tool } from './view';
@@ -73,14 +74,14 @@ export function Rail() {
 // parity-mode drag (1x -> 2x = 4 entries) forbids. (§46.7's "re-collapses when the animation changes" cannot cover the
 // in-section edit, since acceptance requires the slider to stay live through it.)
 // `heading` (T07) overrides the section's displayed title per item.
-type Section = { title: string; owner: string; body?: (doc: ProjectDocument, item: RecordData) => ReactNode; done?: boolean; rekey?: (item: RecordData) => string; heading?: (item: RecordData) => string };
+type Section = { title: string; owner: string; body?: (doc: ProjectDocument, item: RecordData) => ReactNode; done?: boolean; rekey?: (item: RecordData) => string; heading?: (item: RecordData) => string; onHeader?: (doc: ProjectDocument, item: RecordData) => void };
 const owners: Record<string, string> = { video: 'T04', image: 'T04', audio: 'T04', text: 'T05', caption: 'T09', shape: 'T06', motionGraphic: 'T04', layout: 'T07' };
 const t04 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode): Section => ({ title, owner: 'T04', done: true, body: (doc, item) => <Body doc={doc} item={item} /> });
 const t06 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode): Section => ({ title, owner: 'T06', done: true, body: (doc, item) => <Body doc={doc} item={item} /> });
 const t05 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode, rekey?: (item: RecordData) => string): Section => ({ title, owner: 'T05', done: true, rekey, body: (doc, item) => <Body doc={doc} item={item} /> });
 const sectionKey = (s: Section, item: RecordData) => s.rekey ? `${s.title}:${item.id}:${s.rekey(item)}` : s.title;
 const t07 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode, heading?: Section['heading']): Section => ({ title, owner: 'T07', done: true, heading, body: (doc, item) => <Body key={item.id} doc={doc} item={item} /> });
-const MASK: Section = { title: 'Mask', owner: 'T12' };
+const MASK: Section = { title: 'Mask', owner: 'T12', done: true, onHeader: maskHeader, body: (doc, item) => <MaskBody doc={doc} item={item} /> };
 export const SECTIONS: Record<string, Section[]> = {
   video: [t04('Basic', BasicBody), t04('Speed & Time Remap', SpeedBody), t04('Transform', TransformBody), t04('Appearance', AppearanceBody), MASK, t04('Shadow', ShadowBody)],
   image: [t04('Basic', BasicBody), t04('Transform', TransformBody), t04('Appearance', AppearanceBody), MASK, t04('Shadow', ShadowBody)],
@@ -100,10 +101,10 @@ function ItemHeader({ item }: { item: RecordData }) {
   return <><div className="inspector-heading"><h3>{item.type === 'shape' ? (typeof item.name === 'string' ? item.name : item.details?.shapeType ?? 'Shape') : TYPE_NAMES[item.type] ?? item.type}</h3>
     {item.type === 'layout' && <span className="chip" data-testid="layout-preset">{layoutLabel(item.details?.layoutType)}</span>}
     {item.type !== 'layout' && <button aria-label="Keyframes graph" onClick={() => openGraph(item.id, item.timeRemap ? 'timeRemap' : null)}>⌇</button>}</div>
-    {item.type === 'video' && <div className="card"><strong>Remove Background</strong><button onClick={() => dispatch({ type: 'feature', owner: 'T12', label: 'Background removal' })}>Apply</button></div>}</>;
+    {item.type === 'video' && <div className="card"><strong>Remove Background</strong><RemoveBackground item={item} label="Apply" /></div>}</>;
 }
 function SectionShell({ doc, item, section, open }: { doc: ProjectDocument; item: RecordData; section: Section; open?: boolean }) {
-  return <details className="inspector-section" open={open}><summary>{section.heading?.(item) ?? section.title}</summary>{section.body?.(doc, item)}{!section.done && <Unavailable what={`The ${section.title} section`} owner={section.owner} />}</details>;
+  return <details className="inspector-section" open={open}><summary onClick={() => section.onHeader?.(doc, item)}>{section.heading?.(item) ?? section.title}</summary>{section.body?.(doc, item)}{!section.done && <Unavailable what={`The ${section.title} section`} owner={section.owner} />}</details>;
 }
 export function Inspector({ doc }: { doc: ProjectDocument }) {
   const v = useView(), item = doc.items.find(i => i.id === v.selection[0]);

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19 C4 / C11: viewItemDetails (agent tool results §2 viewItemDetails; error codes §10). Served here: the details object's
-// always-present fields and status flags, include=transcript, include=keyframes and the beats-only result. `general`
-// (the default), `analysis`, `masks` and `effects` are T18's and refuse NOT_IMPLEMENTED with the owner, except `general`
+// always-present fields and status flags, include=transcript, include=keyframes, include=masks (T12) and the beats-only result.
+// `general` (the default), `analysis` and `effects` are T18's and refuse NOT_IMPLEMENTED with the owner, except `general`
 // when every target is a shape item (T06: timeline/shape-tools shapeDetails, a partial delivery of T18's). Async because
 // beats are computed on first read (AnalysisService.rhythm). C5: `snapToBeats`, the cut-to-beat hook on the same reads.
+import { masksBlock } from '../masks/tools';
 import { hasSource } from '../timeline/items';
 import { isCaption, item as itemOf, span } from '../timeline/model';
 import { keyframesBlock, rateOf, remapKeyframes } from '../timeline/properties';
@@ -59,7 +60,7 @@ const words = (v: unknown) => (Array.isArray(v) ? v : typeof v === 'string' ? v.
 const list = (one: unknown, many: unknown): string[] => Array.isArray(many) ? many.map(String) : typeof one === 'string' && one ? [one] : [];
 const itemType = (i: RecordData): string => isCaption(i) ? 'caption' : String(i.type);
 const busy = (a: Asset) => a.processing_status === 'uploading' || a.processing_status === 'processing';
-const SERVED = new Set(['transcript', 'keyframes']), OWNED = new Set(['general', 'analysis', 'masks', 'effects']);
+const SERVED = new Set(['transcript', 'keyframes', 'masks']), OWNED = new Set(['general', 'analysis', 'effects']);
 
 type Target = { id: string; item?: RecordData; asset?: Asset };
 /** A timeline item first, then a project asset (agent or stored id with a live link), with the asset's current row. */
@@ -93,7 +94,7 @@ function capabilities(asset?: Asset): Record<string, unknown> {
   return Object.values(c).every(v => v === 'ready') ? {} : { capabilities: c };
 }
 
-async function details(ctx: DetailsContext, t: Target, include: Set<string>, keyframesRead: string[], general: boolean) {
+async function details(ctx: DetailsContext, t: Target, include: Set<string>, keyframesRead: string[], masksRead: string[], general: boolean) {
   const { id, item, asset } = t, length = r3((asset?.durationMs ?? 0) / 1000);
   const d: Record<string, unknown> = item
     ? { id, type: itemType(item), startTime: r3(item.display.from / 1000), endTime: r3(item.display.to / 1000), duration: r3(span(item) / 1000), layer: item.trackId,
@@ -111,6 +112,10 @@ async function details(ctx: DetailsContext, t: Target, include: Set<string>, key
   if (include.has('keyframes')) {
     Object.assign(d, item ? keyframesBlock(item) : { keyframes: null, keyframesNote: 'No keyframes on this item' });
     if (item) keyframesRead.push(id);
+  }
+  if (include.has('masks')) {
+    Object.assign(d, item ? masksBlock(ctx.doc, item) : { masks: null, masksNote: 'No masks on this item' });
+    if (item) masksRead.push(id);
   }
   return d;
 }
@@ -218,8 +223,8 @@ function notImplemented(asked: string[]): Result {
     message: `This version serves include "transcript", "keyframes" and "beats"; ${what} arrives with ${DETAILS_OWNER}. Pass include with those values only.` };
 }
 
-/** viewItemDetails. `onKeyframesRead` is called for each returned item whose keyframes were included (T18a R3). */
-export async function viewItemDetails(ctx: DetailsContext, input: Record<string, unknown> = {}, onKeyframesRead: (itemId: string) => void = () => {}): Promise<Result> {
+/** viewItemDetails. `onKeyframesRead` / `onMasksRead` are called for each returned item whose keyframes / masks were included (T18a R3). */
+export async function viewItemDetails(ctx: DetailsContext, input: Record<string, unknown> = {}, onKeyframesRead: (itemId: string) => void = () => {}, onMasksRead: (itemId: string) => void = () => {}): Promise<Result> {
   const ids = [...new Set([...list(input.itemId, input.itemIds), ...list(input.assetId, input.assetIds)])];
   if (!ids.length) return invalid(MESSAGES.noIds);
   const include = new Set(words(input.include));
@@ -228,9 +233,10 @@ export async function viewItemDetails(ctx: DetailsContext, input: Record<string,
   // T06: `general` is served when every target is a shape item; any other target keeps the call-level refusal (T18).
   const general = unserved.length > 0 && unserved.every(w => w === 'general') && ids.every(id => itemOf(ctx.doc, id)?.type === 'shape');
   if (unserved.length && !general) return notImplemented(unserved);
-  const results: Result[] = [], keyframesRead: string[] = [];
-  for (const id of ids) { const t = await resolve(ctx, id); results.push(isReason(t) ? { id, ...t } : { id, success: true, data: await details(ctx, t, include, keyframesRead, general) }); }
+  const results: Result[] = [], keyframesRead: string[] = [], masksRead: string[] = [];
+  for (const id of ids) { const t = await resolve(ctx, id); results.push(isReason(t) ? { id, ...t } : { id, success: true, data: await details(ctx, t, include, keyframesRead, masksRead, general) }); }
   keyframesRead.forEach(onKeyframesRead);
+  masksRead.forEach(onMasksRead);
   if (ids.length === 1) { const { id: _, ...only } = results[0]; return only.success ? { success: true, data: only.data } : only as Result; }
   return { success: true, message: `Batch: ${results.filter(r => r.success).length}/${ids.length} items`, data: { results } };
 }

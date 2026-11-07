@@ -7,6 +7,8 @@ import { notify, reportError } from './ui';
 import { EditorShell } from './editor/shell';
 import { resetView } from './editor/view';
 import { installRuntime } from './timeline/runtime';
+import { migrateRemovals } from './masks/jobs';
+import { installMasks } from './masks/smart-tools';
 import { addStockToProject } from './media/stock';
 import { readMode } from './versions/checkpoints';
 import { openVersions } from './versions/editor';
@@ -20,7 +22,7 @@ export function EditorRoute({ id, navigate }: { id: string; navigate: (path: str
   // T17 restore: the job runs after this editor is torn down and before the project is opened again (once, under StrictMode too).
   const restart = useRef<{ job: () => Promise<void>; done?: Promise<void> } | undefined>(undefined);
   useEffect(() => {
-    let alive = true, unbind: (() => void) | undefined, unsubscribe: (() => void) | undefined, uninstall: (() => void) | undefined, local: AutosaveSession | undefined, detach: ((final?: Promise<unknown>) => void) | undefined, untitle: (() => void) | undefined;
+    let alive = true, unbind: (() => void) | undefined, unsubscribe: (() => void) | undefined, uninstall: (() => void) | undefined, local: AutosaveSession | undefined, detach: ((final?: Promise<unknown>) => void) | undefined, untitle: (() => void) | undefined, unmask: (() => void) | undefined;
     setLoad('loading'); resetView();
     const pending = restart.current, open = () => { if (restart.current === pending) restart.current = undefined; return Promise.all([projectStore.openProject(id), readMode(projectStore)]); };
     void (pending ? (pending.done ??= pending.job()).then(open) : open()).then(([result, mode]) => {
@@ -38,12 +40,13 @@ export function EditorRoute({ id, navigate }: { id: string; navigate: (path: str
         }
         render(n => n + 1);
       }); unbind = local.bindLifecycle();
-      uninstall = installRuntime(local, projectStore, id, { addStock: async item => (await addStockToProject(projectStore, id, item)).asset });
+      unmask = installMasks(projectStore.media, id);
+      uninstall = installRuntime(local, projectStore, id, { maskMarker: mode === 'parity' ? 'both' : 'enter', addStock: async item => (await addStockToProject(projectStore, id, item)).asset, onAssets: tools => migrateRemovals({ ...tools, origin: 'user' }) });
       setSession(local); setRecord(result.record); setLoad('ready');
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
     }).catch(e => { if (alive) { setLoad('error'); reportError(e); } });
-    return () => { alive = false; untitle?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.(); unsubscribe?.(); if (activeSession === local) activeSession = undefined; };
+    return () => { alive = false; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.(); unsubscribe?.(); if (activeSession === local) activeSession = undefined; };
   }, [id, retry]);
   if (load === 'loading') return <main><p>Opening project…</p></main>;
   if (load === 'missing' || load === 'error') return <main className="load-failure"><h1>Failed to load project</h1><p>{load === 'missing' ? 'Project not found.' : 'Couldn’t open this project. Browser storage could not be read.'}</p><button onClick={() => navigate('/')}>‹ Back to home</button>{load === 'error' && <button onClick={() => setRetry(n => n + 1)}>Retry</button>}</main>;

@@ -21,6 +21,8 @@ import { addMarker, createGroup, deleteGroup, deleteTrack, manageTrack, manageTr
 import { addKeyframe, changeSpeed, checkProperty, deleteKeyframe, editKeyframe, editProperties, remapOff, remapOn, setUseProxy } from './edits';
 import { addEffect, bypassGrade, editColourBlock, editEffectParams, moveEffect, removeEffect, resetEffect, resetGrade, toggleEffect } from './effects';
 import { addPathKeyframe, drawShape, editShapePath, removeShapePoint } from './shape-tools';
+import { startRemoval } from '../masks/jobs';
+import { editMask } from '../masks/tools';
 import { addLayoutTile, editLayoutCell } from './layouts';
 import { addAtCut, editTransition, removeTransition } from './transitions';
 import { addFade, setKeepPitch } from '../audio/edits';
@@ -34,6 +36,8 @@ type Op = (doc: ProjectDocument, tx: Tx) => unknown;
 export type RuntimeOptions = BusOptions & {
   /** Reloads the asset index (the UI places assets added after the editor opened, e.g. a stock download). */
   loadAssets?: () => Promise<{ assets: Asset[]; links: AssetLink[] }>;
+  /** Called once with the runtime's tools when the project's assets are in (T12: legacy effects become mask layers). */
+  onAssets?: (tools: { bus: CommandBus; asset(id: string): Asset | undefined }) => void;
   /** Downloads a stock item into the project (T14) and resolves to its asset. */
   addStock?: (item: StockItem) => Promise<Asset>;
 };
@@ -108,12 +112,13 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
     for (const l of links) { const a = assets.get(l.assetId); if (a && l.deleted_at === null) { assets.set(l.agent_id, a); live.push({ agentId: l.agent_id, id: a.id }); } }
     graphicAssets(live);
   };
-  const run = (label: Label, op: Op): Outcome => {
-    try { bus.run(label, 'user', op); return { ok: true }; } catch (e) {
+  const refusal = (attempt: () => unknown): Outcome => {
+    try { attempt(); return { ok: true }; } catch (e) {
       if (!(e instanceof CommandError)) throw e;
       return { ok: false, code: e.code || 'COMMAND_FAILED', message: e.extra.message ? `${e.error} ${e.extra.message}` : e.error };
     }
   };
+  const run = (label: Label, op: Op): Outcome => refusal(() => bus.run(label, 'user', op));
   const report = (o: Outcome) => { if (!o.ok) notify(`${o.code}: ${o.message}`); };
   /** Places assets now when they are indexed, else after reloading the index; a late failure is notified. `put` replaces
    *  the placement rule (T13's voice-over); `done` runs after a placement that succeeded. */
@@ -226,6 +231,8 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
       // T07 (W3-RT-09: a layout tile is one "Add items" entry; a footage drop on a cell and every cell edit "Edit items").
       case 'addLayout': return run('Add items', doc => { addLayoutTile(doc, intent.layoutType); });
       case 'layoutEdit': return run('Edit items', doc => editLayoutCell(doc, intent.itemId, intent.op, id => assets.get(id)));
+      case 'maskEdit': return run('Edit items', doc => editMask(doc, intent.itemId, intent.op));
+      case 'removeBackground': return refusal(() => { startRemoval({ ...tools, origin: 'user' }, intent.itemId).done.catch(() => undefined); });
       // T11 (part 3 §46.8): the diamond, each popover pick or edge drag, the trash.
       case 'addTransition': return run('Add transition', doc => { addAtCut(doc, intent.fromId, intent.toId); });
       case 'editTransition': return run('Edit transition', doc => { editTransition(doc, intent.transitionId, intent.patch); });
@@ -275,7 +282,7 @@ export function installRuntime(session: AutosaveSession, store: Store, projectId
   const host: Host = { get: () => session.document, set: d => { setting = true; try { session.update(d); } finally { setting = false; } known = session.document; knownAt = fingerprint(known); } };
   const runtime = createRuntime(host, { ...options, journal: r => journal.record(r), loadAssets });
   activeRuntime = runtime;
-  void loadAssets().then(r => runtime.setAssets(r.assets, r.links)).catch(() => {});
+  void loadAssets().then(r => { runtime.setAssets(r.assets, r.links); if (alive) options.onAssets?.(runtime.tools); }).catch(() => {});
   const save = () => { clearTimeout(timer); timer = undefined; const row: HistoryRow = { id: historyKey(projectId), at: fingerprint(session.document), undo: runtime.bus.undoStack, redo: runtime.bus.redoStack }; return store.putRow('settings', row).catch(() => {}); };
   void store.row<HistoryRow>('settings', historyKey(projectId)).then(row => {
     if (alive && row && row.at === fingerprint(session.document) && !runtime.bus.undoStack.length && !runtime.bus.redoStack.length) runtime.bus.restore(row.undo, row.redo);

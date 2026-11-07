@@ -14,6 +14,9 @@ import {
 } from './properties';
 import { agentIdOf, animatableParam, effectStack, ensureParam, paramProp, resolveAgentId } from './effects';
 import { checkTextProperty, isTextKey, TEXT_EDIT_KEYS, writeTextProperties } from '../text/properties';
+import { MASK_KEYS, MASK_RANGE } from '../masks/model';
+import type { MaskKey } from '../masks/model';
+import { isMaskKey, maskProp, maskTarget } from '../masks/keyframes';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const show = (v: unknown) => v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v);
@@ -49,7 +52,6 @@ const keyframeable = (type: string) => KEYFRAME_PROPERTIES.filter(k => specOf(ty
 const TIME_REMAP_FORM = 'Time remap keyframes are written with setTimeRemap: {itemId, keyframes: [{time (timeline seconds), value (source ms), easing?}], replace?}. writeKeyframes only clears the curve: {timeRemap: {replace: []}}.';
 
 export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordData {
-  if (args.maskIndex !== undefined) fail('NOT_IMPLEMENTED', 'Mask keyframes (maskIndex) are not yet implemented (T12).');
   const i = item(doc, args.itemId);
   if (!i) return refuse('ITEM_NOT_FOUND', 'Item not found', `Item '${args.itemId}' not found on timeline.`);
   const payload = args.payload;
@@ -57,9 +59,13 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
   lockCheck(doc, i);
   // T10: `effectId` (agent effect id) targets that effect's parameters, keyframed on the same trim axis as item properties.
   const fx = args.effectId !== undefined ? resolveAgentId(i, args.effectId) : undefined;
+  // T12: `maskIndex` targets a mask's feather, expansion or opacity (part 5 §54.8 7.3), on the same clock.
+  if (fx && args.maskIndex !== undefined) fail('INVALID_COMBINATION', 'Specify either `effectId` OR `maskIndex`, not both');
+  const mask = args.maskIndex !== undefined ? maskTarget(i, args.maskIndex) : undefined;
   // Validate every property and entry before the first write.
   for (const [p, ops] of Object.entries<RecordData>(payload)) {
     if (fx) animatableParam(fx, args.effectId, p);
+    else if (mask) { if (!isMaskKey(p)) refuse('INVALID_PROPERTY', 'Invalid property', `'${p}' is not a keyframeable mask property. Keyframeable mask properties: ${MASK_KEYS.join(', ')}. Path keyframes are written with writeMaskPoints.`); }
     else {
       if (p === 'timeRemap') {
         if (!(ops && Object.keys(ops).length === 1 && Array.isArray(ops.replace) && !ops.replace.length)) refuse('USE_SET_TIME_REMAP', 'Use setTimeRemap for time remap keyframes', TIME_REMAP_FORM);
@@ -94,8 +100,8 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
   const at = (time: number) => Math.round((i.trim?.from ?? 0) + (toMs(time) - i.display.from) * rateOf(i)); // stored ms (G-02: rounded first)
   const resolved: Record<string, RecordData[]> = {}, warnings: string[] = [], tracks: RecordData = {};
   for (const [p, ops] of Object.entries<RecordData>(payload)) {
-    if (!fx && p === 'timeRemap') { i.timeRemap = null; continue; }
-    const spec: { min?: number; max?: number } = fx ? animatableParam(fx, args.effectId, p) : specOf(i.type, p)!, pr = fx ? ensureParam(fx, p) : ensureProp(i, p), pre = new Set(pr.keyframes.map(k => k.id)), echo: RecordData[] = (resolved[p] = []);
+    if (!fx && !mask && p === 'timeRemap') { i.timeRemap = null; continue; }
+    const spec: { min?: number; max?: number } = fx ? animatableParam(fx, args.effectId, p) : mask ? MASK_RANGE[p as MaskKey] : specOf(i.type, p)!, pr = fx ? ensureParam(fx, p) : mask ? maskProp(mask, p as MaskKey) : ensureProp(i, p), pre = new Set(pr.keyframes.map(k => k.id)), echo: RecordData[] = (resolved[p] = []);
     const resolve = (path: string, e: RecordData, t: number, list: Keyframe[]) => {
       const cur = Number(evaluate(list, pr.defaultValue, t));
       const [v, source] = e.value !== undefined ? [e.value, 'value'] : e.delta !== undefined ? [cur + e.delta, 'delta'] : e.factor !== undefined ? [cur * e.factor, 'factor'] : [cur, 'hold'];
@@ -129,7 +135,7 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
   }
   const block = keyframesBlock(i).keyframes ?? {};
   for (const p of Object.keys(payload)) {
-    const ep = fx && paramProp(fx, p);
+    const ep = fx ? paramProp(fx, p) : mask ? maskProp(mask, p as MaskKey) : undefined;
     tracks[p] = ep ? { defaultValue: ep.defaultValue, keyframeCount: ep.keyframes.length, keyframes: keyframeList(ep.keyframes, t => toTimelineMs(i, t)) }
       : block[p] ?? { defaultValue: p === 'timeRemap' ? 0 : prop(i, p)?.defaultValue, keyframeCount: 0, keyframes: [] };
   }

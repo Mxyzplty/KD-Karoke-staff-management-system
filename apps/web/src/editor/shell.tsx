@@ -21,6 +21,7 @@ import { CompactSheet, compactTabs, Inspector, LeftPanel, Rail, ToolPanel } from
 import { clearRemapCaches, syncRemapCaches } from './remap-cache';
 import { JobsPanel, PerformanceOverlay, ShortcutOverlay, Tour } from './overlays';
 import { PreviewFrames, stageBackground } from './preview-stage';
+import { MaskOverlay } from './mask-ui';
 import { ShapeOverlay } from './shape-ui';
 import { TextEditOverlay } from '../text/edit';
 import { LayoutDropOverlay, ProjectFootage } from './layout-ui';
@@ -137,6 +138,7 @@ function Preview({ session, projectId, assets, refresh }: { session: AutosaveSes
           canvas tool (crop, gizmo, mask) mounts after this pair for the same reason. */}
       <TextEditOverlay doc={d} />
       <ShapeOverlay doc={d} />
+      <MaskOverlay doc={d} />
       <LayoutDropOverlay doc={d} />
     </div>
     <input ref={input} type="file" multiple hidden accept={`${acceptAttribute},video/*,image/*,audio/*`} aria-label="Upload media to this project" onChange={e => { upload(Array.from(e.target.files ?? [])); e.target.value = ''; }} />

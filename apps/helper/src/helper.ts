@@ -14,7 +14,7 @@ import type { Duplex } from 'node:stream';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocket, WebSocketServer } from 'ws';
-import { APP, CLOSE, CODE_TTL_MS, DEFAULT_PORT, DISCONNECTED_ERROR, LINK_ERRORS, NOT_CONNECTED_ERROR, PING_MS, PORT_RANGE, PROTOCOL, READ_ONLY, RESOURCE_QUIET_MS,
+import { APP, CLOSE, CODE_TTL_MS, DEFAULT_PORT, DISCONNECTED_ERROR, LINK_ERRORS, LONG_TOOLS, NOT_CONNECTED_ERROR, PING_MS, PORT_RANGE, PROTOCOL, READ_ONLY, RESOURCE_QUIET_MS,
   SERVED_TOOLS, STALL_MS, TIMEOUT_ERROR } from '../../web/src/agent/protocol';
 import type { HelperMessage, LinkError, ToolResult } from '../../web/src/agent/protocol';
 import { createMcpSession } from './mcp';
@@ -166,7 +166,7 @@ export class Helper implements Link {
     if (!SERVED.has(tool)) return { success: false, error: `Unknown tool '${tool}'`, code: 'UNKNOWN_TOOL' };
     const invalid = validate(tool, input ?? {});
     if (invalid) return invalid as ToolResult;
-    if (READ_ONLY.has(tool)) return this.dispatch(tool, input ?? {}, session, opts.resource);
+    if (READ_ONLY.has(tool) || LONG_TOOLS.has(tool)) return this.dispatch(tool, input ?? {}, session, opts.resource);
     const run = this.chain.then(() => this.dispatch(tool, input ?? {}, session));
     this.chain = run.catch(() => {});
     return run;
@@ -188,7 +188,8 @@ export class Helper implements Link {
     p.connId = tab.connId; p.executionKey ??= `mcp:${tab.connId}:${p.callId}`;
     this.send(tab, { type: 'call', callId: p.callId, executionKey: p.executionKey, toolName: p.toolName, input: p.input as Record<string, unknown>,
       ...(p.session ? { session: p.session } : {}), ...(p.resource ? { resource: true } : {}) });
-    p.timer ??= setTimeout(() => this.expire(p), this.toolTimeout);
+    if (LONG_TOOLS.has(p.toolName)) { clearTimeout(p.timer); p.timer = undefined; } // a mask job takes as long as it takes (T12): the clock runs only while its tab is gone
+    else p.timer ??= setTimeout(() => this.expire(p), this.toolTimeout);
   }
   private settle(p: Pending, result: ToolResult) { clearTimeout(p.timer); this.pending.delete(p.callId); p.resolve(result); this.maybeSwitch(); }
   private expire(p: Pending) {
@@ -359,6 +360,7 @@ export class Helper implements Link {
     if (this.waiting === tab) this.waiting = undefined;
     if (this.active === tab) {
       this.active = undefined;
+      for (const p of this.pending.values()) if (p.connId === tab.connId) p.timer ??= setTimeout(() => this.expire(p), this.toolTimeout);
       if (this.live(this.waiting)) return this.activate(this.waiting);
       this.waiting = undefined;
     }

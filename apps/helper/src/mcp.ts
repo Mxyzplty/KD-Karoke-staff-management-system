@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// One MCP server per client session (stdio, or one Streamable HTTP session): the 23 served tools and the resource
+// One MCP server per client session (stdio, or one Streamable HTTP session): the served tools and the resource
 // cutframe://project/state (Contract A). Tool results are the JSON envelope as one text block, isError when success is false.
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ErrorCode, ListResourcesRequestSchema, ListToolsRequestSchema, McpError, ReadResourceRequestSchema, SubscribeRequestSchema,
@@ -14,7 +14,10 @@ export type McpSession = { server: Server; subscribed(): boolean; changed(): voi
 const INSTRUCTIONS = 'Edits the timeline of the project open in the connected Cutframe editor tab. Call context first and again after the user edits; '
   + 'times are seconds. Every edit lands in the editor\'s undo history, so the user can undo it there.';
 
-export const toContent = (result: ToolResult) => ({ content: [{ type: 'text' as const, text: JSON.stringify(result) }], ...(result.success === false ? { isError: true } : {}) });
+type Block = { type: 'text'; text: string } | { type: 'image'; mimeType: string; base64: string };
+/** A tool that returns content blocks (viewMaskFrame, previewSmartMask: results §4 rule 6) keeps them; the rest are one JSON text block. */
+const blocks = (result: ToolResult) => Array.isArray(result.content) ? (result.content as Block[]).map(b => b.type === 'image' ? { type: 'image' as const, data: b.base64, mimeType: b.mimeType } : b) : [{ type: 'text' as const, text: JSON.stringify(result) }];
+export const toContent = (result: ToolResult) => ({ content: blocks(result), ...(result.success === false ? { isError: true } : {}) });
 
 export function createMcpSession(link: Link, version: string, session: () => string | undefined): McpSession {
   const server = new Server({ name: 'cutframe-helper', version }, { capabilities: { tools: {}, resources: { subscribe: true } }, instructions: INSTRUCTIONS });

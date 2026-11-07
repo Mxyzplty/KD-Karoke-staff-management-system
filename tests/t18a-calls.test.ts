@@ -112,14 +112,18 @@ describe('t18a schemas (row 6)', () => {
     ['cloneItem', { itemId: 'v1' }, [{ path: '$.trackId', code: 'REQUIRED', message: REQUIRED('trackId') }]],
     ['consolidateTracks', { trackIds: [] }, [{ path: '$.trackIds', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
     ['context', { startSeconds: '1' }, [{ path: '$.startSeconds', code: 'TYPE', message: 'must be number' }]],
+    // T12 (C8 assertion-only edit): createMask, editMaskProperties, removeMask and writeMaskPoints are served; their rows are schema refusals like the others.
+    ['createMask', { itemId: 'v1', timelineSeconds: '1' }, [{ path: '$.timelineSeconds', code: 'TYPE', message: 'must be number' }]],
     ['deleteItems', { itemIds: [] }, [{ path: '$.itemIds', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
     ['editLayout', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]], // T07 (C8)
+    ['editMaskProperties', { itemId: 'v1', maskIndex: 0 }, [{ path: '$.properties', code: 'REQUIRED', message: REQUIRED('properties') }]],
     ['editMotionGraphic', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
     ['editProperties', { itemId: 'v1', properties: { opacity: '1' } }, [{ path: '$.properties.opacity', code: 'TYPE', message: 'must be number' }]],
     ['manageMarkers', { actions: [{ action: 'zap' }] }, [{ path: '$.actions.0.action', code: 'ENUM', message: ENUM_MSG }]],
     ['manageTrack', { action: 'volume', volume: 2 }, [{ path: '$.volume', code: 'MAXIMUM', message: 'must be <= 1' }]],
     ['manageTrackGroup', { action: 'create', trackIds: ['a'] }, [{ path: '$.trackIds', code: 'INVALID_COMBINATION', message: 'provide distinct member track IDs (at least two when creating)' }]],
     ['moveItem', { itemId: 'v1', itemIds: ['v2'] }, [{ path: '$.itemId', code: 'INVALID_COMBINATION', message: 'cannot be combined with itemIds' }]],
+    ['removeMask', { itemId: 'v1' }, [{ path: '$.maskIndex', code: 'REQUIRED', message: REQUIRED('maskIndex') }]],
     ['reorderItems', { itemIds: ['a'], beforeItemId: 'b', afterItemId: 'c' }, [{ path: '$.beforeItemId', code: 'INVALID_COMBINATION', message: 'cannot be combined with afterItemId' }]],
     ['resizeCanvas', { aspectRatio: '4:3' }, [{ path: '$.aspectRatio', code: 'ENUM', message: ENUM_MSG }]],
     ['setTimeRemap', { itemId: 'v1', keyframes: [] }, [{ path: '$.keyframes', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
@@ -132,10 +136,16 @@ describe('t18a schemas (row 6)', () => {
     // T10 (C8 assertion-only edit): writeEffects is served; its row is a schema refusal like the others.
     ['writeEffects', { itemId: 'v1', effects: { grayscale_1: { enabled: 'yes' } } }, [{ path: '$.effects.grayscale_1.enabled', code: 'TYPE', message: 'must be boolean' }]],
     ['writeKeyframes', { itemId: 'v1', payload: { opacity: {} } }, [{ path: '$.payload.opacity', code: 'MINPROPERTIES', message: 'must NOT have fewer than 1 properties' }]],
+    ['writeMaskPoints', { itemId: 'v1', maskIndex: '0' }, [{ path: '$.maskIndex', code: 'TYPE', message: 'must be integer' }]],
     ['writeShapePoints', { update: [] }, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
+    // T12 smart masks (C8 assertion-only edit): viewMaskFrame, previewSmartMask, trackSmartMask and removeBackground are served.
+    ['viewMaskFrame', { itemId: 'v1', timelineSeconds: '1' }, [{ path: '$.timelineSeconds', code: 'TYPE', message: 'must be number' }]],
+    ['previewSmartMask', { frameRef: 'r1', strokes: [] }, [{ path: '$.strokes', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
+    ['trackSmartMask', { sourceStartSeconds: 0, sourceEndSeconds: 1 }, [{ path: '$.selectionId', code: 'REQUIRED', message: REQUIRED('selectionId') }]],
+    ['removeBackground', { name: 'x' }, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
   ];
 
-  it('row 6: the table covers exactly the 30 served tools', () => {
+  it('row 6: the table covers exactly the 38 served tools', () => {
     expect(TABLE.map(r => r[0])).toEqual([...SERVED_TOOLS]);
   });
 
@@ -216,7 +226,7 @@ describe('t18a schemas (row 6)', () => {
     expect(await helper.call('addMedia', { assetId: 'a', trackId: 't', timelineStart: 1 }, undefined)).toEqual(open);
   });
 
-  it('row 6: valid minimal input for all 30 tools passes the schema (and only then meets the tab)', async () => {
+  it('row 6: valid minimal input for all 38 tools passes the schema (and only then meets the tab)', async () => {
     const { helper } = await start();
     const valid: Record<string, unknown> = {
       addLayout: { layoutType: 'grid-2x2' } /* T07 (C8) */, addMedia: { assetId: 'video_1' }, addMotionGraphic: { code: 'export const G = () => null;', summary: 'A graphic.', width: 100, height: 100, x: 0, y: 0, trackId: 't' },
@@ -224,13 +234,25 @@ describe('t18a schemas (row 6)', () => {
       addText: { textContent: 'Hi', duration: 3 }, // T05
       applyTransition: { action: 'remove', atSeconds: 2 }, // T11 (C8)
       changeTrack: { itemId: 'v1', trackId: 't' }, cloneItem: { itemId: 'v1', trackId: 't' }, consolidateTracks: {}, context: {},
-      deleteItems: { itemIds: ['v1'] }, editLayout: { itemId: 'l1' } /* T07 (C8) */, editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
-      manageTrackGroup: { action: 'ungroup', groupId: 'g' }, moveItem: { itemId: 'v1', by: 1 }, reorderItems: { itemIds: ['v1'], afterItemId: 'v2' }, resizeCanvas: { aspectRatio: '9:16' },
+      createMask: { itemId: 'v1', shape: 'rectangle', bounds: { width: 10, height: 10 } }, // T12 (C8)
+      deleteItems: { itemIds: ['v1'] }, editLayout: { itemId: 'l1' } /* T07 (C8) */,
+      editMaskProperties: { itemId: 'v1', maskIndex: 0, properties: { opacity: 50 } }, // T12 (C8)
+      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
+      manageTrackGroup: { action: 'ungroup', groupId: 'g' }, moveItem: { itemId: 'v1', by: 1 },
+      removeMask: { itemId: 'v1', maskIndex: 0 }, // T12 (C8)
+      reorderItems: { itemIds: ['v1'], afterItemId: 'v2' }, resizeCanvas: { aspectRatio: '9:16' },
       setTimeRemap: { itemId: 'v1', keyframes: [{ time: 0, value: 0 }] }, slipItem: { itemId: 'v1', slipSeconds: -1 }, splitItem: { itemId: 'v1', timestampS: 2 },
       syncAndSwap: { sourceAssetId: 'video_2', targetItemId: 'v1', trackId: 't', from: 0, to: 4 },
       transformItem: { itemId: 'v1', rotation: -360 }, trimItem: { itemId: 'v1', handle: 'end', deltaSeconds: -0.5 },
       viewItemDetails: { itemIds: ['v1'], include: ['transcript', 'beats'], subdivisionsPerBeat: 4 }, writeEffects: { itemId: 'v1', add: [{ effectId: 'grayscale' }] },
-      writeKeyframes: { itemId: 'v1', payload: { opacity: { add: [{ time: 1, value: 0.5 }] } } }, writeShapePoints: { itemId: 's1', remove: [0] }, // T06 (C8)
+      writeKeyframes: { itemId: 'v1', payload: { opacity: { add: [{ time: 1, value: 0.5 }] } } },
+      writeMaskPoints: { itemId: 'v1', remove: [0] }, // T12 (C8)
+      writeShapePoints: { itemId: 's1', remove: [0] }, // T06 (C8)
+      // T12 smart masks (C8 assertion-only edit): viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground.
+      viewMaskFrame: { itemId: 'v1', timelineSeconds: 1 },
+      previewSmartMask: { frameRef: 'r1', strokes: [{ label: 1, points: [[0.5, 0.5]], radius: 0.1 }] },
+      trackSmartMask: { selectionId: 's1', sourceStartSeconds: 0, sourceEndSeconds: 1 },
+      removeBackground: { itemId: 'v1' },
     };
     expect(Object.keys(valid)).toEqual([...SERVED_TOOLS]);
     for (const tool of SERVED_TOOLS) expect(await helper.call(tool, valid[tool], undefined), tool).toEqual({ success: false, code: 'TAB_NOT_CONNECTED', error: NOT_CONNECTED_ERROR });

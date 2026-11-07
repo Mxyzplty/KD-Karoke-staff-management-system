@@ -38,6 +38,8 @@ export type BusOptions = {
    *  'step' (parity mode): the sliders Xapp commits on every pointer step (clip Speed, part 3 §45.3; text-animation Speed,
    *  T05) write one entry per value change. A plain click writes nothing in both modes. Read by the slider at pointer-down. */
   sliderEntries?: 'drag' | 'step';
+  /** 'enter' (default, improvement; part 2 §36): M entering mask edit adds no marker. 'both' (parity mode): it also adds one. */
+  maskMarker?: 'enter' | 'both';
   journal?: (record: JournalInput) => void;
   now?: () => number;
 };

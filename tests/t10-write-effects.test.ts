@@ -238,7 +238,7 @@ describe('T10 Wave-3 instance: grayscale added through writeEffects equals the U
 
 describe('T10 helper schema (writeEffects is the 24th served tool since the rebase onto c26dd28: T08 and T19 add four)', () => {
   it('is served, and the schema accepts every documented shape and leaves values to the handler', () => {
-    expect(TOOLS).toHaveLength(30); expect(TOOLS.map(t => t.name)).toContain('writeEffects'); // T06 (C8 assertion-only edit): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText
+    expect(TOOLS).toHaveLength(38); expect(TOOLS.map(t => t.name)).toContain('writeEffects'); // T06 (C8 assertion-only edit): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText; T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground
     for (const input of [
       { itemId: 'v1', add: [{ effectId: 'grayscale' }] }, { itemId: 'v1', add: [{ effectId: 'lut', initialParameters: { lutData: 'TITLE "x"\nLUT_3D_SIZE 2' } }] },
       { itemIds: ['v1', 'v2'], effects: { grayscale_1: { params: { amount: 5 }, enabled: false } } }, { itemId: 'v1', effects: { vignette_2: { remove: true } } },
@@ -353,7 +353,8 @@ describe('T10 effects stale-read scope (A0.2 item 3)', () => {
     expect(await ex.execute(call('writeKeyframes', { itemId: 'v1', effectId: 'sepia_0', payload }))).toMatchObject({ code: 'INVALID_STACK_POSITION' });
     expect(await ex.execute(call('writeKeyframes', { itemId: 'v1', effectId: 'bogus', payload }))).toMatchObject({ code: 'INVALID_EFFECT_ID_FORMAT' });
     expect(await ex.execute(call('writeKeyframes', { itemId: 'ghost', effectId: 'sepia_1', payload }))).not.toMatchObject({ code: 'STALE_READ_REFRESHED' });
-    expect(await ex.execute(call('writeKeyframes', { itemId: 'v1', effectId: 'grayscale_1', maskIndex: 0, payload }))).toMatchObject({ code: 'NOT_IMPLEMENTED' });
+    // T12 (C8 assertion-only edit): maskIndex is real now, so effectId + maskIndex together is INVALID_COMBINATION, not a NOT_IMPLEMENTED placeholder.
+    expect(await ex.execute(call('writeKeyframes', { itemId: 'v1', effectId: 'grayscale_1', maskIndex: 0, payload }))).toMatchObject({ code: 'INVALID_COMBINATION' });
   });
   it('item-level keyframes (no effectId) stay in the keyframes scope, not the effects scope', async () => {
     const { e, ex } = setup();

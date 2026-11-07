@@ -23,8 +23,12 @@ import { LINK_ERRORS, NOT_CONNECTED_ERROR } from '../apps/web/src/agent/protocol
 const ORIGIN = 'http://127.0.0.1:4173';
 const BIN = fileURLToPath(new URL('../apps/helper/bin/cutframe-connect.mjs', import.meta.url));
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
+// Server order follows TOOL_LIST's declaration order in schemas.ts, not SERVED_TOOLS's; T12's vector-mask tools, then its
+// smart-mask tools, are declared last there, in two trailing blocks.
 const SERVED = ['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'deleteItems', 'editLayout', 'editMotionGraphic', 'editProperties', 'manageMarkers', 'manageTrack', 'manageTrackGroup', 'moveItem', 'reorderItems',
-  'resizeCanvas', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeShapePoints']; // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText
+  'resizeCanvas', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeShapePoints', // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText
+  'createMask', 'editMaskProperties', 'removeMask', 'writeMaskPoints', // T12 (C8): declared last in schemas.ts
+  'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground']; // T12 smart masks (C8): declared last of all
 
 // ---- Per-test resources, released in afterEach.
 const cleanups: (() => unknown | Promise<unknown>)[] = [];
@@ -298,7 +302,7 @@ describe('t18a MCP (row 1)', () => {
     return { client, transport };
   }
 
-  it('row 1: MCP over Streamable HTTP — server info, capabilities, instructions and the 30 tools', async () => {
+  it('row 1: MCP over Streamable HTTP — server info, capabilities, instructions and the 38 tools', async () => {
     const { helper } = await start();
     const { client } = await httpClient(helper.port);
     expect(client.getServerVersion()).toMatchObject({ name: 'cutframe-helper', version: VERSION });
@@ -344,7 +348,7 @@ describe('t18a MCP (row 1)', () => {
     expect([unknown.status, JSON.parse(unknown.body)]).toEqual([404, rpc(-32001, 'Session not found')]);
   });
 
-  it('row 1: MCP over stdio — a helper started by the client serves the 30 tools and logs to stderr', async () => {
+  it('row 1: MCP over stdio — a helper started by the client serves the 38 tools and logs to stderr', async () => {
     const dir = tmp();
     const transport = new StdioClientTransport({ command: process.execPath, args: [BIN, '--stdio', '--port', '0', '--config-dir', dir], cwd: ROOT, stderr: 'pipe' });
     const err: string[] = [];

@@ -18,6 +18,7 @@ import { EFFECT_FAILURES, effectsDeviceLosses, isTaint } from './effects';
 import { fpsOf, framePlan, frameTime, previewFrame, projectSize } from './model';
 import type { Pending } from './model';
 import { picture } from './sources';
+import { readyMasks } from '../masks/render';
 
 export const MAX_CAPTURES = 5;
 export const CAPTURE_SCALE = { standard: 0.35, high: 0.75 } as const;
@@ -51,6 +52,7 @@ export async function captureFrame(env: CaptureEnv, args: RecordData = {}): Prom
     const frame = previewFrame(t * 1000, fps), tMs = frameTime(frame, fps), plan = framePlan(doc, tMs, size);
     const canvas = new OffscreenCanvas(size.width, size.height);
     const sources = await Promise.all(plan.draws.map(d => picture(env.store, d, env.asset(String(d.item.metadata?.assetId)), 'capture', env.asset)));
+    await readyMasks(plan.draws);
     let failed: Pending[] = [], blob: Blob;
     try {
       for (let again = false; ; again = true) {

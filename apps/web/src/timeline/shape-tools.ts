@@ -66,12 +66,12 @@ export function setBasePath(doc: ProjectDocument, i: RecordData, path: ShapePath
   return true;
 }
 /** The path keyframe at timeline ms t: an existing one within one frame (the nearest), else a new one holding the path
- *  drawn there (results §2 writeMaskPoints, "Which keyframe an update touches"). */
-function keyframeAt(doc: ProjectDocument, i: RecordData, t: number): { list: PathKeyframe[]; kf: PathKeyframe } {
-  const list = pathKeyframes(i.details), d = (k: PathKeyframe) => Math.abs(toTimelineMs(i, k.time) - t);
+ *  drawn there (results §2 writeMaskPoints, "Which keyframe an update touches"). holder: the shape's details or a mask (T12). */
+export function keyframeAt(doc: ProjectDocument, i: RecordData, t: number, holder: RecordData = i.details): { list: PathKeyframe[]; kf: PathKeyframe } {
+  const list = pathKeyframes(holder), d = (k: PathKeyframe) => Math.abs(toTimelineMs(i, k.time) - t);
   const near = list.filter(k => d(k) < 1000 / fpsOf(doc)).sort((a, b) => d(a) - d(b))[0];
   if (near) return { list, kf: near };
-  const time = toPropertyTime(i, t), path = structuredClone(pathAt(i.details, time));
+  const time = toPropertyTime(i, t), path = structuredClone(pathAt(holder, time));
   const kf: PathKeyframe = { id: keyframeId(), time, value: pathString(path), points: path.points, closed: path.closed, easing: 'linear' };
   list.push(kf);
   return { list, kf };
@@ -87,14 +87,14 @@ function setKeyframePath(i: RecordData, list: PathKeyframe[], kf: PathKeyframe, 
   writePathKeyframes(i, list);
   return true;
 }
-/** A shape's box matrix at item-local ms and its inverse; a box with no area (scale 0) cannot take canvas points. */
-function frames(doc: ProjectDocument, i: RecordData, local: number, failed: (why: string) => never) {
+/** A shape's (or masked item's, T12) box matrix at item-local ms and its inverse; a box with no area (scale 0) cannot take canvas points. */
+export function itemFrames(doc: ProjectDocument, i: RecordData, local: number, failed: (why: string) => never) {
   const m = boxMatrix(itemBox(doc, i, local)), inv = invert(m);
-  return inv ? { m, inv } : failed('the shape has no visible size at that time (scale 0)');
+  return inv ? { m, inv } : failed(`the ${i.type === 'shape' ? 'shape' : 'item'} has no visible size at that time (scale 0)`);
 }
-const localOf = (i: RecordData, k: PathKeyframe) => toTimelineMs(i, k.time) - i.display.from;
+export const localOf = (i: RecordData, k: PathKeyframe) => toTimelineMs(i, k.time) - i.display.from;
 /** createMask's TIME_OUT_OF_RANGE text for a timeline time in seconds outside the item. */
-function timelineTime(i: RecordData, s: unknown): number {
+export function timelineTime(i: RecordData, s: unknown): number {
   const t = finite(s) ? toMs(s) : NaN;
   if (!(t >= i.display.from - 1e-6 && t <= i.display.to + 1e-6)) fail('TIME_OUT_OF_RANGE', 'Time out of range', { message: `Timeline time ${show(s)}s is outside item bounds (${fmt(i.display.from)}s - ${fmt(i.display.to)}s).` });
   return t;
@@ -182,13 +182,13 @@ const FAILED = {
 };
 const keyframed = (id: string, n: number, verb: string) => `Shape "${id}" has ${n} path keyframe(s); ${verb} points needs a static path. Clear them first with clearKeyframes: true (keepStateAt keeps one time's shape).`;
 /** Applies update[] (canvas px) to item-local points with the box at item-local ms `local`. */
-function edited(doc: ProjectDocument, i: RecordData, points: PathPoint[], updates: unknown[], local: number, failed: (why: string) => never): PathPoint[] {
+export function updatedPoints(doc: ProjectDocument, i: RecordData, points: PathPoint[], updates: unknown[], local: number, failed: (why: string) => never): PathPoint[] {
   const n = points.length, out = [...points];
   for (const u of updates) {
     const k = isObj(u) ? u.pointIndex : undefined;
     if (!isObj(u) || !Number.isInteger(k) || k < 0 || k >= n) fail('INVALID_POINT_INDEX', 'Invalid point index', { message: `Point index ${show(k)} is out of range. Valid indices: 0-${n - 1}` });
   }
-  const { m, inv } = frames(doc, i, local, failed);
+  const { m, inv } = itemFrames(doc, i, local, failed);
   for (const u of updates as RecordData[]) {
     const k = u.pointIndex, back = mapPoints(inv, [updatedPoint(mapPoints(m, [out[k]])[0], u, k)])[0], next: PathPoint = { anchor: u.anchor !== undefined ? back.anchor : out[k].anchor };
     for (const h of HANDLES) { const v = u[h] === undefined ? out[k][h] : u[h] === null ? undefined : back[h]; if (v) next[h] = v; }
@@ -213,7 +213,7 @@ function updateStage(ctx: ToolContext, args: RecordData, curve: boolean): Op {
     if (curve) checkShape('writeShapePoints', args);
     const path = target ? { points: target.kf.points ?? [], closed: target.kf.closed !== false } : basePath(i.details);
     if (updates.length && !path.points.length) noPoints();
-    const points = updates.length ? edited(doc, i, path.points, updates, target ? localOf(i, target.kf) : 0, failed) : path.points;
+    const points = updates.length ? updatedPoints(doc, i, path.points, updates, target ? localOf(i, target.kf) : 0, failed) : path.points;
     if (target) {
       if (curve) for (const k of ['easing', 'inHandle', 'outHandle'] as const) if (args[k] !== undefined) (target.kf as RecordData)[k] = args[k];
       if (!setKeyframePath(i, target.list, target.kf, points)) noBounds(id);
@@ -230,7 +230,7 @@ function addStage(ctx: ToolContext, args: RecordData): Op {
     const path = basePath(i.details), n = path.points.length, at = args.insertAt ?? n;
     if (!Number.isInteger(at) || at < 0 || at > n) fail('INVALID_INSERT_INDEX', 'Invalid insert index', { message: `Insert index ${show(at)} is out of range. Valid range: 0-${n}` });
     const fresh = args.add.map((p: unknown, j: number) => newPoint(p, j)), points = [...path.points];
-    points.splice(at, 0, ...mapPoints(frames(doc, i, 0, failed).inv, fresh));
+    points.splice(at, 0, ...mapPoints(itemFrames(doc, i, 0, failed).inv, fresh));
     if (!setBasePath(doc, i, { points, closed: path.closed })) noBounds(id);
     return { op: 'add', count: fresh.length };
   });

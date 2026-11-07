@@ -192,9 +192,9 @@ describe('writeKeyframes: refusals (error codes §6; G-02) leave the document, u
     const e = editor(), before = json(e.doc);
     refused(e, before, call(e, 'writeKeyframes', { itemId: 'nope', payload: { opacity: { add: [{ time: 1, value: 0.5 }] } } }), 'ITEM_NOT_FOUND');
   });
-  // T10 (C8 assertion-only edit): effect targets are served by T10, so an effect the item lacks is EFFECT_NOT_FOUND.
-  it('effectId the item lacks is refused EFFECT_NOT_FOUND (T10); maskIndex NOT_IMPLEMENTED naming T12', () => {
-    for (const [extra, code, text] of [[{ effectId: 'vignette_1' }, 'EFFECT_NOT_FOUND', "Effect 'vignette_1' not on this item"], [{ maskIndex: 0 }, 'NOT_IMPLEMENTED', 'T12']] as const) {
+  // T10/T12 (C8 assertion-only edit): effect and mask targets are both served now, so each is refused by its own real error when the item has none.
+  it('effectId the item lacks is refused EFFECT_NOT_FOUND (T10); maskIndex on an item with no masks is NO_MASKS (T12)', () => {
+    for (const [extra, code, text] of [[{ effectId: 'vignette_1' }, 'EFFECT_NOT_FOUND', "Effect 'vignette_1' not on this item"], [{ maskIndex: 0 }, 'NO_MASKS', "No masks found on 'vid'."]] as const) {
       const e = editor(), before = json(e.doc), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] } }, extra);
       refused(e, before, r, code); expect(json(r)).toContain(text);
     }

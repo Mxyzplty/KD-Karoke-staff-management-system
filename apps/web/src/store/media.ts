@@ -13,6 +13,9 @@ export interface MediaStore {
   /** Names under proxies/ (legacy asset ids, attempt objects, references as ref-<id>), and removal of one object. */
   listProxies?(): Promise<string[]>;
   removeProxy?(name: string): Promise<void>;
+  /** T12: raster mask files, under the project's folder (`remove('project', id)` takes them). */
+  writeMask?(projectId: string, name: string, file: Blob): Promise<void>;
+  readMask?(projectId: string, name: string): Promise<Blob>;
 }
 const missing = (e: unknown) => (e as DOMException)?.name === 'NotFoundError';
 export class OpfsMediaStore implements MediaStore {
@@ -36,6 +39,19 @@ export class OpfsMediaStore implements MediaStore {
   read(assetId: string): Promise<Blob> { return this.get('media', assetId); }
   writeProxy(assetId: string, file: Blob) { return this.put('proxies', assetId, file); }
   readProxy(assetId: string): Promise<Blob> { return this.get('proxies', assetId); }
+  private async maskDirectory(projectId: string, create: boolean) {
+    return (await (await this.directory('projects')).getDirectoryHandle(projectId, { create })).getDirectoryHandle('masks', { create });
+  }
+  async writeMask(projectId: string, name: string, file: Blob) {
+    try {
+      const writer = await (await (await this.maskDirectory(projectId, true)).getFileHandle(name, { create: true })).createWritable();
+      try { await writer.write(file); await writer.close(); } catch (e) { await writer.abort().catch(() => {}); throw e; }
+    } catch (e) { throw storageError(e); }
+  }
+  async readMask(projectId: string, name: string): Promise<Blob> {
+    try { return await (await (await this.maskDirectory(projectId, false)).getFileHandle(name)).getFile(); }
+    catch (e) { throw missing(e) ? mediaError('WORKSPACE_FILE_MISSING', 'A stored mask file is missing from this browser’s storage.') : storageError(e); }
+  }
   private async names(dir: string): Promise<string[]> {
     const names: string[] = [];
     for await (const name of (await this.directory(dir) as unknown as { keys(): AsyncIterable<string> }).keys()) names.push(name);

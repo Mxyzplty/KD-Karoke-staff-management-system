@@ -116,7 +116,7 @@ test('E1/E3 M adds a marker once (also with nothing selected), Shift+M toggles t
   // T03 (was: NOT_IMPLEMENTED notice, document untouched): each M is ok:true, adds one marker at the frame-aligned playhead, and is one "Add marker" step.
   const markers = async () => (await liveDoc(page)).markers.map((m: any) => m.timeMs); expect(await markers()).toEqual([1000, 1000, 1000, 3000, 9000]);
   expect(await undoEntries(page)).toEqual([1, 2, 3].map(() => ({ label: 'Add marker', source: 'user' })));
-  await clip(page, 'clipA').click(); await clearIntents(page); await page.keyboard.press('m'); expect(await types(page)).toEqual(['addMarker']); // also with an item selected
+  await clip(page, 'title').click(); await clearIntents(page); await page.keyboard.press('m'); expect(await types(page)).toEqual(['addMarker']); // also with an item selected; T12 (was: clipA): with a video or image selected M opens the mask editor (part 2 §36, t12-mask-ui)
   expect(await markers()).toEqual([1000, 1000, 1000, 1000, 3000, 9000]); expect(await undoEntries(page)).toHaveLength(4);
   await blurAll(page); await page.keyboard.press('Shift+M'); await expect(page.locator('.marker-lane')).toHaveCount(0); await page.keyboard.press('Shift+M'); await expect(page.locator('.marker-lane')).toHaveCount(1);
   await focusOn(page, 'timeline'); await page.keyboard.press('Shift+M'); await expect(page.locator('.marker-lane')).toHaveCount(0); await page.keyboard.press('Shift+M'); await expect(page.locator('.marker-lane')).toHaveCount(1);
@@ -245,7 +245,7 @@ test('E5 timeline-locked (blocking) layer: only Space and ←/→ act; every oth
   await page.locator('.track-row').filter({ has: page.locator('.track-name', { hasText: /^V2$/ }) }).locator('.track-name').click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Group tracks…' }).click();
   await expect(notices(page)).toContainText('Tracks can’t be grouped while the timeline is locked'); await expect(page.getByRole('toolbar', { name: 'Group tracks' })).toHaveCount(0);
   await page.evaluate(async () => { const p = '/src/editor/view.ts'; const { setView, view } = await import(p); setView({ modes: { ...view().modes, timelineLocked: false } }); });
-  await clearIntents(page); await focusOn(page, 'body'); await page.keyboard.press('m'); expect(await types(page)).toEqual(['addMarker']);
+  await setViewState(page, { selection: [] }); await clearIntents(page); await focusOn(page, 'body'); await page.keyboard.press('m'); expect(await types(page)).toEqual(['addMarker']); // T12: nothing selected (clipA would open the mask editor)
   // T03 rule-6 fix (was: expectUntouched): once unlocked, M really adds one marker at the playhead (0 ms) as one "Add marker" step.
   const marked = await liveDoc(page); expect(marked.markers).toHaveLength(original.markers.length + 1); expect(marked.markers.some((m: any) => m.timeMs === 0)).toBe(true); expect(await undoEntries(page)).toEqual([{ label: 'Add marker', source: 'user' }]);
   const saved = await savedDoc(page, id); expect(saved.markers).toHaveLength(original.markers.length + 1);

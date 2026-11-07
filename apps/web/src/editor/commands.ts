@@ -8,6 +8,7 @@ import type { KeyframePatch, KeyframeRef } from '../timeline/properties';
 import type { GraphicPreset } from '../mg/presets';
 import type { PathPoint, ShapePath } from '../timeline/shapes';
 import type { LayoutOp, LayoutType } from '../timeline/layouts';
+import type { MaskOp } from '../masks/tools';
 import type { Patch as TransitionPatch } from '../timeline/transitions';
 import { notify } from '../ui';
 import type { DragPayload } from './dnd';
@@ -82,6 +83,8 @@ export type Intent =
    *  (the inspector's Cells / Style / Transform, the empty-row picker, a footage drop on a cell in the preview). */
   | { type: 'addLayout'; layoutType: LayoutType }
   | { type: 'layoutEdit'; itemId: string; op: LayoutOp }
+  // T12 (findings §20 W3-RT-05, part 3 §46.13): every mask edit from the inspector or the stage is one "Edit items" entry.
+  | { type: 'maskEdit'; itemId: string; op: MaskOp }
   /** T11: the timeline's Add transition diamond (a cut's two clips); a popover pick or an edge drag; the popover's trash. */
   | { type: 'addTransition'; fromId: string; toId: string }
   | { type: 'editTransition'; transitionId: string; patch: TransitionPatch }
@@ -91,6 +94,7 @@ export type Intent =
   | { type: 'addVoiceover'; assetId: string; agentId: string; name: string; atMs: number; durationMs: number }
   /** T13: the inspector's fade shortcut (two volume keyframes, audio/edits.ts) and per-clip Keep pitch switch. */
   | { type: 'addFade'; itemId: string; edge: 'in' | 'out' }
+  | { type: 'removeBackground'; itemId: string }
   | { type: 'setKeepPitch'; itemId: string; on: boolean }
   | { type: 'feature'; owner: string; label: string };
 
@@ -124,7 +128,7 @@ export const INTENTS: Record<Exclude<Intent['type'], 'editProperty' | 'feature' 
   drawShape: { owner: 'T06', label: 'Drawing a shape' }, editShapePath: { owner: 'T06', label: 'Editing a shape path' },
   removeShapePoint: { owner: 'T06', label: 'Removing a shape point' }, addPathKeyframe: { owner: 'T06', label: 'Adding a path keyframe' },
   addTextPreset: { owner: 'T05', label: 'Add text' }, editTextProperties: { owner: 'T05', label: 'Editing text' },
-  addLayout: { owner: 'T07', label: 'Adding a layout' }, layoutEdit: { owner: 'T07', label: 'Editing a layout' },
+  addLayout: { owner: 'T07', label: 'Adding a layout' }, layoutEdit: { owner: 'T07', label: 'Editing a layout' }, maskEdit: { owner: 'T12', label: 'Editing a mask' }, removeBackground: { owner: 'T12', label: 'Background removal' },
   addTransition: { owner: 'T11', label: 'Add transition' }, editTransition: { owner: 'T11', label: 'Edit transition' }, removeTransition: { owner: 'T11', label: 'Remove transition' },
   addVoiceover: { owner: 'T13', label: 'Adding a voice-over' }, addFade: { owner: 'T13', label: 'Adding a fade' },
   setKeepPitch: { owner: 'T13', label: 'Keep pitch' },

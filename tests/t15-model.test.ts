@@ -347,11 +347,11 @@ describe('T15 frame plan and the pending list (provisional: notes "Deferrals" an
     expect(plan.draws).toEqual([]);
     expect(plan.pending).toEqual([]);
   });
-  // T10 (C8 assertion-only edit): effects render now; 'blur' is no registry id, so the video is pending as an unknown effect.
-  it('a video with a non-stacked-alpha effect the registry does not know is pending (unknown effect); a masked one on T12 (provisional)', () => {
+  // T10/T12 (C8 assertion-only edit): effects and masks both render now, so neither is pending.
+  it('a video with a non-stacked-alpha effect the registry does not know is pending (unknown effect); masks render (T12)', () => {
     const fx = { id: 'e', effectId: 'blur', enabled: true, order: 0, parameters: {} };
     expect(pending('video', { effects: [fx] })).toMatchObject([{ owner: '?', what: "Unknown effect 'blur'" }]);
-    expect(pending('video', { masks: [{ id: 'm', enabled: true }] })).toMatchObject([{ owner: 'T12' }]);
+    expect(pending('video', { masks: [{ id: 'm', enabled: true }] })).toEqual([]);
     expect(pending('video', { effects: [{ ...fx, enabled: false }] })).toEqual([]);
     expect(pending('video', { masks: [{ id: 'm', enabled: false }] })).toEqual([]);
   });

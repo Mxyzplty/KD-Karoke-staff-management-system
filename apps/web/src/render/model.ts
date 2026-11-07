@@ -11,6 +11,8 @@ import { cssFilterFor } from '../effects/css';
 import { effectById } from '../effects/registry';
 import type { EffectInstance } from '../effects/renderer';
 import { resolveParams } from '../effects/validate';
+import { frameMasks } from '../masks/model';
+import type { FrameMask } from '../masks/model';
 import { pathAt } from '../timeline/shapes';
 import type { ShapePath } from '../timeline/shapes';
 import { animationState } from '../text/animation';
@@ -82,8 +84,7 @@ export const effectiveRadius = (r: number, W: number, H: number) => Math.min(r, 
 export const BLENDS = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'] as const;
 export const compositeOp = (mode: unknown): GlobalCompositeOperation => mode !== 'normal' && (BLENDS as readonly unknown[]).includes(mode) ? mode as GlobalCompositeOperation : 'source-over';
 
-// ---- §53.4.1 path and §53.4.3 the item's own CSS chain: blur (> 0, px) then brightness (≠ 1, × 100 %).
-// Masks (T12) are not rendered by T15: an item that needs them is reported, not drawn wrong. k scales CSS px lengths (cssScale).
+// ---- §53.4.1 path and §53.4.3 the item's own CSS chain: blur (> 0, px) then brightness (≠ 1, × 100 %). k scales CSS px lengths (cssScale).
 export function cssChain(item: RecordData, local: number, k = 1): string {
   const blur = Number(field(item, 'blur', local, 0)) || 0, brightness = Number(field(item, 'brightness', local, 1));
   return [blur > 0 ? `blur(${blur * k}px)` : '', Number.isFinite(brightness) && brightness !== 1 ? `brightness(${brightness * 100}%)` : ''].filter(Boolean).join(' ');
@@ -163,6 +164,8 @@ export type Draw = {
   stackedAlpha: boolean;
   /** T10: the enabled WebGL effects with their values at this frame, run on the item canvas in this order. */
   effects: EffectInstance[];
+  /** T12: the masks active at this frame, combined and multiplied into the item canvas's alpha after the effects. */
+  masks?: FrameMask[];
   /** A motion graphic (T08): its code, the graphic frame on the MG clock, and what useVideoConfig reports. */
   graphic?: GraphicDraw;
   /** A shape (T06): its path at property time, drawn 1:1 in box px (§53.1.2), with its fill and stroke. */
@@ -252,7 +255,6 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
   // A motion graphic without code (the panel's blank graphic, a legacy one) is an empty graphic: nothing to draw (T08 notes).
   if (mg && !(typeof item.details?.code === 'string' && item.details.code)) return null;
   if (item.type !== 'video' && item.type !== 'image' && !mg && !shape && !text && !layout) return { itemId: item.id, owner: '?', what: `Item type ${item.type}` };
-  if (enabled(item.masks).length) return { itemId: item.id, owner: 'T12', what: 'Masks rendering' };
   const unrendered = unrenderedEffect(item);
   if (unrendered) return { itemId: item.id, ...unrendered };
   let box = itemBox(doc, item, local), textDraw: TextDraw | undefined;
@@ -269,12 +271,14 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
   const fx = itemEffects(item, local, k);
   // A text's borderWidth / borderColor are its font stroke (text/draw.ts), not a box border.
   const filter = [cssChain(item, local, k), ...fx.css].filter(Boolean).join(' '), bw = text ? 0 : Number(field(item, 'borderWidth', local, 0)) || 0;
+  // T12 (part 5 §54.1): video and image items only.
+  const masks = item.type === 'video' || item.type === 'image' ? frameMasks(item, local, fpsOf(doc)) : [];
   const d: Draw = {
     item, kind: item.type, local, ...mg ? graphicDraw(doc, item, t) : { sourceMs: item.type === 'video' ? sourceTime(item, local) : propertyTime(item, local) },
     box, matrix, alpha: Math.min(1, alpha), blend: compositeOp(field(item, 'blendMode', local, 'normal')), filter,
     radius: Math.max(0, Number(field(item, 'borderRadius', local, 0)) || 0),
-    border: bw > 0 ? { width: bw, color: String(field(item, 'borderColor', local, '#000000')) } : null, path: filter || fx.gpu.length ? 'css' : 'direct',
-    stackedAlpha: isStackedAlpha(item), effects: fx.gpu, ...shape ? { shape: shapeDraw(item, local) } : {}, ...textDraw ? { text: textDraw } : {},
+    border: bw > 0 ? { width: bw, color: String(field(item, 'borderColor', local, '#000000')) } : null, path: filter || fx.gpu.length || masks.length ? 'css' : 'direct',
+    stackedAlpha: isStackedAlpha(item), effects: fx.gpu, ...shape ? { shape: shapeDraw(item, local) } : {}, ...textDraw ? { text: textDraw } : {}, ...masks.length ? { masks } : {},
   };
   if (layout) d.layout = layoutDraw(item, local, box, d);
   return d;

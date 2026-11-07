@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 
-/** T19 (dev only): the same-origin model root `/models/`, served from `$CUTFRAME_FIXTURES/models/t19a` (or `t19`) when
+/** T19 (dev only): the same-origin model root `/models/`, served from `$CUTFRAME_FIXTURES/models/t19a` (or `t19`, `t12`) when
  *  `CUTFRAME_LOCAL_MODELS=1` is also set (opt-in: otherwise every dev server, UI tests included, would run real inference
  *  on each upload). Only files listed in datasets/manifest.json are served; anything else is a 404, so a missing model
  *  shows as an "unavailable" step. */
@@ -19,7 +19,7 @@ function localModels(): Plugin {
       server.middlewares.use('/models/', (req, res) => {
         let relative: string;
         try { relative = decodeURIComponent(new URL(req.url ?? '/', 'http://local').pathname).replace(/^\/+/, ''); } catch { relative = ''; }
-        const file = ['models/t19a/', 'models/t19/'].map(prefix => prefix + relative).find(p => !relative.split('/').includes('..') && listed.has(p) && existsSync(path.join(store, p)));
+        const file = ['models/t19a/', 'models/t19/', 'models/t12/'].map(prefix => prefix + relative).find(p => !relative.split('/').includes('..') && listed.has(p) && existsSync(path.join(store, p)));
         if (!file) { res.statusCode = 404; res.end(); return; }
         const abs = path.join(store, file);
         res.setHeader('Content-Type', file.endsWith('.json') ? 'application/json' : file.endsWith('.txt') ? 'text/plain' : 'application/octet-stream');

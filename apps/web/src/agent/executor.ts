@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The tab-side dispatcher for helper calls (agent tool results A0.2, MCP path): execution-key ledger → open project →
-// stale-read gate (timeline scope, then the per-item keyframes and effects scopes) → the T03 / T04 / T10 handler (`activeRuntime.call`, which
+// stale-read gate (timeline scope, then the per-item keyframes, effects and masks scopes) → the T03 / T04 / T10 / T12 handler (`activeRuntime.call`, which
 // adds `timelineChanges`) or `context` → the MCP additions to `context`. Resource reads return the light `context` with no
 // additions and do not count as a read. viewItemDetails and syncAndSwap (T19) run async in analysis/details, analysis/multicam.
 import { viewItemDetails } from '../analysis/details';
@@ -10,6 +10,9 @@ import type { SwapContext } from '../analysis/multicam';
 import { resolveTranscriptRanges, usesTranscriptRange } from '../analysis/ranges';
 import { view } from '../editor/view';
 import type { ProjectDocument, RecordData } from '../store/model';
+import { masksBlock } from '../masks/tools';
+import { masksOf } from '../masks/model';
+import { callSmartTool, SMART_TOOLS } from '../masks/smart-tools';
 import { callMotionGraphicTool, MOTION_GRAPHIC_TOOLS } from '../mg/tools';
 import type { DryRun } from '../mg/tools';
 import { callTextTool, needsFontLoad } from '../text/agent';
@@ -65,7 +68,7 @@ export class Gate {
 }
 
 /** Item properties a call writes, per target item (A0.2 keyframes scope). writeKeyframes on an effect is gated in the
- *  effects scope (effectWrites); on a mask in the masks scope, which arrives with T12 (its handler refuses masks today). */
+ *  effects scope (effectWrites); on a mask in the masks scope (maskWrites). */
 export function keyframeWrites(tool: string, input: Record<string, unknown>): [string, string[]][] {
   const given = (k: string) => input[k] !== undefined && input[k] !== false;
   const keys = (v: unknown) => v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v) : [];
@@ -97,8 +100,19 @@ export function effectWrites(doc: ProjectDocument, tool: string, input: Record<s
   try { if (!i) return []; e = resolveAgentId(i, input.effectId); } catch { return []; }
   return keys(input.payload).some(p => paramProp(e, p)?.keyframes?.length) ? [String(input.itemId)] : [];
 }
+/** The item a call edits in the masks scope (A0.2 item 3, T12): editMaskProperties and writeMaskPoints always; writeKeyframes on a
+ *  mask when a written property already has keyframes. An id or index the handler will refuse is not gated. */
+export function maskWrites(doc: ProjectDocument, tool: string, input: Record<string, unknown>): string | null {
+  if (tool !== 'editMaskProperties' && tool !== 'writeMaskPoints' && !(tool === 'writeKeyframes' && input.maskIndex !== undefined && input.effectId === undefined)) return null;
+  const i = item(doc, String(input.itemId)), m = i && masksOf(i)[input.maskIndex as number];
+  if (!m) return null;
+  if (tool !== 'writeKeyframes') return i!.id;
+  const written = input.payload && typeof input.payload === 'object' ? Object.keys(input.payload) : [];
+  return written.some(p => (m.keyframes as RecordData | undefined)?.[p]?.keyframes?.length) ? i!.id : null;
+}
 const block = (doc: ProjectDocument, id: string) => { const i = item(doc, id); return i ? keyframesBlock(i) : null; };
 const fxBlock = (doc: ProjectDocument, id: string) => { const i = item(doc, id); return i ? effectsBlock(i) : null; };
+const maskBlock = (doc: ProjectDocument, id: string) => { const i = item(doc, id); return i ? masksBlock(doc, i) : null; };
 
 export type ExecutorOptions = {
   /** Snapshot parts that changed (agent or user): the link turns them into `stateChanged` events. */
@@ -147,6 +161,8 @@ export class Executor {
             if (JSON.stringify(block(before, id)) !== JSON.stringify(block(after, id))) this.gate.userChanged(c.at, 'keyframes', id);
           for (const id of this.gate.keyframeItems('effects'))
             if (JSON.stringify(fxBlock(before, id)) !== JSON.stringify(fxBlock(after, id))) this.gate.userChanged(c.at, 'effects', id);
+          for (const id of this.gate.keyframeItems('masks'))
+            if (JSON.stringify(item(before, id)?.masks) !== JSON.stringify(item(after, id)?.masks)) this.gate.userChanged(c.at, 'masks', id);
         }
       }
       options.onState?.(c.parts);
@@ -158,6 +174,7 @@ export class Executor {
     if (call.toolName === 'viewItemDetails') return this.details(input, session);
     if (call.toolName === 'syncAndSwap') return this.ledger.run(call.executionKey, call.toolName, input, () => this.swap(input));
     if (call.toolName === 'addMedia' && usesTranscriptRange(input)) return this.ledger.run(call.executionKey, call.toolName, input, () => this.addByWords(input, session));
+    if (SMART_TOOLS.has(call.toolName)) return READ_ONLY.has(call.toolName) ? this.smart(call.toolName, input) : this.ledger.run(call.executionKey, call.toolName, input, () => this.smart(call.toolName, input));
     if (READ_ONLY.has(call.toolName)) return Promise.resolve(this.handle(call.toolName, input, session));
     return this.ledger.run(call.executionKey, call.toolName, input, () => this.handle(call.toolName, input, session));
   }
@@ -191,9 +208,10 @@ export class Executor {
       const ui = this.ui();
       Object.assign(result.data as Record<string, unknown>, { selectedItems: [...(ui.selection ?? [])], ...(typeof ui.playheadMs === 'number' ? { playheadSeconds: r3(ui.playheadMs / 1000) } : {}) });
     }
+    if ((tool === 'createMask' || tool === 'removeMask') && result.success) this.gate.markRead(session, 'masks', String(input.itemId)); // results §2: both mark the scope read
     return result;
   }
-  /** The stale-read gate's refusal (timeline scope, then the per-item keyframes and effects scopes), or null. */
+  /** The stale-read gate's refusal (timeline scope, then the per-item keyframes, effects and masks scopes), or null. */
   private gated(runtime: Runtime, tool: string, input: Record<string, unknown>, session: string): ToolResult | null {
     if (TIMELINE_GATED.has(tool)) { const stale = this.stale(session); if (stale) return stale; }
     // Keyframes scope: only targets where a written property is already keyframed; the first stale one refuses the call.
@@ -206,6 +224,11 @@ export class Executor {
     for (const id of effectWrites(runtime.bus.doc, tool, input)) {
       const message = this.gate.check(session, 'effects', id);
       if (message) return { success: false, code: 'STALE_READ_REFRESHED', error: STALE_ERROR, message, scope: 'effects', agentId: id, currentState: fxBlock(runtime.bus.doc, id) };
+    }
+    const masked = maskWrites(runtime.bus.doc, tool, input);
+    if (masked) {
+      const message = this.gate.check(session, 'masks', masked);
+      if (message) return { success: false, code: 'STALE_READ_REFRESHED', error: STALE_ERROR, message, scope: 'masks', agentId: masked, currentState: maskBlock(runtime.bus.doc, masked) };
     }
     return null;
   }
@@ -234,7 +257,7 @@ export class Executor {
     return { ...result, data: { ...data, resolvedTranscriptRanges: ranges.resolved.filter(Boolean) } };
   }
   /** viewItemDetails (T19 C4): read-only and async (beats are computed on first read). Success marks the timeline read,
-   *  and the keyframes scope of each returned item whose keyframes were included (results §2 viewItemDetails). */
+   *  and the keyframes / masks scope of each returned item whose keyframes / masks were included (results §2 viewItemDetails). */
   private async details(input: Record<string, unknown>, session: string): Promise<ToolResult> {
     const runtime = this.watcher.sync();
     if (!runtime) return NO_PROJECT;
@@ -243,13 +266,20 @@ export class Executor {
     try {
       const deps = await this.analysis();
       const result = await viewItemDetails({ doc: runtime.bus.doc, asset: id => runtime.assets.get(id), agentId: id => agentIds.get(id), ...deps }, input,
-        id => this.gate.markRead(session, 'keyframes', id));
+        id => this.gate.markRead(session, 'keyframes', id), id => this.gate.markRead(session, 'masks', id));
       if (result.success) this.gate.markRead(session);
       return result;
     } catch (e) {
       const err = e as { code?: unknown; message?: unknown };
       return { success: false, code: typeof err?.code === 'string' && err.code ? err.code : 'PROJECT_UNAVAILABLE', error: typeof err?.message === 'string' && err.message ? err.message : 'Unable to verify the open project.' };
     }
+  }
+  /** T12's smart-mask tools: not gated (results §2), and asynchronous. A job's document write runs as the agent, on the runtime it
+   *  started on; closing that project ends the job (masks/jobs.ts). */
+  private async smart(tool: string, input: Record<string, unknown>): Promise<ToolResult> {
+    const runtime = this.watcher.sync();
+    if (!runtime) return NO_PROJECT;
+    try { return await callSmartTool({ ...runtime.tools, origin: 'agent', scoped: run => this.watcher.asAgent(run) }, tool, input); } catch (e) { return unavailable(e); }
   }
   /** syncAndSwap (T19 C10): not gated (results §2 syncAndSwap). The offset is computed async; the placement is one
    *  synchronous agent command, refused if another project was opened meanwhile. */

@@ -60,11 +60,11 @@ export function ShapesPanel() {
 // ---- The stage overlay. Its SVG viewBox is the project canvas, so one unit is one canvas px: a drag converts to canvas px
 // by canvas width ÷ artboard width (W3-RT-08 fixture 2).
 type EditDrag = { k: number; part: 'anchor' | 'handleIn' | 'handleOut'; from: Pt; start: PathPoint[]; moved: boolean; free: boolean };
-const near = (a: Pt, b: Pt, d: number) => Math.hypot(a.x - b.x, a.y - b.y) <= d;
-const neg = (p: Pt): Pt => ({ x: -p.x + 0, y: -p.y + 0 });
-const pillButton = { background: 'transparent', color: '#fff', border: '1px solid rgb(255 255 255 / .4)', borderRadius: 999, padding: '0 8px', minHeight: 0 };
-const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
-const overlay = (t: EventTarget | null) => t instanceof Element && !!t.closest('dialog, [role="dialog"], [role="menu"]');
+export const near = (a: Pt, b: Pt, d: number) => Math.hypot(a.x - b.x, a.y - b.y) <= d;
+export const neg = (p: Pt): Pt => ({ x: -p.x + 0, y: -p.y + 0 });
+export const pillButton = { background: 'transparent', color: '#fff', border: '1px solid rgb(255 255 255 / .4)', borderRadius: 999, padding: '0 8px', minHeight: 0 };
+export const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+export const overlay = (t: EventTarget | null) => t instanceof Element && !!t.closest('dialog, [role="dialog"], [role="menu"]');
 /** A new shape at the playhead (one "Add items"); the drawing mode ends and the shape is selected; a Polygon or pen path
  *  then shows its points for editing. With no item on the timeline nothing is created (W3-RT-08 fixture 1). */
 function place(doc: ProjectDocument, shapeType: string, path: ShapePath, edit: boolean) {

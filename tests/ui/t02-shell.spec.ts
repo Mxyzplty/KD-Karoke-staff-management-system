@@ -58,23 +58,24 @@ test('B1 wide layout: left Footage (Uploads / Reference) and AI, preview, timeli
   await expect(page.getByRole('region', { name: 'Preview' })).toBeVisible(); await expect(page.getByRole('region', { name: 'Timeline' })).toBeVisible();
   // Selecting a clip shows Properties / Effects in the inspector area.
   await clip(page, 'clipA').click(); await expect(panel.getByRole('tab')).toHaveText(['Properties', 'Effects']); await expect(panel.getByRole('heading', { name: 'Video' })).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'Keyframes graph' })).toBeVisible(); await expect(panel.getByText('Remove Background')).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Keyframes graph' })).toBeVisible(); await expect(panel.locator('strong', { hasText: 'Remove Background' })).toBeVisible();
   await panel.getByRole('tab', { name: 'Effects' }).click(); await expect(panel.getByRole('region', { name: 'Color' })).toBeVisible(); await expect(panel.getByRole('button', { name: '+ Add Effect' })).toBeVisible();
   expect(await intents(page)).toEqual([]); await expectUntouched(page, id, before);
 });
 
-test('B5 inspector shells per type: header, Keyframes graph (not for layouts) opens the Keyframe Graph (T04), Remove Background → T12, sections name their owners; nothing changes', async ({ page }) => {
+test('B5 inspector shells per type: header, Keyframes graph (not for layouts) opens the Keyframe Graph (T04), Remove Background → T12 (real), sections name their owners; nothing changes', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 }); const id = await openEditor(page, richDoc()); await watchIntents(page); const before = await stored(page, id); const panel = page.getByRole('complementary', { name: 'Inspector and tools' });
   await clip(page, 'clipA').click();
   await expect(panel.locator('summary')).toHaveText(['Basic', 'Speed & Time Remap', 'Transform', 'Appearance', 'Mask', 'Shadow']);
   await panel.getByRole('button', { name: 'Keyframes graph' }).click(); const graph = page.getByRole('dialog', { name: 'Keyframe Graph' }); await expect(graph).toContainText('No keyframes yet'); await page.keyboard.press('Escape'); await expect(graph).toHaveCount(0);
-  await panel.getByRole('button', { name: 'Apply' }).click(); await expect(notices(page)).toContainText('Background removal is not yet implemented (T12).');
-  await panel.locator('summary', { hasText: 'Mask' }).click(); await expect(panel).toContainText('The Mask section is not yet implemented (T12).');
+  // T12 (C8 assertion-only edit): background removal is real now; clipA has no asset, so it refuses rather than queuing a job.
+  await panel.getByRole('button', { name: 'Apply' }).click(); await expect(notices(page)).toContainText('REMOVE_BG_FAILED: Failed to remove background');
+  await panel.locator('summary', { hasText: 'Mask' }).click(); await expect(panel.getByRole('button', { name: 'Add Mask' })).toBeVisible(); await expect(panel).not.toContainText('The Mask section is not yet implemented');
   await panel.locator('summary', { hasText: 'Transform' }).click(); await expect(panel.getByRole('slider', { name: 'Scale' })).toBeVisible(); await expect(panel).not.toContainText('The Transform section is not yet implemented');
   await clip(page, 'title').click(); await expect(panel.getByRole('heading', { name: 'Text' })).toBeVisible(); await expect(panel.locator('summary')).toHaveText(['Preset', 'Text', 'Animation', 'Basic', 'Transform', 'Font Stroke', 'Font Shadow']);
   await expect(panel.getByText('Remove Background')).toHaveCount(0);
   await clip(page, 'photo').click(); await expect(panel.getByRole('heading', { name: 'Image' })).toBeVisible(); await expect(panel.locator('summary')).toHaveText(['Basic', 'Transform', 'Appearance', 'Mask', 'Shadow']);
-  const log = await intents(page); expect(log.map(l => [l.intent.type, l.outcome.code, l.outcome.owner])).toEqual([['feature', 'NOT_IMPLEMENTED', 'T12']]);
+  const log = await intents(page); expect(log.map(l => [l.intent.type, l.outcome.code, l.outcome.owner])).toEqual([['removeBackground', 'REMOVE_BG_FAILED', undefined]]);
   await expectUntouched(page, id, before);
 });
 
@@ -237,7 +238,7 @@ test('C1/C2/C3 compact layout at 1023 px, wide at 1024; tabs follow the selectio
   await clip(page, 'clipA').click(); await expect(tabs).toHaveText(['Basic', 'Speed', 'Transform', 'Appearance', 'Mask', 'Shadow']);
   for (const [tab, section] of [['Basic', 'Basic'], ['Speed', 'Speed & Time Remap'], ['Transform', 'Transform'], ['Appearance', 'Appearance'], ['Mask', 'Mask'], ['Shadow', 'Shadow']]) {
     await tabs.filter({ hasText: new RegExp(`^${tab}$`) }).click(); const drawer = page.getByRole('dialog', { name: tab });
-    await expect(drawer.locator('details')).toHaveCount(1); await expect(drawer.locator('details[open] > summary')).toHaveText(section); await expect(drawer.getByRole('button', { name: 'Keyframes graph' })).toBeVisible(); await expect(drawer.getByText('Remove Background')).toBeVisible();
+    await expect(drawer.locator('details')).toHaveCount(1); await expect(drawer.locator('details[open] > summary')).toHaveText(section); await expect(drawer.getByRole('button', { name: 'Keyframes graph' })).toBeVisible(); await expect(drawer.locator('strong', { hasText: 'Remove Background' })).toBeVisible();
     await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); await expect(clip(page, 'clipA')).toHaveAttribute('aria-selected', 'true');
   }
   await tabs.filter({ hasText: /^Basic$/ }).click(); await expect(page.getByRole('dialog', { name: 'Basic' })).toBeVisible();

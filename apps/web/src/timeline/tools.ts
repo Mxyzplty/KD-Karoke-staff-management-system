@@ -17,6 +17,7 @@ import { addShape, writeShapePoints } from './shape-tools';
 import { addText } from '../text/tools';
 import { addLayout, editLayout } from './layout-tools';
 import { applyTransition } from './transitions';
+import { createMask, editMaskProperties, removeMask, writeMaskPoints } from '../masks/tools';
 
 export type ToolContext = {
   bus: CommandBus;
@@ -212,9 +213,9 @@ const manageMarkersTool: Handler = (ctx, args) => run(ctx, 'Edit markers', doc =
 });
 
 export const TOOLS: Record<string, Handler> = {
-  addLayout, addMedia, addMotionGraphic, addShape, addText, applyTransition, changeTrack, cloneItem, consolidateTracks, deleteItems, editLayout, editMotionGraphic, editProperties: editPropertiesTool, manageMarkers: manageMarkersTool, manageTrack: manageTrackTool,
-  manageTrackGroup: manageTrackGroupTool, moveItem, reorderItems, resizeCanvas: resizeCanvasTool, setTimeRemap: setTimeRemapTool, setUseProxy: setUseProxyTool, slipItem, splitItem, transformItem, trimItem,
-  writeEffects: writeEffectsTool, writeKeyframes: writeKeyframesTool, writeShapePoints,
+  addLayout, addMedia, addMotionGraphic, addShape, addText, applyTransition, changeTrack, cloneItem, consolidateTracks, createMask, deleteItems, editLayout, editMaskProperties, editMotionGraphic, editProperties: editPropertiesTool, manageMarkers: manageMarkersTool, manageTrack: manageTrackTool,
+  manageTrackGroup: manageTrackGroupTool, moveItem, removeMask, reorderItems, resizeCanvas: resizeCanvasTool, setTimeRemap: setTimeRemapTool, setUseProxy: setUseProxyTool, slipItem, splitItem, transformItem, trimItem,
+  writeEffects: writeEffectsTool, writeKeyframes: writeKeyframesTool, writeMaskPoints, writeShapePoints,
 };
 
 /** Runs one tool call: result, or a failure shape; plus `timelineChanges` when the document changed. */

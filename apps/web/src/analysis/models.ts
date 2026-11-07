@@ -361,13 +361,15 @@ export class LocalModels {
     this.embedding ??= retryable(this.load('embedding', async device => pipeline('feature-extraction', MODEL_IDS.embedding, { device, dtype: 'q8', local_files_only: true })), failed => { if (this.embedding === failed) this.embedding = undefined; });
     return (await (await this.embedding)(texts, { pooling: 'mean', normalize: true })).tolist() as number[][];
   }
-  async caption(frame: Frame) {
-    this.vision ??= retryable(this.load('vision', async device => {
+  private visionModel() {
+    return this.vision ??= retryable(this.load('vision', async device => {
       const model = await Florence2ForConditionalGeneration.from_pretrained(MODEL_IDS.vision, { device, dtype: { vision_encoder: 'fp32', embed_tokens: 'fp32', encoder_model: 'q4', decoder_model_merged: 'q4' }, local_files_only: true }) as Florence2ForConditionalGeneration;
       const processor = await AutoProcessor.from_pretrained(MODEL_IDS.vision, { local_files_only: true }) as Florence2Processor;
       return { model, processor };
     }), failed => { if (this.vision === failed) this.vision = undefined; });
-    const { model, processor } = await this.vision!, image = new RawImage(frame.data, frame.width, frame.height, 4);
+  }
+  async caption(frame: Frame) {
+    const { model, processor } = await this.visionModel(), image = new RawImage(frame.data, frame.width, frame.height, 4);
     const task = '<MORE_DETAILED_CAPTION>', inputs = await processor(image, processor.construct_prompts(task));
     const generated = await model.generate({ ...inputs, max_new_tokens: 128, do_sample: false, num_beams: 1 });
     const decoded = processor.batch_decode(generated as Tensor, { skip_special_tokens: false })[0];
@@ -396,6 +398,15 @@ export class LocalModels {
     const { text, tokenizer } = await this.clipModels();
     const { text_embeds } = await text(tokenizer(texts, { padding: true, truncation: true })), width = text_embeds.dims[1], data = text_embeds.data as Float32Array;
     return texts.map((_, i) => unit(Array.from(data.subarray(i * width, (i + 1) * width))));
+  }
+  /** T12's text prompts: the first box Florence-2 grounds the phrase to, in picture px, or null. */
+  async ground(frame: Omit<Frame, 'timestamp'>, phrase: string) {
+    const { model, processor } = await this.visionModel(), image = new RawImage(frame.data, frame.width, frame.height, 4);
+    const task = '<CAPTION_TO_PHRASE_GROUNDING>', inputs = await processor(image, task + phrase);
+    const generated = await model.generate({ ...inputs, max_new_tokens: 256, do_sample: false, num_beams: 1 });
+    const decoded = processor.batch_decode(generated as Tensor, { skip_special_tokens: false })[0];
+    const found = processor.post_process_generation(decoded, task, image.size)[task];
+    return typeof found === 'string' ? null : found.bboxes[0] as [number, number, number, number] | undefined ?? null;
   }
   async dispose() {
     for (const pending of [this.asr, this.sound, this.embedding]) if (pending) await (await pending).dispose();

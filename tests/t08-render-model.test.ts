@@ -105,11 +105,11 @@ describe('T08 MG pending and null rules (T15 owners table)', () => {
     expect(at(one({}, { code: null }))).toBeNull();
     expect(at(one({ details: undefined }))).toBeNull();
   });
-  // T10 (C8 assertion-only edit): effects render now; 'blur' is no registry id, so the graphic is pending as an unknown effect.
-  it('an enabled effect the registry does not know is pending (unknown effect), an enabled mask on T12, disabled ones draw', () => {
+  // T10/T12 (C8 assertion-only edit): effects and masks both render now; 'blur' is no registry id, so the graphic is pending as an unknown effect, but masks never are.
+  it('an enabled effect the registry does not know is pending (unknown effect); masks always draw (T12)', () => {
     const fx = { id: 'e', effectId: 'blur', enabled: true, order: 0, parameters: {} };
     expect(at(one({ effects: [fx] }))).toEqual({ itemId: 'g', owner: '?', what: "Unknown effect 'blur'" });
-    expect(at(one({ masks: [{ id: 'm', enabled: true }] }))).toEqual({ itemId: 'g', owner: 'T12', what: 'Masks rendering' });
+    expect(isPending(at(one({ masks: [{ id: 'm', enabled: true }] }))!)).toBe(false);
     expect(isPending(at(one({ effects: [{ ...fx, enabled: false }] }))!)).toBe(false);
     expect(isPending(at(one({ masks: [{ id: 'm', enabled: false }] }))!)).toBe(false);
   });

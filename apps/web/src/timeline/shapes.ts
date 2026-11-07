@@ -13,7 +13,7 @@ export type Pt = { x: number; y: number };
 export type PathPoint = { anchor: Pt; handleIn?: Pt; handleOut?: Pt };
 export type ShapePath = { points: PathPoint[]; closed: boolean };
 /** A path keyframe (§54.8 7.2): time on the property axis (ms), the path string as `value`, its points and closed flag. */
-export type PathKeyframe = { id: string; time: number; value: string; points: PathPoint[]; closed: boolean; easing: Easing; inHandle?: Handle; outHandle?: Handle };
+export type PathKeyframe = { id: string; time: number; value: string; points?: PathPoint[]; closed?: boolean; easing: Easing; inHandle?: Handle; outHandle?: Handle };
 export type Bounds = { x: number; y: number; width: number; height: number };
 
 export const SHAPE_TYPES = ['rectangle', 'ellipse', 'triangle', 'pentagon', 'star', 'heart'] as const;
@@ -94,6 +94,24 @@ export function pathString(path: ShapePath): string {
   const segs = segments(path), closing = path.closed && points.length >= 3 ? segs.pop()! : null;
   const draw = (s: Segment) => s.c1 ? `C ${xy(s.c1)} ${xy(s.c2!)} ${xy(s.to)}` : `L ${xy(s.to)}`;
   return [`M ${xy(points[0].anchor)}`, ...segs.map(draw), ...closing ? [...closing.c1 ? [draw(closing)] : [], 'Z'] : []].join(' ');
+}
+/** A path string back to points (§54.8 7.2: a keyframe may hold only the string): handles are offsets again, and a last segment that
+ *  returns to the first anchor before the Z is the closing one. */
+export function parsePath(value: unknown): ShapePath {
+  const points: PathPoint[] = [];
+  let closed = false;
+  for (const [, command, rest] of String(value ?? '').matchAll(/([MLCZ])([^MLCZ]*)/gi)) {
+    const v = (rest.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? []).map(Number), letter = command.toUpperCase();
+    if (letter === 'Z') closed = true;
+    else if (letter === 'C') for (let i = 0; i + 5 < v.length; i += 6) {
+      const last = points[points.length - 1], anchor = pt(v[i + 4], v[i + 5]);
+      if (last) last.handleOut = minus(pt(v[i], v[i + 1]), last.anchor);
+      points.push({ anchor, handleIn: minus(pt(v[i + 2], v[i + 3]), anchor) });
+    } else for (let i = 0; i + 1 < (letter === 'M' ? 2 : v.length); i += 2) points.push({ anchor: pt(v[i], v[i + 1]) });
+  }
+  const first = points[0], last = points[points.length - 1];
+  if (closed && points.length > 1 && first.anchor.x === last.anchor.x && first.anchor.y === last.anchor.y) { points.pop(); if (last.handleIn) first.handleIn = last.handleIn; }
+  return { points, closed };
 }
 /** One axis of a cubic's interior extrema (roots of the derivative in (0, 1)). */
 function extrema(p0: number, p1: number, p2: number, p3: number): number[] {
@@ -179,10 +197,12 @@ export function updatedPoint(stored: PathPoint, u: RecordData, n: number): PathP
 export const pathKeyframes = (holder: RecordData | undefined): PathKeyframe[] =>
   Array.isArray(holder?.keyframes?.path?.keyframes) ? [...holder!.keyframes.path.keyframes].sort((a: PathKeyframe, b: PathKeyframe) => a.time - b.time) : [];
 export const basePath = (holder: RecordData | undefined): ShapePath => ({ points: Array.isArray(holder?.points) ? holder!.points : [], closed: holder?.closed !== false });
-const pathOf = (k: PathKeyframe): ShapePath => ({ points: Array.isArray(k.points) ? k.points : [], closed: k.closed !== false });
+const stored = (k: PathKeyframe) => Array.isArray(k.points) && (k.points.length > 0 || typeof k.value !== 'string' || !k.value);
+const pathOf = (k: PathKeyframe): ShapePath => { if (stored(k)) return { points: k.points!, closed: k.closed !== false }; const p = parsePath(k.value); return { ...p, closed: k.closed ?? p.closed }; };
 /** The path at property time t (ms). With keyframes they win over the base path: the first before it, the last after it, a
  *  keyframe exactly on it; a gap of 50 ms or less takes the nearer keyframe (a tie: A); otherwise e = A→B's easing at p:
- *  equal point counts lerp anchors and handles (a one-sided handle is kept, A's closed flag), else a hard switch at e ≥ 0.5. */
+ *  equal point counts lerp anchors and handles (a one-sided handle is kept, A's closed flag), else, also without stored points on
+ *  either side, a hard switch at e ≥ 0.5. */
 export function pathAt(holder: RecordData | undefined, t: number): ShapePath {
   const k = pathKeyframes(holder);
   if (!k.length) return basePath(holder);
@@ -193,7 +213,7 @@ export function pathAt(holder: RecordData | undefined, t: number): ShapePath {
   if (t === A.time) return pathOf(A);
   if (B.time - A.time <= 50) return pathOf(t - A.time <= B.time - t ? A : B);
   const e = segmentEase(A as unknown as Keyframe, B as unknown as Keyframe, (t - A.time) / (B.time - A.time)), pa = pathOf(A), pb = pathOf(B);
-  if (pa.points.length !== pb.points.length) return e >= 0.5 ? pb : pa;
+  if (pa.points.length !== pb.points.length || !stored(A) || !stored(B)) return e >= 0.5 ? pb : pa;
   const lerp = (p: Pt, q: Pt) => pt(p.x + (q.x - p.x) * e, p.y + (q.y - p.y) * e);
   return { closed: pa.closed, points: pa.points.map((p, n) => {
     const q = pb.points[n], out: PathPoint = { anchor: lerp(p.anchor, q.anchor) };

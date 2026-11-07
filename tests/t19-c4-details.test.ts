@@ -85,14 +85,15 @@ describe('T19 C4 envelopes and include', () => {
     const { r } = await view({ itemIds: ['v1'], assetIds: ['video_1', 'v1'], include: T });
     expect(r.data.results.map((x: Rec) => x.id)).toEqual(['v1', 'video_1']);
   });
-  it('include "", general, analysis, masks, effects (alone or with others) → NOT_IMPLEMENTED owned by T18', async () => {
-    for (const include of [undefined, '', 'general', 'analysis', 'masks', 'effects', 'general,transcript', 'transcript, masks', ['effects']]) {
+  // T12 (C8 assertion-only edit): masks is served now, so it no longer appears among the NOT_IMPLEMENTED words.
+  it('include "", general, analysis, effects (alone or with others) → NOT_IMPLEMENTED owned by T18; masks is served', async () => {
+    for (const include of [undefined, '', 'general', 'analysis', 'effects', 'general,transcript', ['effects']]) {
       const { r, service } = await view({ itemId: 'v1', include });
       expect(r, JSON.stringify(include)).toMatchObject({ success: false, code: 'NOT_IMPLEMENTED', owner: 'T18' });
       expect(typeof r.error).toBe('string'); expect(typeof r.message).toBe('string'); expect(service.rhythm).not.toHaveBeenCalled();
     }
     const both = (await view({ itemId: 'v1', include: 'masks,effects' })).r;
-    expect(both.error).toContain('"masks", "effects"'); expect(both.message).toContain('T18');
+    expect(both.error).toContain('"effects"'); expect(both.error).not.toContain('masks'); expect(both.message).toContain('T18');
     expect((await view({ itemId: 'v1', include: 'general' })).r.error).toContain('"general"');
   });
   it('only unknown words → NOT_IMPLEMENTED (the default, general)', async () => {

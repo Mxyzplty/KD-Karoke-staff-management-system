@@ -292,9 +292,9 @@ describe('t18a keyframes gate (row 7, A0.2 item 3 keyframes scope)', () => {
     const write = { itemId: 'v1', payload: { opacity: { add: [{ time: 2, value: 0.7 }] } } };
     expect(await ex.execute(call('writeKeyframes', write, { session: 's' }))).toMatchObject({ code: 'STALE_READ_REFRESHED', scope: 'keyframes', agentId: 'v1', message: KF_NEVER('v1') });
     expect(await ex.execute(call('writeKeyframes', write, { session: 's' }))).toMatchObject({ success: true });
-    // T10 (C8 assertion-only edit): the effect target is served now; an effect the item lacks is not gated and its handler refuses it.
+    // T10/T12 (C8 assertion-only edit): the effect and mask targets are served now; neither is gated, and each handler refuses it directly.
     expect(await ex.execute(call('writeKeyframes', { ...write, effectId: 'vignette_1' }, { session: 'u' }))).toMatchObject({ success: false, code: 'EFFECT_NOT_FOUND' });
-    expect(await ex.execute(call('writeKeyframes', { ...write, maskIndex: 0 }, { session: 'u' }))).toMatchObject({ success: false, code: 'NOT_IMPLEMENTED' });
+    expect(await ex.execute(call('writeKeyframes', { ...write, maskIndex: 0 }, { session: 'u' }))).toMatchObject({ success: false, code: 'NO_MASKS' });
   });
 
   it('row 7: transformItem is gated only when the position / scale / rotation it writes is keyframed (positionX here)', async () => {

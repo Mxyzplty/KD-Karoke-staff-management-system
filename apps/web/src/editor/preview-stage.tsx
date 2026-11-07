@@ -12,6 +12,7 @@ import { canvasSize, fpsOf, framePlan, previewFrame, previewRuns, projectSize, s
 import type { Pending, Size } from '../render/model';
 import { attachPlayback, livePicture, usePlayback } from '../render/playback';
 import { clearSources, picture } from '../render/sources';
+import { onRasterFrame } from '../masks/raster';
 import { GraphicErrorPanel } from '../mg/repair-panel';
 import { onFontChange } from '../text/font-registry';
 import { useView, view } from './view';
@@ -45,6 +46,8 @@ export function PreviewFrames({ doc, assets }: { doc: ProjectDocument; assets: A
   // (or the emoji / CJK chain font) loads or fails. Only the registry is imported here, never the font files.
   const [fontChange, setFontChange] = useState(0);
   useEffect(() => onFontChange(() => setFontChange(n => n + 1)), []);
+  // T12: a raster mask frame that lands after the paint draws the paused frame again.
+  useEffect(() => onRasterFrame(() => setGpuChange(n => n + 1)), []);
   // Playback paints straight into the run canvases; it stays attached while the editor is open.
   useEffect(() => {
     let onscreen: { at: number; size: Size } | null = null;
