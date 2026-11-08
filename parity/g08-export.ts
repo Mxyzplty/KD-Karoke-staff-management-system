@@ -33,6 +33,7 @@ export const TIME_UNITS: TimeUnit[] = ['ms', 's', 'frame'];
 /** Stored frames closer than this many frames share one range export. */
 export const CLUSTER_GAP = 15;
 export const WINDOWS_FILE = '_windows.json';
+const INDEX_FILE = '_index.json';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const S1_FILE = 'synthetic/S1-framecount-1080x1920-30fps-10s.mp4';
 
@@ -57,8 +58,10 @@ export function parseWindowSpec(text: string): WindowSpec {
 export type StoredWindow = { label: string; startMs: number; lengthMs: number };
 export function storedWindows(json: unknown, spec: WindowSpec, fps: number): StoredWindow[] {
   const list = spec.list === undefined ? json : json && typeof json === 'object' && !Array.isArray(json) ? (json as Record<string, unknown>)[spec.list] : undefined;
-  if (!Array.isArray(list)) throw Error(spec.list === undefined ? `${WINDOWS_FILE} is not an array: pass list=<key> in --windows (its top-level keys: ${keysOf(json)})` : `${WINDOWS_FILE} has no array '${spec.list}' (its top-level keys: ${keysOf(json)})`);
-  return list.map((w, i) => {
+  const keyed = spec.list === undefined && list && typeof list === 'object' && !Array.isArray(list) ? Object.entries(list) : null;
+  if (!Array.isArray(list) && !(keyed?.length && keyed.every(([, w]) => w && typeof w === 'object' && !Array.isArray(w)))) throw Error(spec.list === undefined ? `${WINDOWS_FILE} is not an array: pass list=<key> in --windows (its top-level keys: ${keysOf(json)})` : `${WINDOWS_FILE} has no array '${spec.list}' (its top-level keys: ${keysOf(json)})`);
+  const entries: [string, unknown][] = Array.isArray(list) ? list.map((w, i) => [String(i), w]) : keyed!;
+  return entries.map(([i, w]) => {
     const r = (w && typeof w === 'object' && !Array.isArray(w) ? w : {}) as Record<string, unknown>, missing = [spec.start, spec.length, spec.label].filter(f => !(f in r));
     if (missing.length) throw Error(`${WINDOWS_FILE} entry ${i} has no ${missing.map(f => `'${f}'`).join(', ')}; its keys are: ${keysOf(w)}`);
     const start = numeric(r[spec.start]), length = numeric(r[spec.length]);
@@ -110,7 +113,7 @@ export function matchExportFrames(names: string[], pattern: string, unit: TimeUn
   try { re = new RegExp(pattern); } catch (e) { throw Error(`--frame-name is not a regular expression: ${(e as Error).message}`); }
   if (new RegExp(`${pattern}|`).exec('')!.length < 2) throw Error('--frame-name needs a capture group: group 1 is the frame time');
   const out: StoredFrame[] = [], seen = new Map<number, string>();
-  for (const file of names.filter(n => n !== WINDOWS_FILE).sort()) {
+  for (const file of names.filter(n => n !== WINDOWS_FILE && n !== INDEX_FILE).sort()) {
     const v = re.exec(file)?.[1];
     if (v === undefined || !(unit === 'frame' ? /^\d+$/ : /^\d+(\.\d+)?$/).test(v)) throw Error(`frames/export/${file}: --frame-name gives no time in ${unit === 'frame' ? 'whole frames' : unit} (group 1: ${v ?? 'no match'})`);
     const frame = unit === 'frame' ? Number(v) : Math.round(Number(v) * fps / (unit === 's' ? 1 : 1000));
@@ -292,6 +295,13 @@ export function compareExport(referenceDir: string, o: ExportCompareOptions): G0
     if (plan.shiftMs > 0) throw Error(`The exported state starts with a ${plan.shiftMs} ms gap, which Cutframe's full export drops (§53.8.2); stored frame indices cannot be placed on the timeline`);
     const names = await readdir(folder);
     if (!names.includes(WINDOWS_FILE)) throw Error(`No frames/export/${WINDOWS_FILE}`);
+    if (names.includes(INDEX_FILE)) {
+      const file = await realpath(path.join(folder, INDEX_FILE));
+      if (!inside(folder, file)) throw Error(`frames/export/${INDEX_FILE} escapes the reference directory`);
+      const text = await readFile(file, 'utf8');
+      // Research 3.8: an array of {name, frame, file} that adds nothing the file names lack, so validate JSON and read no mapping from it.
+      try { JSON.parse(text); } catch { throw Error(`frames/export/${INDEX_FILE} is not valid JSON`); }
+    }
     const stored = matchExportFrames(names, o.frameName, o.frameUnit, fps), ours = ourWindows(doc);
     const windows = checkWindows(storedWindows(JSON.parse(await readFile(path.join(folder, WINDOWS_FILE), 'utf8')), o.windows, fps), ours, fps), diffs: Diff[] = [...windows.diffs];
 

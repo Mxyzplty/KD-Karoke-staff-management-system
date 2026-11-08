@@ -98,7 +98,7 @@ async function main() {
       const ex = await import('./g08-export');
       exportCompare = ex.compareExport(ref, { frameName, frameUnit: unit as 'ms' | 's' | 'frame', windows: ex.parseWindowSpec(windows), media, exportProbe: option('--export-ffprobe') });
     }
-    const { compareFrames, FRAME_TIME_UNITS } = frames ? await import('./g02-frames') : { compareFrames: undefined, FRAME_TIME_UNITS: [] };
+    const { compareFrames, FRAME_TIME_UNITS } = frames || unit !== undefined ? await import('./g02-frames') : { compareFrames: undefined, FRAME_TIME_UNITS: [] };
     if (unit !== undefined && !(FRAME_TIME_UNITS as string[]).includes(unit)) throw Error('--frame-time-unit must be ms, s or frame');
     const common = { calls: JSON.parse(await readFile(calls, 'utf8')), assets: assets === undefined ? {} : JSON.parse(await readFile(assets, 'utf8')), toolField: option('--tool-field') ?? '', inputField: option('--input-field') ?? '',
       blockBase: base === undefined ? undefined : Number(base) as 0 | 1, output: option('--output') };

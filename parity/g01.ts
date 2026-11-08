@@ -44,8 +44,14 @@ export async function loadStored(dir: string, blockBase?: 0 | 1) {
     raw.set(name.slice(0, -5), value);
   }
   const key = (id: string, from: string) => { const k = id.replace(/\.json$/, ''); if (!raw.has(k)) throw Error(`${from}: @@SAME reference to unknown file ${id}`); return k; };
+  const listed = (list: Json[]) => list.map(b => typeof b === 'string' ? b : isObj(b) && typeof b.text === 'string' ? b.text : JSON.stringify(b));
   const own = (r: Rec): string[] | null => typeof r.result_text === 'string' && r.result_text.length ? r.result_text.split(BLOCK)
-    : Array.isArray(r.result_blocks) && r.result_blocks.length ? r.result_blocks.map(b => typeof b === 'string' ? b : isObj(b) && typeof b.text === 'string' ? b.text : JSON.stringify(b)) : null;
+    : Array.isArray(r.result_blocks) && r.result_blocks.length ? listed(r.result_blocks)
+    // Research 3.8 settled `result`: text and lists as above; exactly `{content, isError}` is its `content` list; any other object is one JSON block, so `success` stays at its top level.
+    : typeof r.result === 'string' && r.result.length ? r.result.split(BLOCK)
+    : Array.isArray(r.result) && r.result.length ? listed(r.result)
+    : isObj(r.result) && Array.isArray(r.result.content) && 'isError' in r.result && Object.keys(r.result).length === 2 ? r.result.content.length ? listed(r.result.content) : null
+    : isObj(r.result) && Object.keys(r.result).length ? [JSON.stringify(r.result)] : null;
   // A file with no result content whose `notes` name exactly one other stored file takes that file's result.
   const sameAs = (k: string): string => {
     const notes = raw.get(k)!.notes, hits = typeof notes === 'string' ? [...raw.keys()].filter(s => s !== k && new RegExp(`(?<![\\w.])${escape(s)}(?![\\w]|\\.\\w)`).test(notes)) : [];
