@@ -7,9 +7,11 @@
 // Review m3 (the coordinator's rule of 2 Nov): static failures (COMPILATION_ERROR, VALIDATION_ERROR, MG_SANDBOX_DENIED, MG_MEMORY_LIMIT,
 // UNSUPPORTED_OPTION) are not asked again; MG_WATCHDOG is asked again only for capture; other errors (media, renderer crash: MG_RENDER_FAILED) keep the retry.
 // Review m4: graphicFields for no code does not load the renderer.
+// Attached video MIME (Author's ruling, 9 Nov: an MG with an attached video asset exports and its video plays): OPFS keeps no MIME type, so the blob URL
+// behind getAssetUrl takes the asset row's mimeType, else the blob's own (tests/ui/t08-video-asset-export.spec.ts is the end-to-end proof).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderAgain, STATIC_RENDER_CODES } from '../apps/web/src/mg/errors';
-import { clearGraphics, graphicFields, graphicPicture, useGraphicErrors } from '../apps/web/src/mg/frames';
+import { clearGraphics, graphicAssets, graphicFields, graphicPicture, useGraphicErrors } from '../apps/web/src/mg/frames';
 import { MotionGraphicError } from '../apps/web/src/mg/errors';
 import { itemDraw } from '../apps/web/src/render/model';
 import type { Draw } from '../apps/web/src/render/model';
@@ -208,5 +210,38 @@ describe('graphicFields: a graphic with no code (review m4)', () => {
     expect(await graphicFields(store, CODE)).toEqual([{ name: 'title', defaultValue: 'Hi' }]);
     expect(h.created).toBe(1);
     expect(h.compile).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('graphicPicture: the MIME type of an attached asset\'s URL (Author\'s ruling, 9 Nov)', () => {
+  const VIDEO = (id: string) => `export const G = () => <OffthreadVideo src={getAssetUrl('${id}')} muted={true} volume={0} />;`;
+  const made: Blob[] = [];
+  const attached = (read: Blob, row: unknown) => ({ media: { read: vi.fn(async () => read) }, row: vi.fn(async () => row) }) as unknown as typeof store;
+  beforeEach(() => {
+    made.length = 0; h.render.mockResolvedValue({ image: IMAGE });
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(b => { made.push(b as Blob); return `blob:asset-${made.length}`; });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  });
+  afterEach(() => { graphicAssets([]); vi.mocked(URL.createObjectURL).mockRestore(); vi.mocked(URL.revokeObjectURL).mockRestore(); });
+
+  it('the asset row\'s mimeType types the blob behind the URL (the stored blob\'s type is empty), and the render gets that URL', async () => {
+    graphicAssets([{ agentId: 'clip', id: 'a1' }]);
+    const s = attached(new Blob(['v'], { type: '' }), { mimeType: 'video/mp4' });
+    expect(await graphicPicture(s, drawAt(500, { code: VIDEO('clip') }))).toEqual({ image: bitmap, width: 540, height: 960 });
+    expect(made).toHaveLength(1); expect(made[0].type).toBe('video/mp4');
+    expect(h.render.mock.calls[0][0].assetMap).toEqual({ clip: 'blob:asset-1' });
+    expect(s.media.read).toHaveBeenCalledWith('a1'); expect(s.row).toHaveBeenCalledWith('assets', 'a1');
+  });
+  it('a row without a mimeType (or no row) keeps the blob\'s own type', async () => {
+    graphicAssets([{ agentId: 'clip', id: 'a2' }, { agentId: 'other', id: 'a3' }]);
+    await graphicPicture(attached(new Blob(['v'], { type: 'video/webm' }), {}), drawAt(500, { code: VIDEO('clip') }));
+    await graphicPicture(attached(new Blob(['v'], { type: 'video/webm' }), undefined), drawAt(500, { code: VIDEO('other') }));
+    expect(made.map(b => b.type)).toEqual(['video/webm', 'video/webm']);
+  });
+  it('the URL of an asset is made once, whatever the number of frames', async () => {
+    graphicAssets([{ agentId: 'clip', id: 'a4' }]);
+    const s = attached(new Blob(['v'], { type: '' }), { mimeType: 'video/mp4' });
+    await graphicPicture(s, drawAt(0, { code: VIDEO('clip') })); await graphicPicture(s, drawAt(500, { code: VIDEO('clip') }));
+    expect(made).toHaveLength(1); expect(s.media.read).toHaveBeenCalledTimes(1);
   });
 });

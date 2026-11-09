@@ -87,14 +87,18 @@ test('D35 failed graphic waits for a late sibling and closes its bitmap once', a
 });
 
 test('D35 shape receives only the output transfer', async ({ page }) => {
-  const shape = rectShape('s', 'o1', { from: 0, to: 300 }, '#ff3366');
+  // 1 s (10 frames), so frames past the first three exist to score.
+  const shape = rectShape('s', 'o1', { from: 0, to: 1000 }, '#ff3366');
   // rectShape's position is the top-left of its 160 x 90 box.
   shape.properties.positionX = p(0); shape.properties.positionY = p(0);
   const expected = [255, 51, 102].map(output);
   expect(expected).toEqual([255, 35, 88]);
-  const { id } = await setup(page, doc(shape), {});
+  const { id } = await setup(page, { ...doc(shape), duration: 1000 }, {});
   const run = await runExport(page, id); completed(run);
-  near(sampled(decodeRgba(run.file!, 160, 90)[0], 'shape'), expected, 1);
+  // The software H.264 encoder rounds frames 0-2 (D47): every settled frame, index 3 onward, is scored.
+  const frames = decodeRgba(run.file!, 160, 90);
+  expect(frames.length).toBeGreaterThan(3);
+  frames.slice(3).forEach((frame, i) => near(i ? pixel(frame) : sampled(frame, 'shape frame 3'), expected, 1));
 });
 
 test('D35 converts straight colour before alpha compositing on black', async ({ page }) => {

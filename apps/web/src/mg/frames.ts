@@ -7,6 +7,7 @@
 import type { Source } from '../render/compositor';
 import type { Draw } from '../render/model';
 import type { ProjectStore } from '../store/database';
+import type { Asset } from '../store/model';
 import { create } from 'zustand';
 import { assetIds } from './agent-checks';
 import { renderWithRetry } from './errors';
@@ -23,7 +24,9 @@ async function attachedUrl(store: ProjectStore, agentId: string): Promise<string
   const link = links.find(l => l.agentId === agentId);
   if (!link) return undefined;
   let url = urls.get(link.id);
-  if (!url) { url = store.media.read(link.id).then(blob => URL.createObjectURL(blob)); urls.set(link.id, url); url.catch(() => urls.delete(link.id)); }
+  // OPFS keeps no MIME type (every read's type is ''), so the URL takes the asset row's, as render/sources.ts does; a row
+  // without one keeps the blob's own.
+  if (!url) { url = Promise.all([store.media.read(link.id), store.row<Asset>('assets', link.id)]).then(([blob, asset]) => URL.createObjectURL(new Blob([blob], { type: asset?.mimeType || blob.type }))); urls.set(link.id, url); url.catch(() => urls.delete(link.id)); }
   return url;
 }
 /** Only the ids the code names as literals: the sandbox embeds every map entry for every frame. An id the code reaches
