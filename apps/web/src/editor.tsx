@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { projectStore } from './store/database';
 import { AutosaveSession } from './store/autosave';
 import type { ProjectRecord } from './store/model';
@@ -16,7 +17,7 @@ import type { Checkpoints } from './versions/checkpoints';
 import { watchTitle } from './analysis/title';
 // The editor routes every document change through this session (T03's command bus installs its intent handler on top).
 export let activeSession: AutosaveSession | undefined;
-export function EditorRoute({ id, navigate }: { id: string; navigate: (path: string) => void }) {
+export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (path: string) => void; demo?: ReactNode }) {
   const [load, setLoad] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading'), [record, setRecord] = useState<ProjectRecord>(), [retry, setRetry] = useState(0), [, render] = useState(0);
   const [session, setSession] = useState<AutosaveSession>(), [checkpoints, setCheckpoints] = useState<Checkpoints>();
   // T17 restore: the job runs after this editor is torn down and before the project is opened again (once, under StrictMode too).
@@ -41,7 +42,7 @@ export function EditorRoute({ id, navigate }: { id: string; navigate: (path: str
         render(n => n + 1);
       }); unbind = local.bindLifecycle();
       unmask = installMasks(projectStore.media, id);
-      uninstall = installRuntime(local, projectStore, id, { maskMarker: mode === 'parity' ? 'both' : 'enter', addStock: async item => (await addStockToProject(projectStore, id, item)).asset, onAssets: tools => migrateRemovals({ ...tools, origin: 'user' }) });
+      uninstall = installRuntime(local, projectStore, id, { maskMarker: mode === 'parity' ? 'both' : 'enter', addStock: async item => (await addStockToProject(projectStore, id, item)).asset, onAssets: tools => migrateRemovals({ ...tools, origin: 'user' }), ...(mode === 'parity' ? { noOp: 'reference', sliderEntries: 'step' } as const : {}) });
       setSession(local); setRecord(result.record); setLoad('ready');
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
@@ -50,5 +51,5 @@ export function EditorRoute({ id, navigate }: { id: string; navigate: (path: str
   }, [id, retry]);
   if (load === 'loading') return <main><p>Opening project…</p></main>;
   if (load === 'missing' || load === 'error') return <main className="load-failure"><h1>Failed to load project</h1><p>{load === 'missing' ? 'Project not found.' : 'Couldn’t open this project. Browser storage could not be read.'}</p><button onClick={() => navigate('/')}>‹ Back to home</button>{load === 'error' && <button onClick={() => setRetry(n => n + 1)}>Retry</button>}</main>;
-  return <EditorShell session={session!} record={record!} navigate={navigate} checkpoints={checkpoints!} />;
+  return <EditorShell session={session!} record={record!} navigate={navigate} checkpoints={checkpoints!} demo={demo} />;
 }

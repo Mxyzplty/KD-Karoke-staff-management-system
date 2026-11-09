@@ -18,7 +18,7 @@ type Store = Pick<ProjectStore, 'library' | 'row' | 'setGeneratedTitle' | 'attac
 
 /** Cutframe guard (Xapp's limit is not recorded). */
 export const TITLE_MAX = 100, TITLE_POLL_MS = 5000;
-/** The connected model provider; none until providers exist (T20 sets it), so the title stays "Untitled Project". */
+/** The connected model provider (settings/providers.ts); with none the title stays "Untitled Project". */
 let current: TitleProvider | undefined;
 /** Watches waiting for a provider: woken when one is set (no idle timer while none is connected). */
 const waiting = new Set<() => void>();

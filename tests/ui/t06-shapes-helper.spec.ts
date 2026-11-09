@@ -36,7 +36,7 @@ type Body = Record<string, any>;
 /** A paired tab on a richDoc project linked to a fresh helper, plus MCP clients on that helper (as t10-write-effects-helper `connected`). */
 async function connected(page: Page) {
   const configDir = mkdtempSync(join(tmpdir(), 't06-helper-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir, quietMs: 100 });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!], quietMs: 100 });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   const projectId = await createProject(page, richDoc(), 'T06 shapes helper');
   const token = newToken(); helper.store.add(token);

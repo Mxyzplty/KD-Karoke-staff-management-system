@@ -51,7 +51,7 @@ test('theme cycles through all three saved states; help and later-ticket entry p
   await page.goto('/'); await page.getByRole('button', { name: 'Theme: system' }).click(); await page.reload(); await expect(page.getByRole('button', { name: 'Theme: light' })).toBeVisible();
   await page.getByRole('button', { name: 'Theme: light' }).click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); await page.getByRole('button', { name: 'Theme: dark' }).click();
   for (const route of ['/assets', '/settings', '/costs']) { await page.goto(route); await page.getByRole('button', { name: 'Help & Resources' }).click(); await expect(page.getByRole('menuitem', { name: 'Agent-setup guide' })).toBeVisible(); }
-  await page.getByRole('menuitem', { name: 'Community' }).click(); await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('destination not configured');
+  await page.getByRole('menuitem', { name: 'Community' }).click(); await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('No community space has been set up yet.');
   await page.goto('/'); await page.getByRole('button', { name: '＋ New Video', exact: true }).click(); await page.getByRole('button', { name: 'From your library', exact: true }).click();
   // T14 built the reference library: an empty store shows "0 saved" and the empty state (T14 tests the filled library).
   await expect(page.getByText('0 saved', { exact: true })).toBeVisible(); await expect(page.getByText('No reference videos yet.', { exact: true })).toBeVisible();

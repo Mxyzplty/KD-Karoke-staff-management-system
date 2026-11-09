@@ -100,26 +100,26 @@ test('B2 top row: Back, name, template chip → T22, local-only cloud popover, H
   await expect(page.getByRole('menuitem')).toHaveText(['View details', 'Change template', 'Save as template']);
   for (const label of ['View details', 'Change template', 'Save as template']) { await page.getByRole('menuitem', { name: label }).click(); await expect(notices(page)).toContainText(`${label} is not yet implemented (T22).`); await page.getByRole('button', { name: 'Template: No template' }).click(); }
   await page.keyboard.press('Escape'); await expect(page.getByRole('menu')).toHaveCount(0);
-  // Cloud backup: local only, Auto off and disabled, per-asset "Local only", a cost line.
+  // Cloud backup: local only, Auto off (T21 made it live), per-asset "Local only", a cost line.
   await page.getByRole('button', { name: 'Cloud backup: local only' }).click(); const cloud = page.getByRole('dialog', { name: 'Cloud backup' });
-  await expect(cloud).toContainText('Off. This project and its media are kept only in this browser'); const auto = cloud.getByRole('switch'); await expect(auto).toBeDisabled(); await expect(auto).not.toBeChecked();
+  await expect(cloud).toContainText('Off. This project and its media are kept only in this browser'); const auto = cloud.getByRole('switch'); await expect(auto).toBeEnabled(); await expect(auto).not.toBeChecked();
   await expect(cloud.getByRole('list', { name: 'Project assets' }).getByRole('listitem')).toHaveCount(1); await expect(cloud.getByRole('listitem')).toContainText('tiny.png'); await expect(cloud.getByRole('listitem')).toContainText('Local only');
-  await expect(cloud).toContainText('No media leaves this device'); await expect(cloud).toContainText('any storage cost comes from the provider you choose'); await expect(cloud).toContainText('not yet implemented (T21)');
+  await expect(cloud).toContainText('No media leaves this device'); await expect(cloud).toContainText('any storage cost comes from the provider you choose'); await expect(cloud).not.toContainText('not yet implemented');
   await page.mouse.click(5, 400); await expect(cloud).toHaveCount(0); // outside press closes it (Escape is a separate test)
-  // Help: three guides (destination not configured, T21) and the shortcut list.
+  // Help: three guides (T21: two corpus pages, Community has no destination yet) and the shortcut list.
   await page.getByRole('button', { name: 'Help', exact: true }).click(); await expect(page.getByRole('menuitem')).toHaveText(['Getting-started guide', 'Agent-setup guide', 'Community', 'Keyboard shortcuts']);
-  await page.getByRole('menuitem', { name: 'Community' }).click(); await expect(notices(page)).toContainText('Community (destination not configured) is not yet implemented (T21).');
-  expect((await intents(page)).at(-1)).toMatchObject({ intent: { type: 'feature', owner: 'T21', label: 'Community (destination not configured)' }, outcome: { code: 'NOT_IMPLEMENTED', owner: 'T21' } });
+  await page.getByRole('menuitem', { name: 'Community' }).click(); await expect(notices(page)).toContainText('No community space has been set up yet.');
+  expect((await intents(page)).map(l => l.outcome.owner)).toEqual(['T22', 'T22', 'T22']);
   await page.getByRole('button', { name: 'Help', exact: true }).click(); await page.getByRole('menuitem', { name: 'Keyboard shortcuts' }).click(); await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
-  // Agent badge: never "Connected"; Disconnect disabled; allowed-folder count; Set up → /settings.
+  // Agent badge: never "Connected"; T18a's connect panel, no Disconnect before a connection; allowed-folder count; Set up → the External Agent card.
   await page.getByRole('button', { name: 'Agent: not connected' }).click(); const agent = page.getByRole('dialog', { name: 'Agent connection' });
-  await expect(agent.getByText('Not connected', { exact: true })).toBeVisible(); await expect(agent.getByText('Connected', { exact: true })).toHaveCount(0); await expect(agent.getByRole('button', { name: 'Disconnect' })).toBeDisabled();
-  await expect(agent).toContainText('No allowed folders on this device'); await expect(agent).toContainText('not yet implemented (T18)');
-  await agent.getByRole('link', { name: 'Set up →' }).click(); await expect(page).toHaveURL(/\/settings$/);
+  await expect(agent.getByText('Not connected', { exact: true })).toBeVisible(); await expect(agent.getByText('Connected', { exact: true })).toHaveCount(0); await expect(agent.getByRole('button', { name: 'Disconnect' })).toHaveCount(0); await expect(agent.getByTestId('agent-link-panel')).toBeVisible();
+  await expect(agent).toContainText('No allowed folders on this device'); await expect(agent).not.toContainText('not yet implemented');
+  await agent.getByRole('link', { name: 'Set up →' }).click(); await expect(page).toHaveURL(/\/settings#external-agent$/);
   await page.goBack(); await expect(page.getByRole('status')).toHaveText('Saved locally');
   // Export → T16; Back → home.
   await page.getByRole('button', { name: 'Export', exact: true }).click(); await expect(notices(page)).toContainText('Export is not yet implemented (T16).');
-  const log = await intents(page); expect(log.map(l => [l.outcome.code, l.outcome.owner])).toEqual([['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T21'], ['NOT_IMPLEMENTED', 'T16']]);
+  const log = await intents(page); expect(log.map(l => [l.outcome.code, l.outcome.owner])).toEqual([['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T16']]);
   await expectUntouched(page, id, before);
   await page.getByRole('button', { name: 'Back to home' }).click(); await expect(page).toHaveURL(/\/$/); expect(leaks).toEqual([]);
 });

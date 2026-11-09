@@ -28,6 +28,7 @@ scope.onmessage = event => {
             case 'describe': value = await engine.describe(request.frames, request.duration); break;
             case 'index': await engine.footage.add(request.asset, request.analysis, request.transcript); value = true; break;
             case 'search': value = await engine.footage.search(request.request); break;
+            case 'embed': value = await engine.models.embed(request.texts); break;
             case 'remove': engine.footage.remove(request.assetId); value = true; break;
             // A stored entry made by another embedder is refused (false): the caller re-indexes it.
             case 'entry': value = { entry: engine.footage.entry(request.assetId) ?? null, embedder: MODEL_IDS.embedding }; break;

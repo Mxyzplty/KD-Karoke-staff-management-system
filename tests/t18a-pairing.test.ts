@@ -191,7 +191,7 @@ describe('t18a pairing (row 2)', () => {
     for (let n = 0; n < 5; n++) { first.send({ type: 'pair', code: wrong }); await first.next('error'); }
     await first.closed;
     const printed = lines.length;
-    for (const origin of [ORIGIN, 'http://localhost:9999', 'http://[::1]:5173']) {
+    for (const origin of [ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173']) {
       const tab = await RawTab.open(helper.port, { origin });
       tab.hello({ tabId: `tab-${origin}` });
       expect(await tab.next('hello')).toMatchObject({ paired: false });
@@ -233,7 +233,7 @@ describe('t18a pairing (row 2)', () => {
     const { helper, lines } = await start();
     let guesses = 0, judged = 0, sockets = 0, next = 0, real: string | undefined;
     while (guesses < 300) {
-      const tab = await RawTab.open(helper.port, { origin: sockets++ % 2 ? 'http://localhost:9999' : ORIGIN });
+      const tab = await RawTab.open(helper.port, { origin: sockets++ % 2 ? 'http://localhost:5173' : ORIGIN });
       tab.hello({ tabId: `attacker-${sockets}` });
       expect(await tab.next('hello')).toMatchObject({ paired: false });
       real ??= helper.pairingCode; // known to the test only
@@ -328,7 +328,7 @@ describe('t18a pairing (row 2)', () => {
 
   it('row 2: a code offered by two tabs pairs neither (a page flooding offers cannot ride along on the user\'s code); once one goes, the other pairs', async () => {
     const { helper, lines } = await start();
-    const user = await RawTab.open(helper.port), page = await RawTab.open(helper.port, { origin: 'http://localhost:9999' });
+    const user = await RawTab.open(helper.port), page = await RawTab.open(helper.port, { origin: 'http://localhost:5173' });
     user.hello(); await user.next('hello');
     page.hello({ tabId: 'tab-page' }); await page.next('hello');
     user.send({ type: 'pair', code: '424242', offer: true });
@@ -504,7 +504,7 @@ describe('t18a tab protocol (row 4)', () => {
     expect({ PROTOCOL, DEFAULT_PORT, PORT_RANGE, PING_MS, STALL_MS, RESOURCE_QUIET_MS, RECONNECT_DELAYS, RECONNECT_MAX, RECONNECT_STABLE_MS }).toEqual(
       { PROTOCOL: 1, DEFAULT_PORT: 47820, PORT_RANGE: 10, PING_MS: 15_000, STALL_MS: 60_000, RESOURCE_QUIET_MS: 500, RECONNECT_DELAYS: [250, 1000, 2000, 4000, 8000], RECONNECT_MAX: 10, RECONNECT_STABLE_MS: 5000 });
     expect(CLOSE).toEqual({ superseded: 4409, unauthorized: 4401, replaced: 4410, protocol: 4400, shutdown: 4503 });
-    expect([...SERVED_TOOLS]).toEqual(['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'createMask', 'deleteItems', 'editLayout', 'editMaskProperties', 'editMotionGraphic', 'editProperties', 'manageMarkers', 'manageTrack', 'manageTrackGroup', 'moveItem', 'removeMask', 'reorderItems', 'resizeCanvas', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeMaskPoints', 'writeShapePoints', 'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground']); // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints; T12 smart masks (C8): + viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground
+    expect([...SERVED_TOOLS]).toEqual(['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'createMask', 'deleteItems', 'editLayout', 'editMaskProperties', 'editMotionGraphic', 'editProperties', 'getHelpSection', 'manageMarkers', 'manageTrack', 'manageTrackGroup', 'moveItem', 'removeMask', 'reorderItems', 'resizeCanvas', 'searchHelpDocs', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeMaskPoints', 'writeShapePoints', 'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground']); // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints; T12 smart masks (C8): + viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground; T21: + getHelpSection, searchHelpDocs
   });
 
   it('row 4: ping → {type:"pong"}, also before hello; a received pong gets no answer', async () => {

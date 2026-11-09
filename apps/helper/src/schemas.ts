@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The helper's own JSON Schemas for the 38 served tools (T18a ledger row 6, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks; agent tool results §4 rule 1). Every call is
+// The helper's own JSON Schemas for the 40 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks; agent tool results §4 rule 1). Every call is
 // checked here before the tab sees it; a violation answers Xapp's server shape:
 // {success:false, code:"INVALID_TOOL_INPUT", error:"Invalid input for <tool>", message:"<path>: <reason>", details:{errors:[{path, code, message}]}}.
 // Paths use Xapp's stored form ("$.items.0.trackId"); detail codes are the upper-cased JSON Schema keyword (MAXIMUM, MINITEMS,
@@ -128,6 +128,9 @@ const TOOL_LIST: Tool[] = [
       code: str, summary: { type: 'string', description: 'At most 400 characters; update it when the visual meaning changes' } }, ['itemId']) },
   { name: 'editProperties', description: 'Change visual, media or shape properties of one item (itemId) or a batch (itemIds), atomically. A keyframed property changes only its default value. Timing: moveItem / trimItem; position and fitting: transformItem.',
     inputSchema: obj({ itemId: str, itemIds: ids('All-or-nothing batch'), properties }, ['properties']) },
+  // T21 (contract getHelpSection).
+  { name: 'getHelpSection', description: 'Read one help section by the section_id searchHelpDocs returned.',
+    inputSchema: obj({ section_id: { type: 'string', description: 'Section id' } }, ['section_id']) },
   { name: 'manageMarkers', description: 'Add, update, remove or clear timeline markers (Cutframe tool; times in seconds).',
     inputSchema: obj({ actions: { type: 'array', items: obj({ action: { enum: ['add', 'update', 'remove', 'clear'] }, time: secs('Marker time in seconds'), label: str, markerId: str }, ['action']) } }, ['actions']) },
   { name: 'manageTrack', description: 'Create, delete, rename, reorder or toggle (mute, solo, lock, hide, volume) tracks.',
@@ -144,6 +147,9 @@ const TOOL_LIST: Tool[] = [
     inputSchema: obj({ itemIds: ids('Items to move, in their current relative order'), beforeItemId: str, afterItemId: str }, ['itemIds']) },
   { name: 'resizeCanvas', description: 'Change the canvas aspect ratio. Items keep their pixel size and position.',
     inputSchema: obj({ aspectRatio: { enum: ['16:9', '9:16', '1:1'] } }, ['aspectRatio']) },
+  // T21 (contract searchHelpDocs).
+  { name: 'searchHelpDocs', description: 'Search the user-facing help docs with a question of a few words. A single word finds nothing.',
+    inputSchema: obj({ query: { type: 'string', description: 'The question' }, match_count: { type: 'number', maximum: 5, description: 'Number of sections, at most 5 (default 5)' } }, ['query']) },
   { name: 'setTimeRemap', description: 'Set a variable-speed curve on a video or audio item: keyframes map timeline seconds to source milliseconds; speed is the slope between them.',
     inputSchema: obj({ itemId: str, keyframes: { type: 'array', minItems: 1, items: obj({ time: { type: 'number', minimum: 0, description: 'Timeline seconds' },
       value: { type: 'number', minimum: 0, description: 'Source milliseconds' }, easing, inHandle: handle, outHandle: handle }, ['time', 'value']) },

@@ -82,28 +82,36 @@ export const TOUR_STEPS = [
   { anchor: 'timeline', title: 'The timeline', text: 'Arrange, trim and split clips here. Press ? at any time to see the keyboard shortcuts.' },
   { anchor: 'agent-badge', title: 'Connect your own agent', text: 'Outside agents such as Claude Code or Codex can edit this project through the agent connection.' },
 ];
-const seen = () => { try { return !!localStorage.getItem(TOUR_KEY); } catch { return true; } };
-const remember = (value: 'done' | 'skipped') => { try { localStorage.setItem(TOUR_KEY, value); } catch { /* not stored: the tour may show again */ } };
-export function Tour() {
-  const [steps, setSteps] = useState<typeof TOUR_STEPS>(), [index, setIndex] = useState(0), [box, setBox] = useState<DOMRect>(), drawer = useView(s => s.drawer);
+export type TourStep = { anchor: string; title: string; text: string };
+const seen = (key: string) => { try { return !!localStorage.getItem(key); } catch { return true; } };
+const remember = (key: string, value: 'done' | 'skipped') => { try { localStorage.setItem(key, value); } catch { /* not stored: the tour may show again */ } };
+/** Shared tour mechanism (§36 "other tours use the same anchor mechanism"): the editor and home pass their own key, steps and
+ *  label. `ready` holds a tour back (home waits until onboarding is done). The drawer guard is for the editor; home has none. */
+export function Tour({ tourKey = TOUR_KEY, tourSteps = TOUR_STEPS, label = 'Editor tour', ready = true }: { tourKey?: string; tourSteps?: TourStep[]; label?: string; ready?: boolean } = {}) {
+  const [steps, setSteps] = useState<TourStep[]>(), [index, setIndex] = useState(0), [box, setBox] = useState<DOMRect>(), drawer = useView(s => s.drawer);
   useEffect(() => {
-    if (seen()) return;
+    if (!ready || seen(tourKey)) return;
     const started = Date.now(), timer = setInterval(() => {
-      const present = TOUR_STEPS.filter(s => document.querySelector(`[data-tour="${s.anchor}"]`));
-      if (present.length === TOUR_STEPS.length || (Date.now() - started >= 5000 && present.length)) { clearInterval(timer); setSteps(present); }
+      const present = tourSteps.filter(s => document.querySelector(`[data-tour="${s.anchor}"]`));
+      if (present.length === tourSteps.length || (Date.now() - started >= 5000 && present.length)) { clearInterval(timer); setSteps(present); }
       else if (Date.now() - started >= 5000) clearInterval(timer);
     }, 100);
     return () => clearInterval(timer);
-  }, []);
+  }, [ready, tourKey, tourSteps]);
   const step = steps?.[index];
   useEffect(() => { if (!step) return; const update = () => setBox(document.querySelector(`[data-tour="${step.anchor}"]`)?.getBoundingClientRect()); update(); const t = setInterval(update, 250); return () => clearInterval(t); }, [step]);
   if (!steps || !step || drawer) return null;
-  const finish = (value: 'done' | 'skipped') => { remember(value); setSteps(undefined); };
+  const finish = (value: 'done' | 'skipped') => { remember(tourKey, value); setSteps(undefined); };
   return <>
     {box && <div className="tour-highlight" aria-hidden="true" style={{ left: box.left - 4, top: box.top - 4, width: box.width + 8, height: box.height + 8 }} />}
-    <section className="tour" role="dialog" aria-modal="false" aria-label="Editor tour">
+    <section className="tour" role="dialog" aria-modal="false" aria-label={label}>
       <small>{index + 1} of {steps.length}</small><h3>{step.title}</h3><p>{step.text}</p>
       <div className="dialog-actions"><button onClick={() => finish('skipped')}>Skip tour</button><button className="primary" onClick={() => index + 1 < steps.length ? setIndex(index + 1) : finish('done')}>{index + 1 < steps.length ? 'Next' : 'Done'}</button></div>
     </section>
   </>;
 }
+export const HOME_TOUR_KEY = 'cutframe:tour:home';
+export const HOME_TOUR_STEPS: TourStep[] = [
+  { anchor: 'new-video', title: 'Start a video', text: 'New Video walks you from footage to a first cut. Everything you make stays in this browser.' },
+  { anchor: 'your-projects', title: 'Your projects', text: 'Projects you create appear here, saved locally on this device.' },
+];

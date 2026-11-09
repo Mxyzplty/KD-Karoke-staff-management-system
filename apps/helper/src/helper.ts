@@ -32,7 +32,7 @@ export type HelperOptions = {
   /** First port to try (default 47820); the next free one of `range` ports is used. 0 = any free port (tests). */
   port?: number; range?: number;
   configDir?: string;
-  /** Extra page origins allowed to open /tab and read /hello (loopback http(s) origins are always allowed). */
+  /** Extra page origins allowed to open /tab and read /hello, on top of OWN_ORIGINS. */
   allowOrigins?: string[];
   toolTimeoutMs?: number;
   /** User-facing lines (pairing code, status). Default: stdout. */
@@ -50,11 +50,13 @@ const LOOPBACK_NAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
 const RESOURCE_PARTS = new Set(['items', 'tracks', 'transitions']);
 const SERVED = new Set<string>(SERVED_TOOLS);
 
-/** A Cutframe page origin: loopback http(s) on any port, or one passed with --allow-origin. */
+/** The editor's own served origins: `npm run dev` and `npm run preview` (vite serves on 127.0.0.1 only, so no [::1]). */
+export const OWN_ORIGINS = ['http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:4173', 'http://localhost:4173'];
+/** A Cutframe page origin (D34): one of the editor's own served origins, or one passed with --allow-origin, by exact match. */
 export function originAllowed(origin: string | undefined, extra: Iterable<string> = []): boolean {
   if (!origin) return false;
-  for (const o of extra) if (o === origin) return true;
-  try { const u = new URL(origin); return (u.protocol === 'http:' || u.protocol === 'https:') && LOOPBACK_NAMES.has(u.hostname) && u.origin === origin; } catch { return false; }
+  for (const o of [...OWN_ORIGINS, ...extra]) if (o === origin) return true;
+  return false;
 }
 export const loopbackAddress = (addr: string | undefined) => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 /** Host header names a loopback host (DNS-rebinding guard). */
@@ -87,6 +89,7 @@ export class Helper implements Link {
   /** Wrong codes since the user last asked for a code or a tab paired, helper-wide: a new socket does not start over. */
   private misses = 0;
   private readonly sessions = new Set<McpSession>();
+  private readonly refused = new Set<string>();
   private readonly httpSessions = new Map<string, { transport: StreamableHTTPServerTransport; mcp: McpSession }>();
   private quiet?: ReturnType<typeof setTimeout>;
   private ticker?: ReturnType<typeof setInterval>;
@@ -160,6 +163,8 @@ export class Helper implements Link {
   }
   /** Adds an MCP session that is not served over HTTP (stdio); returns its removal. */
   attach(session: McpSession) { this.sessions.add(session); return () => { this.sessions.delete(session); }; }
+  /** The active tab's connection list (T21, External Agent card): the initialised MCP clients' names and versions. */
+  private clients() { return [...this.sessions].flatMap(s => s.client() ?? []).map(({ name, version }) => ({ name, version })); }
 
   // ---- Tool calls (Link).
   async call(tool: string, input: unknown, session: string | undefined, opts: { resource?: boolean } = {}): Promise<ToolResult> {
@@ -244,9 +249,17 @@ export class Helper implements Link {
   }
 
   // ---- The tab link.
+  /** A vite that moved to the next free port can no longer pair: say so once per origin (a page cannot read why it was refused). */
+  private logRefused(origin: string) {
+    const shown = origin.slice(0, 200);
+    if (this.refused.has(shown) || this.refused.size >= 32) return;
+    this.refused.add(shown);
+    this.log(`Refused an editor connection from ${shown}. If that is your editor, restart the helper with --allow-origin ${shown}`);
+  }
   private onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
     const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname, origin = req.headers.origin;
     if (path !== '/tab' || !hostAllowed(req.headers.host) || !loopbackAddress(req.socket.remoteAddress) || !originAllowed(origin, this.allow)) {
+      if (path === '/tab' && origin && !originAllowed(origin, this.allow)) this.logRefused(origin);
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       return;
     }
@@ -268,7 +281,7 @@ export class Helper implements Link {
   private send(tab: Tab, message: HelperMessage) { if (tab.ws.readyState === WebSocket.OPEN) tab.ws.send(JSON.stringify(message)); }
   private onMessage(tab: Tab, m: Msg) {
     if (m.type === 'hello') return this.onHello(tab, m);
-    if (m.type === 'ping') { this.checkToken(tab); return this.send(tab, { type: 'pong' }); }
+    if (m.type === 'ping') { this.checkToken(tab); return this.send(tab, tab === this.active ? { type: 'pong', clients: this.clients() } : { type: 'pong' }); }
     if (m.type === 'pong') return;
     if (!tab.tabId) return this.send(tab, linkError('INVALID_MESSAGE', 'Send hello first.'));
     if (m.type === 'pair') return this.onPair(tab, m);

@@ -29,7 +29,7 @@ test.afterEach(async ({ page }) => {
 
 async function helperUp(options: ConstructorParameters<typeof Helper>[0] = {}) {
   const configDir = options.configDir ?? mkdtempSync(join(tmpdir(), 't18a-link-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir, ...options });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!], ...options });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   return helper;
 }

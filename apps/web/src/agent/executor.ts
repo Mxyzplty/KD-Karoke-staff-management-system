@@ -22,7 +22,7 @@ import { keyframesBlock } from '../timeline/properties';
 import type { Runtime } from '../timeline/runtime';
 import { readContext } from './context';
 import { Ledger } from './ledger';
-import { READ_ONLY, TIMELINE_GATED } from './protocol';
+import { HELP_TOOLS, READ_ONLY, TIMELINE_GATED } from './protocol';
 import type { HelperMessage, ToolResult } from './protocol';
 import { Watcher } from './watch';
 import type { Change } from './watch';
@@ -171,6 +171,7 @@ export class Executor {
   execute(call: Call): Promise<ToolResult> {
     const session = call.session ?? 'default', input = call.input ?? {};
     if (call.resource) return Promise.resolve(this.light(true) as ToolResult);
+    if (HELP_TOOLS.has(call.toolName)) return import('../settings/help').then(help => help.helpTool(call.toolName, input));
     if (call.toolName === 'viewItemDetails') return this.details(input, session);
     if (call.toolName === 'syncAndSwap') return this.ledger.run(call.executionKey, call.toolName, input, () => this.swap(input));
     if (call.toolName === 'addMedia' && usesTranscriptRange(input)) return this.ledger.run(call.executionKey, call.toolName, input, () => this.addByWords(input, session));

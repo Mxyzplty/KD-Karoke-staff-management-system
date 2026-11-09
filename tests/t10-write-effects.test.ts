@@ -238,7 +238,7 @@ describe('T10 Wave-3 instance: grayscale added through writeEffects equals the U
 
 describe('T10 helper schema (writeEffects is the 24th served tool since the rebase onto c26dd28: T08 and T19 add four)', () => {
   it('is served, and the schema accepts every documented shape and leaves values to the handler', () => {
-    expect(TOOLS).toHaveLength(38); expect(TOOLS.map(t => t.name)).toContain('writeEffects'); // T06 (C8 assertion-only edit): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText; T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground
+    expect(TOOLS).toHaveLength(40); expect(TOOLS.map(t => t.name)).toContain('writeEffects'); // T06 (C8 assertion-only edit): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText; T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground; T21: + getHelpSection, searchHelpDocs
     for (const input of [
       { itemId: 'v1', add: [{ effectId: 'grayscale' }] }, { itemId: 'v1', add: [{ effectId: 'lut', initialParameters: { lutData: 'TITLE "x"\nLUT_3D_SIZE 2' } }] },
       { itemIds: ['v1', 'v2'], effects: { grayscale_1: { params: { amount: 5 }, enabled: false } } }, { itemId: 'v1', effects: { vignette_2: { remove: true } } },

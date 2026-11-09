@@ -3,6 +3,7 @@
 // export in the background; the status is rendering → completed (with a download URL) or failed (with the §12 class).
 // cancelExport stops a run as USER_CANCELLED; a new export of the same project stops the older one as SUPERSEDED.
 // MP4 only in T16a (WebM, presets and the dialog are T16).
+import { countExport } from '../settings/meter';
 import { StoreError } from '../store/model';
 import { classifyExportError, ExportError } from './errors';
 import type { ExportFailure } from './errors';
@@ -30,7 +31,7 @@ export function startExport(options: ExportOptions & { format?: ExportFormat; pr
   else options.signal?.addEventListener('abort', () => controller.abort(options.signal!.reason), { once: true });
   const state: ExportStatus = { status: 'rendering', progress: null };
   const done = runExport({ ...options, signal: controller.signal, onProgress: p => { state.progress = p; options.onProgress?.(p); } }).then(
-    result => { state.status = 'completed'; state.result = result; state.downloadUrl = URL.createObjectURL(result.blob); return state; },
+    result => { state.status = 'completed'; state.result = result; state.downloadUrl = URL.createObjectURL(result.blob); countExport(); return state; },
     // An aborted job fails as its abort reason (USER_CANCELLED, SUPERSEDED), also when a hung decode then times out.
     e => { state.status = 'failed'; state.error = classifyExportError(controller.signal.aborted ? controller.signal.reason : e); return state; },
   ).finally(() => { if (active.get(projectKey) === id) active.delete(projectKey); });

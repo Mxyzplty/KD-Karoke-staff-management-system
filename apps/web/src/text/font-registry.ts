@@ -86,7 +86,8 @@ function database(): Promise<IDBDatabase> | null {
   opened ??= new Promise((ok, fail) => {
     const r = indexedDB.open(DB, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'meta.sha256' });
-    r.onsuccess = () => ok(r.result); r.onerror = () => { opened = null; fail(r.error); };
+    r.onsuccess = () => { r.result.onversionchange = () => { r.result.close(); opened = null; listed = null; users = []; }; ok(r.result); };
+    r.onerror = () => { opened = null; fail(r.error); };
   });
   return opened;
 }

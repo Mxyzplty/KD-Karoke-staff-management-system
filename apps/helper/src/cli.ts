@@ -19,7 +19,7 @@ Cutframe editor. The helper never reaches beyond this computer.
 
   --port <n>            first port to try (default ${DEFAULT_PORT}, env CUTFRAME_HELPER_PORT); the next free of ${PORT_RANGE} is used
   --stdio               serve MCP on stdin/stdout (for clients that start the helper themselves)
-  --allow-origin <url>  also accept this editor origin (repeatable)
+  --allow-origin <url>  also accept this editor origin (repeatable); needed for any page outside ports 5173 and 4173
   --config-dir <dir>    where pairing tokens are kept (env CUTFRAME_HELPER_CONFIG_DIR; default ${defaultConfigDir()})
   --tool-timeout <ms>   per-call timeout (default ${DEFAULT_TOOL_TIMEOUT_MS}, env CUTFRAME_HELPER_TOOL_TIMEOUT_MS)
   --revoke-all          forget every paired tab, then exit

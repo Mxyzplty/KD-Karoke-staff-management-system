@@ -9,6 +9,11 @@ import type { Asset, ProjectRecord } from '../store/model';
 import type { AutosaveSession } from '../store/autosave';
 import { uploadToProject } from '../media/ingest';
 import { folders } from '../media/folders';
+import { AgentPanel, connectedAge, useLink } from '../agent/AgentLink';
+import { LABELS } from '../agent/link';
+import { backupAssets, canBackup, readBackup, turnBackup } from '../settings/backup';
+import type { Backup, BackupState } from '../settings/backup';
+import { HELP_LINKS, openHelpLink } from '../settings/help-links';
 import { acceptAttribute } from '../media/files';
 import { reportIngest } from '../library';
 import { reportError } from '../ui';
@@ -54,9 +59,9 @@ function useProjectAssets(projectId: string) {
 }
 const ASPECTS: { ratio: '16:9' | '9:16' | '1:1'; label: string; size: [number, number] }[] = [
   { ratio: '16:9', label: '16:9 Landscape', size: [1920, 1080] }, { ratio: '9:16', label: '9:16 Portrait', size: [1080, 1920] }, { ratio: '1:1', label: '1:1 Square', size: [1080, 1080] }];
-function Toggle({ label, children, render, className }: { label: string; children: ReactNode; render: (close: () => void) => ReactNode; className?: string }) {
+function Toggle({ label, children, render, className, data }: { label: string; children: ReactNode; render: (close: () => void) => ReactNode; className?: string; data?: Record<string, string> }) {
   const [open, setOpen] = useState(false);
-  return <div className={`toggle ${className ?? ''}`}><button aria-label={label} aria-expanded={open} onClick={() => setOpen(!open)}>{children}</button>{open && render(() => setOpen(false))}</div>;
+  return <div className={`toggle ${className ?? ''}`}><button aria-label={label} aria-expanded={open} {...data} onClick={() => setOpen(!open)}>{children}</button>{open && render(() => setOpen(false))}</div>;
 }
 function SaveState({ session, record, navigate }: { session: AutosaveSession; record: ProjectRecord; navigate: (path: string) => void }) {
   const copy = () => void saveAsCopy(session, projectStore, record).then(c => navigate(`/project/${c.id}`)).catch(reportError);
@@ -69,17 +74,40 @@ function SaveState({ session, record, navigate }: { session: AutosaveSession; re
     {session.state === 'blocked' && <button onClick={() => void session.reload().catch(reportError)}>Reload</button>}
   </div>;
 }
-/** Agent badge popover. No outside agent can connect before T18, so it never claims a connection; the footer counts this
- *  device's allowed folders (T14) and its set-up link opens Settings (the External Agent card is T21). */
+/** Agent badge popover (W3-ED-25): the link's status with its age, the connect / pair panel of agent/AgentLink.tsx, and a
+ *  footer counting this device's allowed folders (T14), whose set-up link opens Settings at the External Agent card. */
 function AgentPopover({ close, navigate }: { close: () => void; navigate: (path: string) => void }) {
-  const [dirs, setDirs] = useState<number>();
+  const [dirs, setDirs] = useState<number>(), state = useLink();
   useEffect(() => { void folders(projectStore).then(f => setDirs(f.length)).catch(() => setDirs(0)); }, []);
   return <Popover label="Agent connection" close={close}>
-    <p className="agent-status"><span className="dot off" aria-hidden="true" /> <strong>Not connected</strong></p>
-    <p>When an outside agent (an MCP client such as Claude Code or Codex) is connected, this tab carries out its tool calls. The agent connection is not yet implemented (T18).</p>
-    <button disabled>Disconnect</button>
-    <p className="agent-footer"><span aria-hidden="true">▤</span> {dirs ? `${dirs} allowed ${dirs === 1 ? 'folder' : 'folders'}` : 'No allowed folders'} on this device. <a href="/settings" onClick={e => { e.preventDefault(); navigate('/settings'); }}>Set up →</a></p>
+    <p className="agent-status"><span className={`dot ${state.status === 'connected' ? '' : 'off'}`} aria-hidden="true" /> <strong>{state.status === 'connected' ? 'Connected' : 'Not connected'}</strong> {state.status === 'connected' && state.connectedAt && <small>{connectedAge(state.connectedAt)}</small>}</p>
+    <p>When an outside agent (an MCP client such as Claude Code or Codex) is connected, this tab carries out its tool calls.</p>
+    <AgentPanel />
+    <p className="agent-footer"><span aria-hidden="true">▤</span> {dirs ? `${dirs} allowed ${dirs === 1 ? 'folder' : 'folders'}` : 'No allowed folders'} on this device. <a href="/settings#external-agent" onClick={e => { e.preventDefault(); navigate('/settings#external-agent'); }}>Set up →</a></p>
   </Popover>;
+}
+/** The shell's agent badge, wired to agent/link.ts (T18a request R1). */
+function AgentBadge({ navigate }: { navigate: (path: string) => void }) {
+  const s = useLink().status;
+  return <div data-tour="agent-badge" data-testid="agent-link"><Toggle className="agent" label={s === 'idle' ? 'Agent: not connected' : `Agent: ${LABELS[s]}`} data={{ 'data-status': s, 'data-testid': 'agent-link-badge' }} render={close => <AgentPopover close={close} navigate={navigate} />}><span className={`dot ${s === 'connected' ? '' : 'off'}`} aria-hidden="true" />{LABELS[s]}</Toggle></div>;
+}
+const BACKUP_TEXT: Record<BackupState, string> = { local: 'Local only', copying: 'Copying…', 'backed-up': 'Backed up', failed: 'Copy failed', 'no-permission': 'Needs permission' };
+/** The storage chip (T21 Storage, §46.1 Auto switch): backup is off until turned on here or in Settings; then this project's assets are copied. */
+function BackupToggle({ assets, navigate }: { assets: Asset[]; navigate: (path: string) => void }) {
+  const [backup, setBackup] = useState<Backup>(), [states, setStates] = useState<Record<string, BackupState>>({}), on = !!backup?.enabled, ids = assets.map(a => a.id).join();
+  useEffect(() => {
+    let alive = true;
+    void readBackup(projectStore).then(b => { if (alive) setBackup(b); return backupAssets(projectStore, assets, (a, state) => { if (alive) setStates(s => ({ ...s, [a.id]: state })); }); }).catch(reportError);
+    return () => { alive = false; };
+  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+  const turn = (next: boolean) => void turnBackup(projectStore, next, backup).then(b => { setBackup(b); return backupAssets(projectStore, assets, (a, state) => setStates(s => ({ ...s, [a.id]: state }))); }).catch(e => { if ((e as DOMException).name !== 'AbortError') reportError(e); });
+  return <Toggle label={on ? 'Backup: on' : 'Cloud backup: local only'} render={close => <Popover label="Cloud backup" close={close}>
+    <h3>Backup</h3><p>{on ? `On. Media added to this project is copied to the folder “${backup?.folder}”.` : 'Off. This project and its media are kept only in this browser on this device. No media leaves this device.'}</p>
+    <label className="switch"><input type="checkbox" role="switch" aria-label="Auto backup" disabled={!canBackup()} checked={on} onChange={e => turn(e.target.checked)} /> Auto</label>
+    <p><a href="/settings#storage" onClick={e => { e.preventDefault(); navigate('/settings#storage'); }}>{on ? 'Change in Settings →' : 'Set up in Settings →'}</a></p>
+    <p><small>{on ? 'Any' : 'If you set one up later, any'} storage cost comes from the provider you choose. Cutframe adds no charge.</small></p>
+    <ul className="backup-list" aria-label="Project assets">{assets.map(a => <li key={a.id}><span>{a.name}</span><small>{BACKUP_TEXT[on ? states[a.id] ?? 'local' : 'local']}</small></li>)}{!assets.length && <li><small>No assets in this project.</small></li>}</ul>
+  </Popover>}>☁ {on ? 'Backup on' : 'Local only'}</Toggle>;
 }
 function TopBar({ session, record, assets, navigate, checkpoints }: { session: AutosaveSession; record: ProjectRecord; assets: Asset[]; navigate: (path: string) => void; checkpoints: Checkpoints }) {
   const d = session.document;
@@ -89,15 +117,9 @@ function TopBar({ session, record, assets, navigate, checkpoints }: { session: A
       <h1 className="project-name">{record.title}</h1>
       <MenuButton className="chip" label={`Template: ${record.template_id ? 'bound template' : 'No template'}`} header={<div className="menu-header"><small>Project template</small><strong>{record.template_id ? 'Bound template' : 'No template'}</strong></div>}
         items={['View details', 'Change template', 'Save as template'].map(label => ({ label, onSelect: () => dispatch({ type: 'feature', owner: 'T22', label }) }))}>{record.template_id ? 'Template' : 'No template'}</MenuButton>
-      <Toggle label="Cloud backup: local only" render={close => <Popover label="Cloud backup" close={close}>
-        <h3>Cloud backup</h3><p>Off. This project and its media are kept only in this browser on this device.</p>
-        <label className="switch"><input type="checkbox" role="switch" disabled checked={false} onChange={() => {}} /> Auto</label>
-        <p className="unavailable">Optional cloud backup is not yet implemented (T21). No media leaves this device.</p>
-        <p><small>If you set one up later, any storage cost comes from the provider you choose. Cutframe adds no charge.</small></p>
-        <ul className="backup-list" aria-label="Project assets">{assets.map(a => <li key={a.id}><span>{a.name}</span><small>Local only</small></li>)}{!assets.length && <li><small>No assets in this project.</small></li>}</ul>
-      </Popover>}>☁ Local only</Toggle>
-      <MenuButton label="Help" items={[...['Getting-started guide', 'Agent-setup guide', 'Community'].map(label => ({ label, onSelect: () => dispatch({ type: 'feature', owner: 'T21', label: `${label} (destination not configured)` }) })), { label: 'Keyboard shortcuts', onSelect: () => setView({ shortcuts: true }) }]}>Help</MenuButton>
-      <div data-tour="agent-badge"><Toggle className="agent" label="Agent: not connected" render={close => <AgentPopover close={close} navigate={navigate} />}><span className="dot off" aria-hidden="true" /> Agent</Toggle></div>
+      <BackupToggle assets={assets} navigate={navigate} />
+      <MenuButton label="Help" items={[...HELP_LINKS.map(link => ({ label: link.label, onSelect: () => openHelpLink(link, navigate) })), { label: 'Keyboard shortcuts', onSelect: () => setView({ shortcuts: true }) }]}>Help</MenuButton>
+      <AgentBadge navigate={navigate} />
       <button className="primary" onClick={() => dispatch({ type: 'feature', owner: 'T16', label: 'Export' })}>Export</button>
     </div>
     <div className="top-row second">
@@ -152,7 +174,7 @@ function Drawer({ title, close, children }: { title: string; close: () => void; 
     <div className="drawer-body"><div className="dialog-heading"><h2>{title}</h2><button aria-label={`Close ${title}`} onClick={close}>×</button></div>{children}</div>
   </dialog>;
 }
-export function EditorShell({ session, record, navigate, checkpoints }: { session: AutosaveSession; record: ProjectRecord; navigate: (path: string) => void; checkpoints: Checkpoints }) {
+export function EditorShell({ session, record, navigate, checkpoints, demo }: { session: AutosaveSession; record: ProjectRecord; navigate: (path: string) => void; checkpoints: Checkpoints; demo?: ReactNode }) {
   const compact = useCompact(), v = useView(), doc = session.document, projectId = session.projectId, { assets, refresh } = useProjectAssets(projectId);
   const docRef = useRef(doc); docRef.current = doc;
   const byId = new Map(assets.map(a => [a.id, a])), selected = doc.items.find(i => i.id === v.selection[0]);
@@ -162,18 +184,20 @@ export function EditorShell({ session, record, navigate, checkpoints }: { sessio
   // T04 time-remap frame caches follow the document (a curve change rebuilds); leaving the editor drops them.
   useEffect(() => { syncRemapCaches(projectStore, doc); }, [doc]);
   useEffect(() => () => clearRemapCaches(projectStore), []);
+  // T21 First Edit: the scripted chat replaces the left panel and the timeline is locked while the demo drives it (§28b.2.1).
+  useEffect(() => { if (!demo) return; setView({ modes: { ...view().modes, timelineLocked: true } }); return () => setView({ modes: { ...view().modes, timelineLocked: false } }); }, [!demo]);
   const tabs = compactTabs(selected), drawerTab = v.drawer?.startsWith('tab:') ? tabs.find(t => `tab:${t.id}` === v.drawer) : undefined;
   return <ProjectFootage.Provider value={assets}><main className={`editor ${compact ? 'compact' : 'wide'}`}>
-    <TopBar session={session} record={record} assets={assets} navigate={navigate} checkpoints={checkpoints} />
-    {!compact && <LeftPanel projectId={projectId} />}
+    {!demo && <TopBar session={session} record={record} assets={assets} navigate={navigate} checkpoints={checkpoints} />}
+    {demo ?? (!compact && <LeftPanel projectId={projectId} />)}
     <div className="centre"><Preview session={session} projectId={projectId} assets={assets} refresh={refresh} /><Timeline doc={doc} assets={byId} /></div>
-    {!compact && <aside className="right-panel" aria-label="Inspector and tools">{v.right.kind === 'tool' ? <ToolPanel tool={v.right.tool} projectId={projectId} /> : <Inspector doc={doc} />}</aside>}
-    {!compact && <Rail />}
+    {!compact && !demo && <aside className="right-panel" aria-label="Inspector and tools">{v.right.kind === 'tool' ? <ToolPanel tool={v.right.tool} projectId={projectId} /> : <Inspector doc={doc} />}</aside>}
+    {!compact && !demo && <Rail />}
     {compact && <nav className="bottom-tabs" aria-label="Editor panels"><div role="tablist" aria-label="Editor panels">{tabs.map(t => <button key={t.id} role="tab" aria-selected={drawerTab?.id === t.id} onClick={() => setView({ drawer: `tab:${t.id}` })}>{t.label}</button>)}</div></nav>}
     {compact && drawerTab && <Drawer title={drawerTab.label} close={() => setView({ drawer: null })}><CompactSheet tab={drawerTab.id} item={selected} projectId={projectId} doc={doc} /></Drawer>}
     {v.graph && v.modes.graphEditorOpen && <GraphEditor doc={doc} />}
     {v.performance && <PerformanceOverlay />}
     {v.shortcuts && <ShortcutOverlay />}
-    <Tour />
+    {!demo && <Tour />}
   </main></ProjectFootage.Provider>;
 }

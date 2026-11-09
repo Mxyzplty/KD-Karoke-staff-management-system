@@ -29,7 +29,7 @@ test.afterEach(async () => {
 
 async function helperUp(options: ConstructorParameters<typeof Helper>[0] = {}) {
   const configDir = options.configDir ?? mkdtempSync(join(tmpdir(), 't18a-take-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir, ...options });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!], ...options });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   return { helper, configDir };
 }
@@ -301,7 +301,7 @@ test.describe('reconnect schedule (row 9)', () => {
     expect(await label(page)).toBe('Connection lost');
 
     // The user brings it back: same port, same pairing file.
-    const again = await startHelper({ port, log: () => {}, configDir });
+    const again = await startHelper({ port, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!] });
     cleanups.push(() => again.close());
     await openPanel(page);
     await expect(page.getByTestId('agent-link-panel')).toContainText('The connection to the helper was lost.');
@@ -325,7 +325,7 @@ test.describe('reconnect schedule (row 9)', () => {
     await expect.poll(async () => (await sockets(page))[0].code).toBe(4503);
     await page.clock.runFor(250); // redial 1 fails
     await expect.poll(async () => (await sockets(page))[1]?.code).toBe(1006);
-    const again = await startHelper({ port, log: () => {}, configDir });
+    const again = await startHelper({ port, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!] });
     cleanups.push(() => again.close());
     await page.clock.runFor(999);
     expect(await sockets(page)).toHaveLength(2);
@@ -360,7 +360,7 @@ test.describe('reconnect schedule (row 9)', () => {
     await expect.poll(async () => (await sockets(page))[0].code).toBe(4503);
     await page.clock.runFor(250); // redial 1 fails → next wait 1 s
     await expect.poll(async () => (await sockets(page))[1]?.code).toBe(1006);
-    const again = await startHelper({ port, log: () => {}, configDir });
+    const again = await startHelper({ port, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!] });
     cleanups.push(() => again.close());
     await page.clock.runFor(1000);
     await expect(badge(page)).toHaveAttribute('data-status', 'connected');

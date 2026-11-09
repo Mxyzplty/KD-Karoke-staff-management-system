@@ -44,7 +44,7 @@ async function agentAsset(page: Page, projectId: string, name: string) {
 /** A paired tab on a richDoc project linked to a fresh helper, plus MCP clients on that helper (as t10-write-effects-helper `connected`). */
 async function connected(page: Page, assetNames: string[] = []) {
   const configDir = mkdtempSync(join(tmpdir(), 't07-helper-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir, quietMs: 100 });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!], quietMs: 100 });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   const projectId = await createProject(page, richDoc(), 'T07 layouts helper');
   // The tab indexes the project's assets when the editor opens: the video assets are uploaded and linked before it does.

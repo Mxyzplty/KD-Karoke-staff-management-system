@@ -9,7 +9,7 @@ import type { ToolResult } from '../../web/src/agent/protocol';
 import { TOOLS } from './schemas';
 
 export type Link = { call(tool: string, input: unknown, session: string | undefined, opts?: { resource?: boolean }): Promise<ToolResult> };
-export type McpSession = { server: Server; subscribed(): boolean; changed(): void };
+export type McpSession = { server: Server; subscribed(): boolean; changed(): void; client(): { name: string; version: string } | undefined };
 
 const INSTRUCTIONS = 'Edits the timeline of the project open in the connected Cutframe editor tab. Call context first and again after the user edits; '
   + 'times are seconds. Every edit lands in the editor\'s undo history, so the user can undo it there.';
@@ -33,5 +33,5 @@ export function createMcpSession(link: Link, version: string, session: () => str
   });
   server.setRequestHandler(SubscribeRequestSchema, async req => { if (req.params.uri === RESOURCE_URI) subscribed = true; return {}; });
   server.setRequestHandler(UnsubscribeRequestSchema, async req => { if (req.params.uri === RESOURCE_URI) subscribed = false; return {}; });
-  return { server, subscribed: () => subscribed, changed: () => { if (subscribed) server.sendResourceUpdated({ uri: RESOURCE_URI }).catch(() => {}); } };
+  return { server, subscribed: () => subscribed, changed: () => { if (subscribed) server.sendResourceUpdated({ uri: RESOURCE_URI }).catch(() => {}); }, client: () => server.getClientVersion() };
 }

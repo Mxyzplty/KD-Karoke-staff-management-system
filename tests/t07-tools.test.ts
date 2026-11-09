@@ -298,9 +298,10 @@ describe('T07 editLayout (agent tool)', () => {
 
 describe('T07 gating and registration', () => {
   // T12 (C8 assertion-only edit): + createMask, editMaskProperties, removeMask, writeMaskPoints (30 -> 34), then viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground (34 -> 38).
-  it('24. addLayout is in TIMELINE_GATED, editLayout is not; both are served (38 tools); both are in the tool table', () => {
+  // T21: + getHelpSection and searchHelpDocs = 40.
+  it('24. addLayout is in TIMELINE_GATED, editLayout is not; both are served (40 tools); both are in the tool table', () => {
     expect(TIMELINE_GATED.has('addLayout')).toBe(true); expect(TIMELINE_GATED.has('editLayout')).toBe(false);
-    expect(SERVED_TOOLS).toHaveLength(38); expect(SERVED_TOOLS).toContain('addLayout'); expect(SERVED_TOOLS).toContain('editLayout'); // T05 (C8): + addText
+    expect(SERVED_TOOLS).toHaveLength(40); expect(SERVED_TOOLS).toContain('addLayout'); expect(SERVED_TOOLS).toContain('editLayout'); // T05 (C8): + addText; T21: + getHelpSection, searchHelpDocs
     expect(Object.keys(TOOLS)).toEqual(expect.arrayContaining(['addLayout', 'editLayout']));
   });
 

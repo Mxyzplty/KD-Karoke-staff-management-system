@@ -14,6 +14,7 @@ export type AnalysisRequest =
   | { task: 'index'; asset: AssetInput; analysis: VisualAnalysis | null; transcript: Transcript | null }
   | { task: 'remove'; assetId: string }
   | { task: 'search'; request: SearchRequest }
+  | { task: 'embed'; texts: string[] }
   | { task: 'sync'; source: Transcript; target: Transcript }
   | { task: 'snap'; cuts: number[]; rhythm: Rhythm; tolerance: number; divisionsPerBeat?: 2 | 3 | 4 }
   | { task: 'silence'; words: Word[]; ranges: Pair[]; pause?: number; keptGap?: number };

@@ -27,7 +27,7 @@ test.afterEach(async ({ page }) => {
 /** A paired tab on a richDoc project linked to a fresh helper, plus an MCP client on that helper (as t18a-tools `connected`). */
 async function connected(page: Page) {
   const configDir = mkdtempSync(join(tmpdir(), 't10-helper-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir, quietMs: 100 });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!], quietMs: 100 });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   const projectId = await createProject(page, richDoc(), 'T10 writeEffects helper');
   const token = newToken(); helper.store.add(token);

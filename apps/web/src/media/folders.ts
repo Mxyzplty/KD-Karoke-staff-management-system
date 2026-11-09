@@ -24,7 +24,10 @@ export async function connectFolder(store: ProjectStore): Promise<DirRecord> {
   return addFolder(store, handle);
 }
 export const removeFolder = (store: ProjectStore, name: string) => store.deleteRow('dirs', name);
-const granted = async (h: FileSystemDirectoryHandle) => { const p = h as unknown as ReadPermission; return !p.queryPermission || await p.queryPermission({ mode: 'read' }) === 'granted'; };
+/** The per-folder state Settings shows. A browser without the permission API has no other state. */
+export const folderPermission = async (h: FileSystemDirectoryHandle): Promise<PermissionState> => { const p = h as unknown as ReadPermission; return p.queryPermission ? p.queryPermission({ mode: 'read' }) : 'granted'; };
+export const reconnectFolder = async (h: FileSystemDirectoryHandle) => { await (h as unknown as ReadPermission).requestPermission?.({ mode: 'read' }); };
+const granted = async (h: FileSystemDirectoryHandle) => await folderPermission(h) === 'granted';
 const kindOf = (name: string, type = ''): Kind => mediaKind(name, type) ?? 'other';
 async function resolveDir(store: ProjectStore, path: string, forImport: boolean): Promise<{ dir: FileSystemDirectoryHandle; segments: string[]; folder: string } | DirError> {
   const parsed = parseAllowedPath(path);

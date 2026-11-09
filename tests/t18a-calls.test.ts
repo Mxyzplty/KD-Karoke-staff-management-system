@@ -119,6 +119,8 @@ describe('t18a schemas (row 6)', () => {
     ['editMaskProperties', { itemId: 'v1', maskIndex: 0 }, [{ path: '$.properties', code: 'REQUIRED', message: REQUIRED('properties') }]],
     ['editMotionGraphic', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
     ['editProperties', { itemId: 'v1', properties: { opacity: '1' } }, [{ path: '$.properties.opacity', code: 'TYPE', message: 'must be number' }]],
+    // T21 help tools (contracts getHelpSection, searchHelpDocs): served, so each gets a schema-refusal row like the others.
+    ['getHelpSection', { section_id: 5 }, [{ path: '$.section_id', code: 'TYPE', message: 'must be string' }]],
     ['manageMarkers', { actions: [{ action: 'zap' }] }, [{ path: '$.actions.0.action', code: 'ENUM', message: ENUM_MSG }]],
     ['manageTrack', { action: 'volume', volume: 2 }, [{ path: '$.volume', code: 'MAXIMUM', message: 'must be <= 1' }]],
     ['manageTrackGroup', { action: 'create', trackIds: ['a'] }, [{ path: '$.trackIds', code: 'INVALID_COMBINATION', message: 'provide distinct member track IDs (at least two when creating)' }]],
@@ -126,6 +128,7 @@ describe('t18a schemas (row 6)', () => {
     ['removeMask', { itemId: 'v1' }, [{ path: '$.maskIndex', code: 'REQUIRED', message: REQUIRED('maskIndex') }]],
     ['reorderItems', { itemIds: ['a'], beforeItemId: 'b', afterItemId: 'c' }, [{ path: '$.beforeItemId', code: 'INVALID_COMBINATION', message: 'cannot be combined with afterItemId' }]],
     ['resizeCanvas', { aspectRatio: '4:3' }, [{ path: '$.aspectRatio', code: 'ENUM', message: ENUM_MSG }]],
+    ['searchHelpDocs', { query: 'how do I export', match_count: 9 }, [{ path: '$.match_count', code: 'MAXIMUM', message: 'must be <= 5' }]], // T21
     ['setTimeRemap', { itemId: 'v1', keyframes: [] }, [{ path: '$.keyframes', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
     ['slipItem', { itemId: 'v1', slipSeconds: '1' }, [{ path: '$.slipSeconds', code: 'TYPE', message: 'must be number' }]],
     ['splitItem', { itemId: 'v1', timestampS: null }, [{ path: '$.timestampS', code: 'TYPE', message: 'must be number' }]],
@@ -145,7 +148,7 @@ describe('t18a schemas (row 6)', () => {
     ['removeBackground', { name: 'x' }, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
   ];
 
-  it('row 6: the table covers exactly the 38 served tools', () => {
+  it('row 6: the table covers exactly the 40 served tools', () => {
     expect(TABLE.map(r => r[0])).toEqual([...SERVED_TOOLS]);
   });
 
@@ -226,7 +229,7 @@ describe('t18a schemas (row 6)', () => {
     expect(await helper.call('addMedia', { assetId: 'a', trackId: 't', timelineStart: 1 }, undefined)).toEqual(open);
   });
 
-  it('row 6: valid minimal input for all 38 tools passes the schema (and only then meets the tab)', async () => {
+  it('row 6: valid minimal input for all 40 tools passes the schema (and only then meets the tab)', async () => {
     const { helper } = await start();
     const valid: Record<string, unknown> = {
       addLayout: { layoutType: 'grid-2x2' } /* T07 (C8) */, addMedia: { assetId: 'video_1' }, addMotionGraphic: { code: 'export const G = () => null;', summary: 'A graphic.', width: 100, height: 100, x: 0, y: 0, trackId: 't' },
@@ -237,10 +240,10 @@ describe('t18a schemas (row 6)', () => {
       createMask: { itemId: 'v1', shape: 'rectangle', bounds: { width: 10, height: 10 } }, // T12 (C8)
       deleteItems: { itemIds: ['v1'] }, editLayout: { itemId: 'l1' } /* T07 (C8) */,
       editMaskProperties: { itemId: 'v1', maskIndex: 0, properties: { opacity: 50 } }, // T12 (C8)
-      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
+      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, getHelpSection: { section_id: 'getting-started' } /* T21 */, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
       manageTrackGroup: { action: 'ungroup', groupId: 'g' }, moveItem: { itemId: 'v1', by: 1 },
       removeMask: { itemId: 'v1', maskIndex: 0 }, // T12 (C8)
-      reorderItems: { itemIds: ['v1'], afterItemId: 'v2' }, resizeCanvas: { aspectRatio: '9:16' },
+      reorderItems: { itemIds: ['v1'], afterItemId: 'v2' }, resizeCanvas: { aspectRatio: '9:16' }, searchHelpDocs: { query: 'how do I export' } /* T21 */,
       setTimeRemap: { itemId: 'v1', keyframes: [{ time: 0, value: 0 }] }, slipItem: { itemId: 'v1', slipSeconds: -1 }, splitItem: { itemId: 'v1', timestampS: 2 },
       syncAndSwap: { sourceAssetId: 'video_2', targetItemId: 'v1', trackId: 't', from: 0, to: 4 },
       transformItem: { itemId: 'v1', rotation: -360 }, trimItem: { itemId: 'v1', handle: 'end', deltaSeconds: -0.5 },

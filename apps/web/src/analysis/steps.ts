@@ -4,6 +4,8 @@
 // local models is "unavailable" (C12).
 import { runWorker } from '../media/worker-client';
 import type { AnalysisArgs, StepOutcome } from '../media/prepare';
+import { hostedSpeech } from '../settings/elevenlabs';
+import { projectStore } from '../store/database';
 import { analysisService, assetInput } from './service';
 import type { AnalysisRow, IndexRow, TranscriptRow } from './service';
 import type { Frame, Transcript, TranscriptionResult, VisualAnalysis } from './types';
@@ -32,10 +34,12 @@ export async function analysisStep({ blob, asset, info, signal }: AnalysisArgs):
 }
 export async function transcriptionStep({ blob, asset, info, signal }: AnalysisArgs): Promise<StepOutcome> {
   if (asset.type === 'image' || !info.audio) return { state: 'skipped' };
-  if (!(await analysisService.available()).transcription) return { state: 'unavailable' };
+  // T21 (D23): a hosted key the user chose replaces this one job; otherwise the local models do it.
+  const hosted = await hostedSpeech(projectStore);
+  if (!hosted && !(await analysisService.available()).transcription) return { state: 'unavailable' };
   try {
     const samples = await runWorker<Float32Array>({ op: 'pcm', blob, info }, signal);
-    const result = await analysisService.request<TranscriptionResult>({ task: 'transcribe', pcm: { sampleRate: 16000, channels: 1, data: [samples] } }, [samples.buffer], signal);
+    const result: TranscriptionResult = hosted ? { status: 'complete', transcript: await hosted(samples, signal) } : await analysisService.request<TranscriptionResult>({ task: 'transcribe', pcm: { sampleRate: 16000, channels: 1, data: [samples] } }, [samples.buffer], signal);
     const row: TranscriptRow = { id: asset.id, status: result.status, transcript: result.transcript, ...(result.status === 'skipped' ? { reason: result.reason } : {}), created_at: now() };
     return { state: result.status, value: result.transcript, puts: [{ store: 'transcripts', value: row }] };
   } catch (e) {

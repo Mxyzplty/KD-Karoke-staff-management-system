@@ -19,7 +19,9 @@ export const TOKEN_DB = 'cutframe-agent';
 const STORE = 'kv', TOKEN = 'token';
 
 export type HelperInfo = { port: number; version: string; pairing: boolean };
-export type LinkState = { status: Status; port?: number; error?: string; helper?: HelperInfo | null; probing: boolean; offerCode?: string; projectId: string | null };
+export type LinkState = { status: Status; port?: number; error?: string; helper?: HelperInfo | null; probing: boolean; offerCode?: string; projectId: string | null;
+  /** MCP clients on the helper, when this tab is connected since `connectedAt`, and its latest tool calls, newest first (T21). */
+  clients: { name: string; version: string }[]; connectedAt?: number; recent: string[] };
 type Stored = { port: number; auto: boolean };
 
 const read = <T>(storage: () => Storage, key: string): T | undefined => { try { const v = storage().getItem(key); return v ? JSON.parse(v) as T : undefined; } catch { return undefined; } };
@@ -62,7 +64,7 @@ class KeepAlive {
 }
 
 export class AgentLink {
-  state: LinkState = { status: 'idle', probing: false, projectId: null };
+  state: LinkState = { status: 'idle', probing: false, projectId: null, clients: [], recent: [] };
   readonly executor: Executor;
   private listeners = new Set<() => void>();
   private ws?: WebSocket;
@@ -205,6 +207,8 @@ export class AgentLink {
     if (code === CLOSE.protocol) return this.set({ status: 'idle', error: this.state.error ?? LINK_ERRORS.PROTOCOL_UNSUPPORTED });
     this.schedule();
   }
+  /** The helper answers an active tab's ping with its MCP clients; the keep-alive refreshes the list after this. */
+  refreshClients() { if (this.state.status === 'connected') this.send({ type: 'ping' }); }
   private onMessage(raw: unknown) {
     let m: HelperMessage;
     try { m = JSON.parse(String(raw)); } catch { return; }
@@ -215,7 +219,7 @@ export class AgentLink {
         if (!m.paired) return this.offer();
         if (!m.active) return;
         this.manual = false;
-        this.set({ status: 'connected', port: this.port, error: undefined, offerCode: undefined });
+        this.set({ status: 'connected', port: this.port, error: undefined, offerCode: undefined, connectedAt: this.state.status === 'connected' ? this.state.connectedAt : Date.now() });
         write(local, LINK_KEY, { port: this.port, auto: true });
         this.keepAlive.start();
         clearTimeout(this.stable);
@@ -223,10 +227,11 @@ export class AgentLink {
         return;
       }
       case 'paired': void saveToken(m.token); return;
-      case 'takeover': return this.set({ status: 'moved' });
+      case 'takeover': return this.set({ status: 'moved', clients: [] });
+      case 'pong': return m.clients ? this.set({ clients: m.clients }) : undefined;
       // The result goes on whichever socket is open by then; after a reconnect the helper re-sends the call with the same
       // execution key, and the ledger answers it with the stored result.
-      case 'call': void this.executor.execute(m).then(result => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'result', callId: m.callId, result })); }); return;
+      case 'call': if (!m.resource) this.set({ recent: [m.toolName, ...this.state.recent].slice(0, 5) }); void this.executor.execute(m).then(result => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'result', callId: m.callId, result })); }); return;
       case 'error':
         if (m.code === 'TAB_ACTIVE_ELSEWHERE') return this.set(this.manual && !this.takeover ? { status: 'confirm', error: undefined } : { status: 'moved' });
         if (m.code === 'TOKEN_INVALID') void dropToken();

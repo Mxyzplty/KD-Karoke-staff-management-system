@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Stock media (findings part 2 §32, part 3 §46.3): Pexels (photos, videos), Unsplash (photos), Freesound (sounds), called
-// directly from the browser with the user's own free keys, stored locally (T21 Settings will manage the same keys).
+// directly from the browser with the user's own free keys, stored encrypted (settings/secrets.ts) and managed in Settings too.
 // Result shape follows §32: {provider, provider_id, type, name, thumbnail_url, preview_url, duration_ms, width, height, attribution, provider_metadata}.
 import type { ProjectStore } from '../store/database';
 import type { Asset } from '../store/model';
@@ -8,6 +8,8 @@ import { mediaError } from './codes';
 import { uploadToProject } from './ingest';
 import type { IngestOptions } from './ingest';
 import { lockNames, withLock } from './locks';
+import { countRequest } from '../settings/meter';
+import { getSecret, putSecret, removeSecret } from '../settings/secrets';
 
 export type Provider = 'pexels' | 'unsplash' | 'freesound';
 export type StockKeys = Partial<Record<Provider, string>>;
@@ -17,14 +19,29 @@ export type StockItem = {
 };
 export type StockPage = { results: StockItem[]; has_next_page: boolean; page: number };
 export const PAGE_SIZE = { image: 20, video: 15, audio: 15 } as const;
-const KEYS_ROW = 'stock-keys';
-export async function readKeys(store: ProjectStore): Promise<StockKeys> { return (await store.row<{ id: string; keys: StockKeys }>('settings', KEYS_ROW))?.keys ?? {}; }
+const KEYS_ROW = 'stock-keys', PROVIDERS: Provider[] = ['pexels', 'unsplash', 'freesound'];
+/** The one origin each key may be sent to. */
+export const STOCK_ORIGIN: Record<Provider, string> = { pexels: 'https://api.pexels.com', unsplash: 'https://api.unsplash.com', freesound: 'https://freesound.org' };
+const keyId = (provider: Provider) => `stock:${provider}`;
+/** Keys saved before T21 sit in a plain settings row: they move into the encrypted store on the first read. */
+async function migrateKeys(store: ProjectStore) {
+  const row = await store.row<{ id: string; keys: StockKeys }>('settings', KEYS_ROW);
+  if (!row) return;
+  for (const p of PROVIDERS) if (row.keys[p]) await putSecret(keyId(p), row.keys[p]!, STOCK_ORIGIN[p]);
+  await store.deleteRow('settings', KEYS_ROW);
+}
+export async function readKeys(store: ProjectStore): Promise<StockKeys> {
+  await migrateKeys(store);
+  const entries = await Promise.all(PROVIDERS.map(async p => [p, await getSecret(keyId(p), STOCK_ORIGIN[p])] as const));
+  return Object.fromEntries(entries.filter(([, key]) => key));
+}
 export async function saveKey(store: ProjectStore, provider: Provider, key: string) {
-  const keys = { ...await readKeys(store), [provider]: key.trim() || undefined };
-  await store.putRow('settings', { id: KEYS_ROW, keys });
-  return keys;
+  await migrateKeys(store);
+  if (key.trim()) await putSecret(keyId(provider), key.trim(), STOCK_ORIGIN[provider]); else await removeSecret(keyId(provider));
+  return readKeys(store);
 }
 async function getJson(url: string, headers: Record<string, string>, signal?: AbortSignal) {
+  countRequest(PROVIDERS.find(p => new URL(url).origin === STOCK_ORIGIN[p]) ?? 'stock');
   const response = await fetch(url, { headers, signal });
   if (!response.ok) throw Object.assign(new Error(`${new URL(url).hostname} answered ${response.status}`), { status: response.status });
   return response.json();

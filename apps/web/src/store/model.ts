@@ -30,7 +30,7 @@ export type AssetMedia = {
   originalName?: string; processing_status?: 'uploading' | 'processing' | 'ready' | 'failed';
   processing_steps?: Record<string, ProcessingStep>; last_error_code?: string | null; last_error_message?: string | null;
   sha256?: string | null; media?: MediaInfo | null; latitude?: number | null; longitude?: number | null;
-  source?: { kind: 'upload' | 'stock' | 'allowed-dir'; provider?: string; providerId?: string; attribution?: string; licence?: string; pageUrl?: string; author?: string };
+  source?: { kind: 'upload' | 'stock' | 'allowed-dir' | 'demo'; provider?: string; providerId?: string; attribution?: string; licence?: string; pageUrl?: string; author?: string };
   proxy?: { objectKey?: string; codec: string; container: string; width: number; height: number; sizeBytes: number; created_at: string } | null;
   preparationAttempts?: number;
 };

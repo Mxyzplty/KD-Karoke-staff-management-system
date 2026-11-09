@@ -8,6 +8,7 @@
 // The spec runs in Node and the runtime is sandbox-only (runtime-components loads lottie-web, which needs a DOM), so the API
 // names are read from its source text (apiNames).
 import { readFileSync } from 'node:fs';
+import { replyCode, systemPrompt, userMessage } from '../apps/web/src/mg/repair';
 import type { RepairRequest } from '../apps/web/src/mg/repair';
 
 export type RepairSnippet = { id: string; defect: string; code: string; fixed: string;
@@ -62,19 +63,7 @@ export function apiNames(): string[] {
   if (!list) throw new Error('API_NAMES not found in runtime-components.tsx');
   return [...list.matchAll(/'([^']+)'/g)].map(m => m[1]);
 }
-/** The instructions the model gets with every repair request (Cutframe's own wording). */
-export const systemPrompt = (apiNames: readonly string[]) => [
-  'You repair motion-graphic code for the Cutframe video editor. Reply with the complete fixed code only: no explanation, no code fence.',
-  'The code is one React component in Remotion style. It may use only these names, which are already in scope (no imports): ' + apiNames.join(', ') + '.',
-  'The last statement must be `export const Name = () => { … };`; put every helper above it and export nothing else.',
-  'Do not use native <img>, <video> or <audio> elements; use Img or OffthreadVideo with getAssetUrl("<asset id>").',
-  'The graphic is drawn in its item box: lay it out with itemWidth and itemHeight, not with the width and height of useVideoConfig().',
-  "editable(name, defaultValue, { type }) field types are text, string, number, color, boolean, text[], font and select.",
-  'Keep the design and the animation; change only what the error needs.',
-].join('\n');
-export const userMessage = (r: RepairRequest) => `Error: ${r.error}\nItem size: ${r.itemWidth} × ${r.itemHeight}\nCode:\n${r.code}`;
-/** The code in a reply: the reply itself, or the inside of its first code fence. */
-export const replyCode = (text: string) => (/```[a-zA-Z]*\n([\s\S]*?)```/.exec(text)?.[1] ?? text).trim();
+export { replyCode, systemPrompt, userMessage };
 
 export type ModelEnv = { endpoint: string; model: string; key?: string };
 export const modelEnv = (env: NodeJS.ProcessEnv = process.env): ModelEnv | null =>

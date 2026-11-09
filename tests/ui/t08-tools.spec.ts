@@ -24,7 +24,7 @@ test.afterEach(async ({ page }) => {
 type Body = Record<string, any>;
 async function connected(page: Page) {
   const configDir = mkdtempSync(join(tmpdir(), 't08-tools-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir, quietMs: 100 });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!], quietMs: 100 });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   const projectId = await createProject(page, richDoc(), 'T08 tools');
   await addAsset(page, projectId);

@@ -23,11 +23,11 @@ export const CLOSE = { superseded: 4409, unauthorized: 4401, replaced: 4410, pro
 /** The 38 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
  *  (addMotionGraphic, editMotionGraphic), T19's syncAndSwap and viewItemDetails (transcript, keyframes, beats), T10's
  *  writeEffects, T06's addShape and writeShapePoints, T07's addLayout and editLayout, T11's applyTransition, T05's addText,
- *  T12's createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask and
+ *  T21's getHelpSection and searchHelpDocs, T12's createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask and
  *  removeBackground, and `context` (layout L). Every other T18 name stays unserved (searchProjectAssets / searchUserLibrary
  *  too: Q6; `fonts` too: T05 ruling Q2). */
-export const SERVED_TOOLS = ['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'createMask', 'deleteItems', 'editLayout', 'editMaskProperties', 'editMotionGraphic', 'editProperties', 'manageMarkers', 'manageTrack',
-  'manageTrackGroup', 'moveItem', 'removeMask', 'reorderItems', 'resizeCanvas', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails',
+export const SERVED_TOOLS = ['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'createMask', 'deleteItems', 'editLayout', 'editMaskProperties', 'editMotionGraphic', 'editProperties', 'getHelpSection', 'manageMarkers', 'manageTrack',
+  'manageTrackGroup', 'moveItem', 'removeMask', 'reorderItems', 'resizeCanvas', 'searchHelpDocs', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails',
   'writeEffects', 'writeKeyframes', 'writeMaskPoints', 'writeShapePoints', 'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground'] as const;
 /** Calls that wait for a mask job: they have no client time-out shorter than the job (T12) and do not hold up other mutating calls;
  *  the job queue runs them one at a time. */
@@ -37,7 +37,9 @@ export const EASING_NAMES = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'easeIn
   'easeInBack', 'easeOutBack', 'easeInOutBack', 'easeOutElastic', 'easeOutBounce'] as const;
 /** Read-only set: skips the execution ledger and `timelineChanges` (agent tool results A0.2 item 1). */
 export const READ_ONLY = new Set(['viewItemDetails', 'context', 'fonts', 'listEffects', 'getEffectDetails', 'captureFrame', 'viewMaskFrame', 'previewSmartMask', 'listAllowedDir',
-  'listCaptionTemplates', 'getMotionGraphicCode', 'searchStockMedia']);
+  'listCaptionTemplates', 'getMotionGraphicCode', 'searchStockMedia', 'searchHelpDocs', 'getHelpSection']);
+/** T21: answered before the project check, because they need no project. */
+export const HELP_TOOLS: ReadonlySet<string> = new Set(['searchHelpDocs', 'getHelpSection']);
 /** Timeline-scope stale-read gate (agent tool results A0.2 item 3): always checked for these tools. */
 export const TIMELINE_GATED = new Set(['addMedia', 'addText', 'addShape', 'addCaptions', 'addMotionGraphic', 'addLayout', 'changeTrack', 'cloneItem', 'consolidateTracks',
   'deleteItems', 'manageTrack', 'manageTrackGroup', 'moveItem', 'reorderItems', 'splitItem', 'slipItem', 'trimItem']);
@@ -61,7 +63,7 @@ export type HelperMessage =
   | { type: 'call'; callId: string; executionKey: string; toolName: string; input: Record<string, unknown>; session?: string; resource?: boolean }
   | { type: 'takeover'; byTabId?: string }
   | { type: 'error'; code: string; message: string }
-  | { type: 'ping' } | { type: 'pong' };
+  | { type: 'ping' } | { type: 'pong'; clients?: { name: string; version: string }[] };
 
 /** Helper-side codes for the link (Cutframe's own; Xapp's hosted flow uses HTTP statuses, findings §10b.2). */
 export const LINK_ERRORS = {

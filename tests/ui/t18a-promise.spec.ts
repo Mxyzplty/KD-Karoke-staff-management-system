@@ -29,7 +29,7 @@ const badge = (page: Page) => page.getByTestId('agent-link-badge');
 /** The user's side: open the project, then Connect tab → printed code → Pair, exactly as the panel asks. */
 async function pairedThroughUi(page: Page) {
   const configDir = mkdtempSync(join(tmpdir(), 't18a-promise-'));
-  const helper = await startHelper({ port: 0, log: () => {}, configDir });
+  const helper = await startHelper({ port: 0, log: () => {}, configDir, allowOrigins: [test.info().project.use.baseURL!] });
   cleanups.push(() => helper.close(), () => rmSync(configDir, { recursive: true, force: true }));
   const projectId = await createProject(page, richDoc(), 'T18a promise');
   await page.goto(`/project/${projectId}`); await expect(page.getByRole('status')).toHaveText('Saved locally');

@@ -10,7 +10,7 @@ import { formatDuration, placeOnTimeline } from './media-ui';
 
 const NAMES: Record<Provider, string> = { pexels: 'Pexels', unsplash: 'Unsplash', freesound: 'Freesound' };
 /** The cost/limit line (review F14): shown at every point of use, before and after a key is saved. */
-const CostLine = () => <p className="cost-line">Keys are free from each provider; the provider’s own request limits apply. Keys stay in this browser and are sent only to that provider. Settings (T21) will manage the same keys later.</p>;
+const CostLine = () => <p className="cost-line">Keys are free from each provider; the provider’s own request limits apply. Keys stay encrypted in this browser and are sent only to that provider. You can also manage them in Settings.</p>;
 function KeyForms({ providers, keys, saved }: { providers: Provider[]; keys: StockKeys; saved: (k: StockKeys) => void }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   return <>{providers.map(p => <form key={p} onSubmit={e => { e.preventDefault(); void saveKey(projectStore, p, draft[p] ?? '').then(k => { setDraft({ ...draft, [p]: '' }); saved(k); }).catch(reportError); }}>

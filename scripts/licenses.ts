@@ -5,7 +5,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 const allowed = new Set(['MIT', 'MIT-0', 'BSD-2-Clause', 'BSD-3-Clause', '0BSD', 'Apache-2.0', 'ISC', 'MPL-2.0', 'LGPL-2.0-only', 'LGPL-2.0-or-later', 'LGPL-2.1-only', 'LGPL-2.1-or-later', 'LGPL-3.0-only', 'LGPL-3.0-or-later', 'GPL-3.0-only', 'GPL-3.0-or-later', 'AGPL-3.0-only', 'AGPL-3.0-or-later', 'Zlib']);
 /** T05 (coordinator ruling Q6, 3 Nov): OFL-1.1 font files are allowed as vendored components only, never as npm packages. */
-const vendorAllowed = new Set([...allowed, 'OFL-1.1']);
+/** FX-3: CC0-1.0 demo-pack media (footage, music) is allowed as a vendored component only, never as an npm package. */
+const vendorAllowed = new Set([...allowed, 'OFL-1.1', 'CC0-1.0']);
 export function compatible(expression: string, set: Set<string> = allowed): boolean {
   const tokens = expression.match(/[()]|[^\s()]+/g) ?? [];
   let index = 0;
@@ -61,10 +62,10 @@ export async function checkLicenses(): Promise<number> {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   (async () => {
     if (process.argv.includes('--negative-test')) {
-      // BSD-4-Clause's advertising clause is incompatible with the GPL family, so it must fail too; OFL-1.1 is allowed for
-      // vendored font files only (T05, Q6), so an npm package under it must fail.
-      const failures = checkPackages({ 'node_modules/planted-proprietary': { license: 'LicenseRef-Proprietary' }, 'node_modules/planted-bsd4': { license: 'BSD-4-Clause' }, 'node_modules/planted-ofl': { license: 'OFL-1.1' } });
-      if (failures.length !== 3 || !failures[0].includes('planted-proprietary') || !failures[1].includes('planted-bsd4') || !failures[2].includes('planted-ofl')) throw Error('Negative licence test did not reject all three planted dependencies');
+      // BSD-4-Clause's advertising clause is incompatible with the GPL family, so it must fail too; OFL-1.1 (T05, Q6) and
+      // CC0-1.0 (FX-3) are allowed for vendored components only, so an npm package under either must fail.
+      const failures = checkPackages({ 'node_modules/planted-proprietary': { license: 'LicenseRef-Proprietary' }, 'node_modules/planted-bsd4': { license: 'BSD-4-Clause' }, 'node_modules/planted-ofl': { license: 'OFL-1.1' }, 'node_modules/planted-cc0': { license: 'CC0-1.0' } });
+      if (failures.length !== 4 || !failures[0].includes('planted-proprietary') || !failures[1].includes('planted-bsd4') || !failures[2].includes('planted-ofl') || !failures[3].includes('planted-cc0')) throw Error('Negative licence test did not reject all four planted dependencies');
       for (const failure of failures) console.log(`Expected failure: ${failure}`);
     } else console.log(`Verified ${await checkLicenses()} dependency licenses and authored source headers`);
   })().catch(e => { console.error(e.message); process.exitCode = 1; });
