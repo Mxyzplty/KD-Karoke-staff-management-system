@@ -116,16 +116,23 @@ for (const rate of [48000, 44100]) {
 // window.AudioContext so each 48 kHz context loads a recorder AudioWorklet as soon as it is made, and (2) wraps AudioNode.prototype.connect so that
 // an AudioBufferSourceNode connected to the destination is also connected to the recorder once its module has loaded. The worklet runs on the audio
 // thread and posts every 128-frame quantum with its exact currentFrame, so no quantum is lost (a ScriptProcessorNode drops quanta when its
-// main-thread handoff is late, which gave a false 12.7 dB residual under load). The test plays once and pauses (this makes playback.ts's single
+// main-thread handoff is late, which gave a false 12.7 dB residual under load). Chromium sets currentFrame only when the audio thread gets the graph
+// lock (BaseAudioContext::UpdateWorkletGlobalScopeOnRenderingThread), so a quantum rendered while the main thread holds the lock repeats the last
+// frame (ubuntu-d46: 5248 twice and 5376 never, a false -42.1 dBFS residual); the recorder is pulled once per quantum, so a frame that did not
+// advance is stamped one quantum after the last. The test plays once and pauses (this makes playback.ts's single
 // module-level context and loads the recorder), then seeks to 0 and plays again: that second play is the one compared.
-type Tap = { blocks: { f: number; l: Float32Array; r: Float32Array }[]; ready: boolean; connected: number; ctx?: AudioContext; since?: number };
+type Tap = { blocks: { f: number; stale: boolean; l: Float32Array; r: Float32Array }[]; ready: boolean; connected: number; ctx?: AudioContext; since?: number };
 /** The recorder tap described above, installed before the page loads. */
 async function installTap(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as { __tap: Tap };
     w.__tap = { blocks: [], ready: false, connected: 0 };
     const processor = `class T13Rec extends AudioWorkletProcessor {
-      process(inputs) { const i = inputs[0]; if (i && i.length) { const l = i[0].slice(), r = (i[1] || i[0]).slice(); this.port.postMessage({ f: currentFrame, l, r }, [l.buffer, r.buffer]); } return true; }
+      next = 0;
+      process(inputs) {
+        const stale = currentFrame < this.next, f = stale ? this.next : currentFrame; this.next = f + 128;
+        const i = inputs[0]; if (i && i.length) { const l = i[0].slice(), r = (i[1] || i[0]).slice(); this.port.postMessage({ f, stale, l, r }, [l.buffer, r.buffer]); } return true;
+      }
     }
     registerProcessor('t13-rec', T13Rec);`;
     const url = URL.createObjectURL(new Blob([processor], { type: 'text/javascript' }));
@@ -196,7 +203,7 @@ async function playAndCompare(page: Page) {
       const j = i + shift, dl = Math.abs((left[j] ?? 0) - exported.channels[0][i]), dr = Math.abs((right[j] ?? 0) - exported.channels[1][i]);
       if (dl > 1e-3 || dr > 1e-3) { const last = bad[bad.length - 1]; if (last && i - last.to < 256) last.to = i; else bad.push({ from: i, to: i }); }
     }
-    return { cmp, captured: total, exportFrames: exported.channels[0].length, peak, exportedPeak, quanta: blocks.length, quantumGaps: gaps, gapAt, badSpans: bad.length, bad: bad.slice(0, 12), firstCaptureFrame: f0, since: tap.since ?? 0, connected: tap.connected, lateChunks: playbackStats.lateChunks as number, maxRafGapMs: playbackStats.maxRafGapMs as number };
+    return { cmp, captured: total, exportFrames: exported.channels[0].length, peak, exportedPeak, quanta: blocks.length, quantumGaps: gaps, gapAt, staleStamps: blocks.filter(b => b.stale).length, badSpans: bad.length, bad: bad.slice(0, 12), firstCaptureFrame: f0, since: tap.since ?? 0, connected: tap.connected, lateChunks: playbackStats.lateChunks as number, maxRafGapMs: playbackStats.maxRafGapMs as number };
   });
   if ('error' in result) throw new Error(result.error);
   return result;
