@@ -80,6 +80,7 @@ test('row 1: Reference behaviour persists across a reload and is what the editor
   await expect(page.getByRole('switch', { name: 'Reference behaviour' })).toBeChecked();
   expect(await page.evaluate(async () => { const s = '/src/store/database.ts', c = '/src/versions/checkpoints.ts'; const { projectStore } = await import(s); return (await import(c)).readMode(projectStore); })).toBe('parity');
   await page.getByRole('switch', { name: 'Reference behaviour' }).uncheck();
+  await expect.poll(() => row(page, 'settings', 'parity-mode')).toMatchObject({ enabled: false });
   await page.reload();
   await expect(page.getByRole('switch', { name: 'Reference behaviour' })).not.toBeChecked();
 });

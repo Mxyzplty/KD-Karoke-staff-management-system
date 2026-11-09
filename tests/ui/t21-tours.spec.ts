@@ -82,6 +82,7 @@ test('row 5: the home tour waits while the setup card is up, and starts once onb
   await expect(homeTour(page)).toHaveCount(0); // onboarding is neither finished nor dismissed
   expect(await flag(page, HOME)).toBeNull();
   await page.getByRole('button', { name: 'Not now' }).click();
+  await expect.poll(async () => JSON.parse(await flag(page, ONBOARDING) ?? '{}')).toMatchObject({ dismissed: true });
   await page.reload();
   await expect(homeTour(page)).toBeVisible({ timeout: 10_000 });
 });
