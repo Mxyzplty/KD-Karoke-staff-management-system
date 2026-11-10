@@ -18,6 +18,8 @@ import { addText } from '../text/tools';
 import { addLayout, editLayout } from './layout-tools';
 import { applyTransition } from './transitions';
 import { createMask, editMaskProperties, removeMask, writeMaskPoints } from '../masks/tools';
+import { CAPTION_TOOLS } from '../captions/tools';
+import type { SourceData } from '../captions/generation';
 
 export type ToolContext = {
   bus: CommandBus;
@@ -25,6 +27,9 @@ export type ToolContext = {
   asset: (id: string) => Asset | undefined;
   /** The project's live asset links (agent id, stored id): the motion-graphic getAssetUrl check (T08). */
   assetLinks?: () => { agentId: string; id: string }[];
+  /** T09 addCaptions: each asset's loaded transcript / music state (captions/agent.ts sets it before the sync call; with
+   *  none, addCaptions captions nothing). */
+  captionData?: (assetId: string) => SourceData;
 };
 export type ToolResult = RecordData & { success: boolean };
 type Handler = (ctx: ToolContext, args: RecordData) => ToolResult;
@@ -215,7 +220,7 @@ const manageMarkersTool: Handler = (ctx, args) => run(ctx, 'Edit markers', doc =
 export const TOOLS: Record<string, Handler> = {
   addLayout, addMedia, addMotionGraphic, addShape, addText, applyTransition, changeTrack, cloneItem, consolidateTracks, createMask, deleteItems, editLayout, editMaskProperties, editMotionGraphic, editProperties: editPropertiesTool, manageMarkers: manageMarkersTool, manageTrack: manageTrackTool,
   manageTrackGroup: manageTrackGroupTool, moveItem, removeMask, reorderItems, resizeCanvas: resizeCanvasTool, setTimeRemap: setTimeRemapTool, setUseProxy: setUseProxyTool, slipItem, splitItem, transformItem, trimItem,
-  writeEffects: writeEffectsTool, writeKeyframes: writeKeyframesTool, writeMaskPoints, writeShapePoints,
+  writeEffects: writeEffectsTool, writeKeyframes: writeKeyframesTool, writeMaskPoints, writeShapePoints, ...CAPTION_TOOLS,
 };
 
 /** Runs one tool call: result, or a failure shape; plus `timelineChanges` when the document changed. */
@@ -229,6 +234,7 @@ export function callTool(ctx: ToolContext, name: string, args: RecordData = {}):
     result = { success: false, error: e.error, code: e.code };
     if (e.extra.message !== undefined) result.message = e.extra.message;
     if (e.extra.data !== undefined) result.data = e.extra.data;
+    if (e.extra.details !== undefined) result.details = e.extra.details;
     if (e.extra.failures !== undefined) result.failures = e.extra.failures;
     if (THROWN.has(e.error) || e.extra.mayHaveRun === false) result.operationMayHaveRun = false;
   }

@@ -10,6 +10,7 @@ import type { PathPoint, ShapePath } from '../timeline/shapes';
 import type { LayoutOp, LayoutType } from '../timeline/layouts';
 import type { MaskOp } from '../masks/tools';
 import type { Patch as TransitionPatch } from '../timeline/transitions';
+import type { SourceButton, SourceData } from '../captions/generation';
 import { notify } from '../ui';
 import type { DragPayload } from './dnd';
 
@@ -79,6 +80,12 @@ export type Intent =
   /** T05: the Text panel's Add text preset (findings part 2 §40; W3-ED-22); several text keys as one edit (a preset tile). */
   | { type: 'addTextPreset' }
   | { type: 'editTextProperties'; itemIds: string[]; properties: RecordData }
+  /** T09: the Captions panel's Generate / Regenerate. The resolved transcript map travels with the intent (the handler
+   *  cannot await); the handler builds the sources and auto-creates the caption track(s) (generate()'s pickTrack / speakerTrack). */
+  | { type: 'generateCaptions'; button: SourceButton; sourceItems?: string[]; range: { startMs: number; endMs: number } | null; split: boolean; templateId?: string; maxWords?: number; maxCharacters?: number; fontSize?: number; borderWidth?: number; fontFamily?: string; fontWeight?: string; fontStyle?: string; color?: string; backgroundColor?: string; textDecoration?: string; borderColor?: string; boxShadow?: RecordData; breakOnPunctuation: boolean; breakOnConjunctions: boolean; reset: boolean; data: Record<string, SourceData> }
+  /** T09: the caption inspector's Transform (scale / rotation / position). A caption's editProperties stays style + text
+   *  (editCaptionProperties), so geometry is a separate UI-only command the agent path does not reach. */
+  | { type: 'editCaptionTransform'; itemIds: string[]; properties: RecordData }
   /** T07: a Layouts panel card (a 10 s layout at 0 s on a new overlay track); one cell, style or transform edit of a layout
    *  (the inspector's Cells / Style / Transform, the empty-row picker, a footage drop on a cell in the preview). */
   | { type: 'addLayout'; layoutType: LayoutType }
@@ -128,6 +135,7 @@ export const INTENTS: Record<Exclude<Intent['type'], 'editProperty' | 'feature' 
   drawShape: { owner: 'T06', label: 'Drawing a shape' }, editShapePath: { owner: 'T06', label: 'Editing a shape path' },
   removeShapePoint: { owner: 'T06', label: 'Removing a shape point' }, addPathKeyframe: { owner: 'T06', label: 'Adding a path keyframe' },
   addTextPreset: { owner: 'T05', label: 'Add text' }, editTextProperties: { owner: 'T05', label: 'Editing text' },
+  generateCaptions: { owner: 'T09', label: 'Add captions' }, editCaptionTransform: { owner: 'T09', label: 'Edit items' },
   addLayout: { owner: 'T07', label: 'Adding a layout' }, layoutEdit: { owner: 'T07', label: 'Editing a layout' }, maskEdit: { owner: 'T12', label: 'Editing a mask' }, removeBackground: { owner: 'T12', label: 'Background removal' },
   addTransition: { owner: 'T11', label: 'Add transition' }, editTransition: { owner: 'T11', label: 'Edit transition' }, removeTransition: { owner: 'T11', label: 'Remove transition' },
   addVoiceover: { owner: 'T13', label: 'Adding a voice-over' }, addFade: { owner: 'T13', label: 'Adding a fade' },

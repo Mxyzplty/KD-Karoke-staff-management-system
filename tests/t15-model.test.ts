@@ -334,8 +334,10 @@ describe('T15 frame plan and the pending list (provisional: notes "Deferrals" an
     const P = mkProject(1080, 1920, V1, [mkItem('p', type, 'O1', {}, extra)]);
     return app.framePlan(A(P), 100).pending;
   };
-  // T05 + T07 (assertion-only edits): text and layouts are draws now, so neither is pending; only captions (T09) remain.
-  const owners: [string, string][] = [['caption', 'T09']];
+  // T05 + T07 (assertion-only edits): text and layouts are draws now, so neither is pending; only captions (T09) remained.
+  // T09 (C8 assertion-only edit): captions render now (draws, not pending), so the row is removed and the list is empty — the
+  // same pattern T05/T07/T10 followed here as each owner landed. The positive caption-draw case is covered by t09-render and t15:67.
+  const owners: [string, string][] = [];
   owners.forEach(([type, owner]) => it(`a ${type} item is pending on ${owner} and not drawn (provisional)`, () => {
     const P = mkProject(1080, 1920, V1, [mkItem('p', type, 'O1')]), plan = app.framePlan(A(P), 100);
     expect(plan.draws).toEqual([]);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The helper's own JSON Schemas for the 40 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks; agent tool results §4 rule 1). Every call is
+// The helper's own JSON Schemas for the 43 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks, T09 captions; agent tool results §4 rule 1). Every call is
 // checked here before the tab sees it; a violation answers Xapp's server shape:
 // {success:false, code:"INVALID_TOOL_INPUT", error:"Invalid input for <tool>", message:"<path>: <reason>", details:{errors:[{path, code, message}]}}.
 // Paths use Xapp's stored form ("$.items.0.trackId"); detail codes are the upper-cased JSON Schema keyword (MAXIMUM, MINITEMS,
@@ -57,6 +57,15 @@ const layoutCell = {
 };
 
 const TOOL_LIST: Tool[] = [
+  // T09 (contract addCaptions). The conditional trackId / splitBySpeaker requirement and the style-value checks stay with
+  // the handlers (MISSING_TRACK_ID, PROPERTY_VALIDATION_FAILED). Kept in alphabetical TOOL_LIST order (the helper serves in list order).
+  { name: 'addCaptions', description: 'Generate caption items from the sources\' transcripts onto a caption track (trackId), or split by speaker across existing caption tracks (splitBySpeaker + speakerTrackIds). Times in seconds.',
+    inputSchema: obj({ trackId: { type: 'string', description: 'Target caption track id from context' }, splitBySpeaker: { type: 'boolean', description: 'One track per detected speaker' },
+      speakerTrackIds: ids('Existing caption tracks, in detected-speaker order (with splitBySpeaker)'), source: { enum: ['speech', 'music', 'all'], description: 'Which audio to caption (default speech; music = lyrics)' },
+      sourceItems: ids('Limit to these source item ids'), startTime: secs('Window start in seconds'), endTime: secs('Window end in seconds'),
+      maxWords: { type: 'number', description: 'Words per caption (default 5)' }, maxCharacters: { type: 'number', description: 'Characters per caption (default 35)' },
+      templateId: { type: 'string', description: 'A caption template id from listCaptionTemplates' }, reset: { type: 'boolean', description: 'Replace existing captions on the track(s)' },
+      font: str, fontSize: num, color: str, backgroundColor: str, borderColor: str, borderWidth: num }) },
   // T07 (contracts addLayout, note 19: cell trim in ms, volume 0–200 %). Cell assets, trims and the asset kind are the
   // handler's (INVALID_CELL_ASSET, INVALID_TRIM_RANGE, TRIM_EXCEEDS_SOURCE).
   { name: 'addLayout', description: 'Add a multi-cell layout (split, three-way, grid, picture-in-picture or feature) on an overlay track, or insert it after an item, with cells optionally filled. Times in seconds; cell trims in milliseconds.',
@@ -118,6 +127,12 @@ const TOOL_LIST: Tool[] = [
       startSeconds: secs('Window start (with endSeconds)'), endSeconds: secs('Window end (with startSeconds)') }) },
   { name: 'deleteItems', description: 'Delete items by id; ripple closes the gaps. Tracks remain even when emptied.',
     inputSchema: obj({ itemIds: ids('Items to delete'), ripple: bool, rippleGroupId: str }, ['itemIds']) },
+  // T09 (results §2 editAllCaptionStyles). The style-value checks stay with the handler (PROPERTY_VALIDATION_FAILED).
+  { name: 'editAllCaptionStyles', description: 'Restyle every caption on a caption track at once; style keys may be flat beside trackId or inside properties. Each caption box is re-measured when geometry changes.',
+    inputSchema: obj({ trackId: { type: 'string', description: 'Caption track id from context' },
+      ...Object.fromEntries(['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'color', 'backgroundColor', 'borderColor', 'borderWidth', 'textAlign', 'textDecoration', 'textTransform', 'lineHeight', 'letterSpacing', 'opacity', 'boxShadow', 'blendMode', 'textAnimation'].map(k => [k, (properties.properties as Record<string, unknown>)[k]])),
+      renderMode: { enum: ['default', 'highlight', 'word-by-word', 'slide-up', 'slide-left'] }, highlightColor: str,
+      properties: { type: 'object', description: 'Style keys: font, fontSize, color, backgroundColor, borderColor, borderWidth, renderMode, highlightColor, textAlign, lineHeight, letterSpacing, boxShadow, blendMode, opacity' } }, ['trackId']) },
   // T07 (contracts editLayout). index ranges are the handler's (CELL_INDEX_OUT_OF_RANGE).
   { name: 'editLayout', description: 'Change the gap, corner radius or cell contents of a layout (include only the cells that change; assetId null empties a cell). Cell trims in milliseconds.',
     inputSchema: obj({ itemId: str, gap: num, borderRadius: num,
@@ -127,10 +142,12 @@ const TOOL_LIST: Tool[] = [
     inputSchema: obj({ itemId: str, action: { type: 'string', description: 'view | patchCode | updateCode' }, patches: { type: 'array', items: obj({ old_string: str, new_string: str }, ['old_string', 'new_string']) },
       code: str, summary: { type: 'string', description: 'At most 400 characters; update it when the visual meaning changes' } }, ['itemId']) },
   { name: 'editProperties', description: 'Change visual, media or shape properties of one item (itemId) or a batch (itemIds), atomically. A keyframed property changes only its default value. Timing: moveItem / trimItem; position and fitting: transformItem.',
-    inputSchema: obj({ itemId: str, itemIds: ids('All-or-nothing batch'), properties }, ['properties']) },
+    inputSchema: obj({ itemId: str, itemIds: ids('All-or-nothing batch'), properties, applyToAll: { type: 'boolean', description: 'For captions, apply changed style fields to the other captions on the same track' } }, ['properties']) },
   // T21 (contract getHelpSection).
   { name: 'getHelpSection', description: 'Read one help section by the section_id searchHelpDocs returned.',
     inputSchema: obj({ section_id: { type: 'string', description: 'Section id' } }, ['section_id']) },
+  // T09 (results §2 listCaptionTemplates, read-only).
+  { name: 'listCaptionTemplates', description: 'List the caption templates (id, name, description, tags, colours, word / character limits). Read-only.', inputSchema: obj({}) },
   { name: 'manageMarkers', description: 'Add, update, remove or clear timeline markers (Cutframe tool; times in seconds).',
     inputSchema: obj({ actions: { type: 'array', items: obj({ action: { enum: ['add', 'update', 'remove', 'clear'] }, time: secs('Marker time in seconds'), label: str, markerId: str }, ['action']) } }, ['actions']) },
   { name: 'manageTrack', description: 'Create, delete, rename, reorder or toggle (mute, solo, lock, hide, volume) tracks.',

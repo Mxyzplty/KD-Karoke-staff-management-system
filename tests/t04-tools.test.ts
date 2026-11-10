@@ -499,7 +499,7 @@ describe('editProperties: remaining codes and strings (provisional where the wor
     const a = ed({ fontSize: 40 }, 'txt'); expect(a.r.success).toBe(true); expect(valueAt(itemOf(a.e.doc, 'txt'), 'fontSize', 0)).toBe(40); only(a.e, 'Edit items');
     const b = ed({ text: 'x', color: '#fff' }, 'txt'); expect(b.r.success).toBe(true); expect(itemOf(b.e.doc, 'txt').details.text).toBe('x'); expect(valueAt(itemOf(b.e.doc, 'txt'), 'color', 0)).toBe('#fff'); only(b.e, 'Edit items');
     const doc = base(); doc.items.push(mkItem('cap', 'O1', 5000, 6000, { type: 'caption' }));
-    const c = ed({ fontSize: 40 }, 'cap', doc); refused(c.e, c.before, c.r, 'NOT_IMPLEMENTED'); expect(c.r.error).toBe('fontSize is not yet implemented (T09).');
+    const c = ed({ fontSize: 40 }, 'cap', doc); expect(c.r.success).toBe(true); expect(valueAt(itemOf(c.e.doc, 'cap'), 'fontSize', 0)).toBe(40); only(c.e, 'Edit items'); // T09 (C8 assertion-only edit): caption fontSize now routes to editCaptionProperties (stored as a property), one 'Edit items' entry; was NOT_IMPLEMENTED (T09).
     const d = ed({ colors: [] }); refused(d.e, d.before, d.r, 'NOT_IMPLEMENTED'); expect(d.r.error).toBe('colors is not yet implemented (T22).');
     expect(ed({ media: {} }).r.error).toBe('media is not yet implemented (T22).');
   });

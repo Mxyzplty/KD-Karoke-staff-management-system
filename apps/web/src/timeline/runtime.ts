@@ -28,6 +28,8 @@ import { addAtCut, editTransition, removeTransition } from './transitions';
 import { addFade, setKeepPitch } from '../audio/edits';
 import { callTool } from './tools';
 import type { ToolContext, ToolResult } from './tools';
+import { addCaptionsPanel, NO_CAPTION_DATA } from '../captions/tools';
+import { editCaptionTransform } from '../captions/properties';
 import { graphicAssets } from '../mg/frames';
 import { addBlankGraphic, applyGraphicPreset } from '../mg/presets';
 import { addTextPreset } from '../text/tools';
@@ -247,6 +249,23 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
       case 'colourBlock': return run('Edit items', doc => editColourBlock(doc, intent.itemIds, intent.effectId, intent.values));
       case 'bypassGrade': return run('Edit items', doc => bypassGrade(doc, intent.itemIds, intent.enabled));
       case 'resetGrade': return run('Edit items', doc => resetGrade(doc, intent.itemIds));
+      // T09: the Captions panel generates on the bus (resolved transcripts travel with the intent, auto-created tracks + panel style);
+      // the inspector's Transform is a caption-only "Edit items" (the shared caption property whitelist stays style + text).
+      case 'generateCaptions': {
+        let generated: RecordData = {};
+        const outcome = run(intent.reset ? 'Regenerate captions' : 'Add captions', doc => {
+        // addCaptionsIn's startTime / endTime are the agent's seconds (toMs ×1000); the panel's range is editor milliseconds.
+        const result = addCaptionsPanel(doc, { source: intent.button, sourceItems: intent.sourceItems, startTime: intent.range ? intent.range.startMs / 1000 : undefined, endTime: intent.range ? intent.range.endMs / 1000 : undefined,
+          splitBySpeaker: intent.split, templateId: intent.templateId, maxWords: intent.maxWords, maxCharacters: intent.maxCharacters, fontSize: intent.fontSize, borderWidth: intent.borderWidth,
+          fontFamily: intent.fontFamily, fontWeight: intent.fontWeight, fontStyle: intent.fontStyle, color: intent.color, backgroundColor: intent.backgroundColor, textDecoration: intent.textDecoration, borderColor: intent.borderColor, boxShadow: intent.boxShadow,
+          breakOnPunctuation: intent.breakOnPunctuation, breakOnConjunctions: intent.breakOnConjunctions, reset: intent.reset },
+          id => intent.data[id] ?? NO_CAPTION_DATA);
+        if (result.success) generated = result.data ?? {};
+        });
+        if (outcome.ok && generated.captionCount === 0) notify(`No words found. ${generated.replacedCount ?? 0} captions removed.`);
+        return outcome;
+      }
+      case 'editCaptionTransform': return run('Edit items', doc => { editCaptionTransform(doc, intent.itemIds, intent.properties); });
       default: return undefined; // T15 / later owners keep their visible stubs.
     }
   };

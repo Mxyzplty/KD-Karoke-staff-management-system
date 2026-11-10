@@ -8,7 +8,8 @@ import {
   memberTracks, newId, newTrack, nextFree, overlaps, rate, sourceLength, span, track, trackLocked,
 } from './model';
 import type { TrackKind } from './model';
-import { ensureProp, normaliseProperties, prop, remapKeyframes, setStatic, storedProperties } from './properties';
+import { ensureProp, normaliseProperties, prop, remapKeyframes, setStatic, sourceTime, storedProperties } from './properties';
+import { copyRecord, splitBindings, splitCaptionWords } from '../captions/links';
 
 export const MIN_ITEM_MS = 50, TOOL_IMAGE_MS = 3000, UI_IMAGE_MS = 5000, UNKNOWN_SOURCE_MS = 5000;
 const frame = (doc: ProjectDocument) => 1000 / doc.fps;
@@ -242,7 +243,7 @@ export function split(doc: ProjectDocument, id: string, at: number): { left: str
   const i = item(doc, id);
   if (!i || !(i.display.from + EPS < at && at < i.display.to - EPS)) fail(i ? 'INVALID_SPLIT_POINT' : 'ITEM_NOT_FOUND', 'Split point is invalid or item was not found');
   if (trackLocked(doc, i.trackId) || i.locked) fail('TRACK_LOCKED', 'This clip or track is locked. Unlock it before splitting.');
-  const elapsed = at - i.display.from, r = rate(i), right = structuredClone(i), cut = (i.trim?.from ?? 0) + elapsed * r;
+  const elapsed = at - i.display.from, r = rate(i), right = structuredClone(i), cut = (i.trim?.from ?? 0) + elapsed * r, captionCut = sourceTime(i, elapsed);
   right.id = newId('item'); right.display = { from: at, to: i.display.to }; normaliseProperties(right);
   if (MEDIA_TYPES.has(i.type) && i.trim) { right.trim = { from: cut, to: i.trim.to }; i.trim.to = cut; }
   else right.trim = { from: cut, to: cut + (i.display.to - at) * r };
@@ -250,6 +251,8 @@ export function split(doc: ProjectDocument, id: string, at: number): { left: str
   i.display = { from: i.display.from, to: at };
   shiftKeyframes(right, -elapsed, 'remap');
   doc.items.splice(doc.items.indexOf(i) + 1, 0, right);
+  if (isCaption(i)) { if (Array.isArray(i.details?.words) && i.details.words.length) splitCaptionWords(doc, i, right, at); }
+  else splitBindings(doc, i, right, captionCut);
   for (const t of doc.transitions) if (t.fromId === id) t.fromId = right.id;
   return { left: id, right: right.id };
 }
@@ -267,6 +270,7 @@ export function clone(doc: ProjectDocument, id: string, trackId: string | undefi
   if (hit) fail('TRACK_OVERLAP', addCollision(trackId, want, hit, nextFree(doc, trackId, from, span(i))));
   const copy = structuredClone(i);
   copy.id = newId('item'); copy.trackId = trackId; copy.display = want; normaliseProperties(copy);
+  copyRecord(copy);
   doc.items.push(copy);
   return copy;
 }

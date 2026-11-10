@@ -11,3 +11,4 @@ apps/web/src/mg/interpolate-path.ts text eol=lf
 apps/web/src/analysis/qwen-asr.ts text eol=lf
 # T19q Q8: whisper/normalizers/english.json, byte for byte.
 apps/web/src/analysis/tools/whisper-english-spelling.json text eol=lf
+apps/web/src/export/pipeline.ts text eol=lf

@@ -19,6 +19,7 @@ import { cellsOf, layoutLabel } from '../timeline/layouts';
 import { openGraph, setView, TOOLS, useView } from './view';
 import type { Tool } from './view';
 import { VoiceoverPanel } from './voiceover';
+import { CaptionsPanel, CaptionTextBody, CaptionTransformBody, WordBehaviorBody } from '../captions/ui';
 
 const Unavailable = ({ what, owner }: { what: string; owner: string }) => <p className="unavailable">{what} is not yet implemented ({owner}).</p>;
 export function FootageTabs({ projectId }: { projectId: string }) {
@@ -54,6 +55,7 @@ export function ToolPanel({ tool, projectId }: { tool: Tool; projectId: string }
   if (tool === 'layouts') return <LayoutsPanel />;
   if (tool === 'effects') return <EffectsRail />;
   if (tool === 'voiceover') return <VoiceoverPanel projectId={projectId} />;
+  if (tool === 'captions') return <CaptionsPanel projectId={projectId} />;
   return <section aria-label={info.label} className="tool-panel"><h3>{info.label}</h3>
     <Unavailable what={`The ${info.label} panel`} owner={info.owner} />
   </section>;
@@ -81,6 +83,7 @@ const t06 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }
 const t05 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode, rekey?: (item: RecordData) => string): Section => ({ title, owner: 'T05', done: true, rekey, body: (doc, item) => <Body doc={doc} item={item} /> });
 const sectionKey = (s: Section, item: RecordData) => s.rekey ? `${s.title}:${item.id}:${s.rekey(item)}` : s.title;
 const t07 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode, heading?: Section['heading']): Section => ({ title, owner: 'T07', done: true, heading, body: (doc, item) => <Body key={item.id} doc={doc} item={item} /> });
+const t09 = (title: string, Body: (p: { doc: ProjectDocument; item: RecordData }) => ReactNode, rekey?: (item: RecordData) => string): Section => ({ title, owner: 'T09', done: true, rekey, body: (doc, item) => <Body doc={doc} item={item} /> });
 const MASK: Section = { title: 'Mask', owner: 'T12', done: true, onHeader: maskHeader, body: (doc, item) => <MaskBody doc={doc} item={item} /> };
 export const SECTIONS: Record<string, Section[]> = {
   video: [t04('Basic', BasicBody), t04('Speed & Time Remap', SpeedBody), t04('Transform', TransformBody), t04('Appearance', AppearanceBody), MASK, t04('Shadow', ShadowBody)],
@@ -88,7 +91,8 @@ export const SECTIONS: Record<string, Section[]> = {
   audio: [t04('Speed', SpeedBody), t04('Volume', VolumeBody)],
   text: [t05('Preset', PresetBody), t05('Text', TextBody), t05('Animation', AnimationBody, () => ''),
     t05('Basic', TextBasicBody), t05('Transform', TextTransformBody), t05('Font Stroke', FontStrokeBody), t05('Font Shadow', FontShadowBody)],
-  caption: [{ title: 'Text animation', owner: 'T09' }, { title: 'Word behavior', owner: 'T09' }, { title: 'Caption Text', owner: 'T09' }, { title: 'Text', owner: 'T09' }, { title: 'Transform', owner: 'T09' }, { title: 'Basic', owner: 'T09' }, { title: 'Font Stroke', owner: 'T09' }, { title: 'Font Shadow', owner: 'T09' }],
+  caption: [t09('Text animation', AnimationBody, () => ''), t09('Word behavior', WordBehaviorBody), t09('Caption Text', CaptionTextBody, () => ''),
+    t09('Text', TextBody), t09('Transform', CaptionTransformBody), t09('Basic', TextBasicBody), t09('Font Stroke', FontStrokeBody), t09('Font Shadow', FontShadowBody)],
   shape: [t06('Fill', FillBody), t06('Stroke', StrokeBody), t06('Basic', BasicBody), t06('Transform', ShapeTransformBody), t06('Shape Path', ShapePathBody)],
   motionGraphic: [t04('Basic', BasicBody), t04('Transform', TransformBody)],
   layout: [t07('Cells', CellsBody, item => `Cells (${cellsOf(item).length})`), t07('Style', LayoutStyleBody), t07('Transform', LayoutTransformBody)],
@@ -129,7 +133,7 @@ export function compactTabs(item: RecordData | undefined): CompactTab[] {
   if (item.type === 'text') return list(['Preset', 'Text', 'Animation', 'Basic', 'Transform', 'Stroke', 'Shadow']);
   return list(['Properties']); // Every other selection's tab list is unrecorded (shape T06 and layout T07 keep this default).
 }
-const NOTHING_SELECTED: Record<string, [string, string]> = { motion: ['Motion graphics', 'T08'], shapes: ['Shapes', 'T06'], captions: ['Captions', 'T09'] };
+const NOTHING_SELECTED: Record<string, [string, string]> = { motion: ['Motion graphics', 'T08'], shapes: ['Shapes', 'T06'] };
 const VIDEO_SECTIONS: Record<string, string> = { basic: 'Basic', speed: 'Speed & Time Remap', transform: 'Transform', appearance: 'Appearance', mask: 'Mask', shadow: 'Shadow' };
 /** The drawer's content for one compact tab: Uploads = the Footage tab; a video tab = a sheet with only that section expanded. */
 export function CompactSheet({ tab, item, projectId, doc }: { tab: string; item: RecordData | undefined; projectId: string; doc: ProjectDocument }) {
@@ -139,6 +143,7 @@ export function CompactSheet({ tab, item, projectId, doc }: { tab: string; item:
     if (tab === 'motion') return <MotionGraphicsPanel />;
     if (tab === 'shapes') return <ShapesPanel />;
     if (tab === 'texts') return <TextPanel />;
+    if (tab === 'captions') return <CaptionsPanel projectId={projectId} />;
     const [what, owner] = NOTHING_SELECTED[tab] ?? ['This panel', 'T02'];
     return <section className="tool-panel"><h3>{what}</h3><Unavailable what={`The ${what} panel`} owner={owner} /></section>;
   }
@@ -151,6 +156,6 @@ export function CompactSheet({ tab, item, projectId, doc }: { tab: string; item:
     return <section className="sheet"><ItemHeader item={item} />{section ? <SectionShell doc={doc} item={item} section={section} open /> : null}</section>;
   }
   // Image, audio, motion graphic, shape and layout keep the single Properties tab (their tab lists are unrecorded); its sheet holds every section.
-  if ((owners[item.type] === 'T04' || item.type === 'shape' || item.type === 'layout') && SECTIONS[item.type]) return <section className="sheet"><ItemHeader item={item} />{item.type === 'motionGraphic' && <GraphicFields key={item.id} item={item} open />}{SECTIONS[item.type].map(s => <SectionShell key={s.title} doc={doc} item={item} section={s} open />)}</section>;
+  if ((owners[item.type] === 'T04' || item.type === 'shape' || item.type === 'layout' || item.type === 'caption') && SECTIONS[item.type]) return <section className="sheet"><ItemHeader item={item} />{item.type === 'motionGraphic' && <GraphicFields key={item.id} item={item} open />}{SECTIONS[item.type].map(s => <SectionShell key={s.title} doc={doc} item={item} section={s} open />)}</section>;
   return <section className="sheet"><ItemHeader item={item} /><Unavailable what={`The ${TYPE_NAMES[item.type] ?? item.type} properties sheet`} owner={owners[item.type] ?? 'T04'} /></section>;
 }

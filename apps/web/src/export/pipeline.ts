@@ -19,6 +19,7 @@ import { picture } from '../render/sources';
 import { graphicPicture } from '../mg/frames';
 import { graphicBitmap } from './graphic';
 import { loadTextFonts } from '../text/fonts';
+import { loadCaptionFonts } from '../captions/fonts';
 import { sourceTime } from '../timeline/properties';
 import { withCellItems } from '../timeline/layouts';
 import { CHUNK_S, CHUNKED_ABOVE_S, exportMix, hasAudioStream, SAMPLE_RATE } from './audio';
@@ -91,7 +92,7 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
   if (!(plan.count > 0)) throw new ExportError('CLIENT_BUG', 'The export has no frames (empty composition).');
   // T05: every text's faces load before the first frame; a family that is not available or a face that cannot load fails
   // the export with its FONT_* code (never a silent fallback). An on-demand CJK font that cannot load is a message only.
-  try { messages.push(...await loadTextFonts(doc, o.range)); } catch (e) {
+  try { messages.push(...await loadTextFonts(doc, o.range), ...await loadCaptionFonts(doc, o.range)); } catch (e) {
     const code = (e as { code?: unknown })?.code;
     throw typeof code === 'string' && code.startsWith('FONT_') ? new ExportError(code, (e as Error).message) : e;
   }
@@ -288,7 +289,7 @@ async function videoRef(store: ProjectStore, item: RecordData, asset: Asset | un
  *  kind only once
  *  render/sources.ts picture() has a branch for it: otherwise picture() treats it as a video (T15's preview resolver,
  *  grey on failure). */
-const PICTURE_KINDS: Record<Exclude<Draw['kind'], 'video'>, true> = { image: true, motionGraphic: true, shape: true, text: true, layout: true };
+const PICTURE_KINDS: Record<Exclude<Draw['kind'], 'video'>, true> = { image: true, motionGraphic: true, shape: true, text: true, layout: true, caption: true };
 /** One draw's picture. Video: the export decoders; a decode failure fails the export (§12 DECODE_ERROR and the rest), it
  *  is never drawn grey. A motion graphic that still fails fails the export as MG_RENDER_FAILED with T08's text naming it.
  *  owned receives fresh graphic bitmaps, including layout cells: the frame closes them after composition or failure.

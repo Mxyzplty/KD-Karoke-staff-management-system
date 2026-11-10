@@ -99,6 +99,8 @@ const ENUM_MSG = 'must be equal to one of the allowed values';
 describe('t18a schemas (row 6)', () => {
   // [tool, input, detail errors] — one refusal per served tool, in Xapp's INVALID_TOOL_INPUT shape.
   const TABLE: [string, unknown, { path: string; code: string; message: string }[]][] = [
+    // T09 (C8 assertion-only edit): addCaptions, editAllCaptionStyles and listCaptionTemplates are served; their rows are schema refusals like the others, in SERVED_TOOLS order.
+    ['addCaptions', { maxWords: '5' }, [{ path: '$.maxWords', code: 'TYPE', message: 'must be number' }]],
     ['addLayout', { layoutType: 'grid-3x3' }, [{ path: '$.layoutType', code: 'ENUM', message: ENUM_MSG }]], // T07 (C8)
     ['addMedia', { assetId: 5 }, [{ path: '$.assetId', code: 'TYPE', message: 'must be string' }]],
     ['addMotionGraphic', { width: 100, height: 100, x: 0, y: 0, animationDuration: '5' }, [{ path: '$.animationDuration', code: 'TYPE', message: 'must be number' }]],
@@ -115,12 +117,14 @@ describe('t18a schemas (row 6)', () => {
     // T12 (C8 assertion-only edit): createMask, editMaskProperties, removeMask and writeMaskPoints are served; their rows are schema refusals like the others.
     ['createMask', { itemId: 'v1', timelineSeconds: '1' }, [{ path: '$.timelineSeconds', code: 'TYPE', message: 'must be number' }]],
     ['deleteItems', { itemIds: [] }, [{ path: '$.itemIds', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
+    ['editAllCaptionStyles', {}, [{ path: '$.trackId', code: 'REQUIRED', message: REQUIRED('trackId') }]], // T09 (C8 assertion-only edit)
     ['editLayout', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]], // T07 (C8)
     ['editMaskProperties', { itemId: 'v1', maskIndex: 0 }, [{ path: '$.properties', code: 'REQUIRED', message: REQUIRED('properties') }]],
     ['editMotionGraphic', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
     ['editProperties', { itemId: 'v1', properties: { opacity: '1' } }, [{ path: '$.properties.opacity', code: 'TYPE', message: 'must be number' }]],
     // T21 help tools (contracts getHelpSection, searchHelpDocs): served, so each gets a schema-refusal row like the others.
     ['getHelpSection', { section_id: 5 }, [{ path: '$.section_id', code: 'TYPE', message: 'must be string' }]],
+    ['listCaptionTemplates', { bogus: 1 }, [{ path: '$.bogus', code: 'ADDITIONALPROPERTIES', message: 'must NOT have additional properties' }]], // T09 (C8 assertion-only edit): read-only, empty closed object
     ['manageMarkers', { actions: [{ action: 'zap' }] }, [{ path: '$.actions.0.action', code: 'ENUM', message: ENUM_MSG }]],
     ['manageTrack', { action: 'volume', volume: 2 }, [{ path: '$.volume', code: 'MAXIMUM', message: 'must be <= 1' }]],
     ['manageTrackGroup', { action: 'create', trackIds: ['a'] }, [{ path: '$.trackIds', code: 'INVALID_COMBINATION', message: 'provide distinct member track IDs (at least two when creating)' }]],
@@ -148,7 +152,7 @@ describe('t18a schemas (row 6)', () => {
     ['removeBackground', { name: 'x' }, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
   ];
 
-  it('row 6: the table covers exactly the 40 served tools', () => {
+  it('row 6: the table covers exactly the 43 served tools', () => { // T09 (C8 assertion-only edit): 40 → 43
     expect(TABLE.map(r => r[0])).toEqual([...SERVED_TOOLS]);
   });
 
@@ -229,18 +233,18 @@ describe('t18a schemas (row 6)', () => {
     expect(await helper.call('addMedia', { assetId: 'a', trackId: 't', timelineStart: 1 }, undefined)).toEqual(open);
   });
 
-  it('row 6: valid minimal input for all 40 tools passes the schema (and only then meets the tab)', async () => {
+  it('row 6: valid minimal input for all 43 tools passes the schema (and only then meets the tab)', async () => { // T09 (C8 assertion-only edit): 40 → 43
     const { helper } = await start();
     const valid: Record<string, unknown> = {
-      addLayout: { layoutType: 'grid-2x2' } /* T07 (C8) */, addMedia: { assetId: 'video_1' }, addMotionGraphic: { code: 'export const G = () => null;', summary: 'A graphic.', width: 100, height: 100, x: 0, y: 0, trackId: 't' },
+      addCaptions: { trackId: 'C1' } /* T09 (C8) */, addLayout: { layoutType: 'grid-2x2' } /* T07 (C8) */, addMedia: { assetId: 'video_1' }, addMotionGraphic: { code: 'export const G = () => null;', summary: 'A graphic.', width: 100, height: 100, x: 0, y: 0, trackId: 't' },
       addShape: { shape: 'star', bounds: { width: 100, height: 100 }, trackId: 't' }, // T06 (C8)
       addText: { textContent: 'Hi', duration: 3 }, // T05
       applyTransition: { action: 'remove', atSeconds: 2 }, // T11 (C8)
       changeTrack: { itemId: 'v1', trackId: 't' }, cloneItem: { itemId: 'v1', trackId: 't' }, consolidateTracks: {}, context: {},
       createMask: { itemId: 'v1', shape: 'rectangle', bounds: { width: 10, height: 10 } }, // T12 (C8)
-      deleteItems: { itemIds: ['v1'] }, editLayout: { itemId: 'l1' } /* T07 (C8) */,
+      deleteItems: { itemIds: ['v1'] }, editAllCaptionStyles: { trackId: 'C1' } /* T09 (C8) */, editLayout: { itemId: 'l1' } /* T07 (C8) */,
       editMaskProperties: { itemId: 'v1', maskIndex: 0, properties: { opacity: 50 } }, // T12 (C8)
-      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, getHelpSection: { section_id: 'getting-started' } /* T21 */, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
+      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, getHelpSection: { section_id: 'getting-started' } /* T21 */, listCaptionTemplates: {} /* T09 (C8) */, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
       manageTrackGroup: { action: 'ungroup', groupId: 'g' }, moveItem: { itemId: 'v1', by: 1 },
       removeMask: { itemId: 'v1', maskIndex: 0 }, // T12 (C8)
       reorderItems: { itemIds: ['v1'], afterItemId: 'v2' }, resizeCanvas: { aspectRatio: '9:16' }, searchHelpDocs: { query: 'how do I export' } /* T21 */,
@@ -312,7 +316,7 @@ describe('t18a schemas (row 6)', () => {
 
   it('row 6: UNKNOWN_TOOL for names the helper does not serve (including T18 tools), before any schema check', async () => {
     const { helper } = await start();
-    for (const name of ['addCaptions', 'fonts', 'searchProjectAssets', 'searchUserLibrary', 'captureFrame', 'bogus', '', 'MoveItem']) {
+    for (const name of ['fonts', 'searchProjectAssets', 'searchUserLibrary', 'captureFrame', 'bogus', '', 'MoveItem']) { // T09 (C8 assertion-only edit): addCaptions is now served, dropped from the unserved list
       expect(await helper.call(name, { anything: true }, undefined), name).toEqual({ success: false, error: `Unknown tool '${name}'`, code: 'UNKNOWN_TOOL' });
     }
   });
@@ -333,8 +337,8 @@ describe('t18a schemas (row 6)', () => {
     const { client } = await mcpClient(helper);
     const bad = await client.callTool({ name: 'splitItem', arguments: { itemId: 'v1' } });
     expect(bad).toEqual({ content: [{ type: 'text', text: JSON.stringify(invalid('splitItem', [{ path: '$.timestampS', code: 'REQUIRED', message: REQUIRED('timestampS') }])) }], isError: true });
-    const unknown = await client.callTool({ name: 'addCaptions', arguments: {} });
-    expect(unknown).toEqual({ content: [{ type: 'text', text: JSON.stringify({ success: false, error: "Unknown tool 'addCaptions'", code: 'UNKNOWN_TOOL' }) }], isError: true });
+    const unknown = await client.callTool({ name: 'fonts', arguments: {} }); // T09 (C8 assertion-only edit): addCaptions is served now; `fonts` is still unserved
+    expect(unknown).toEqual({ content: [{ type: 'text', text: JSON.stringify({ success: false, error: "Unknown tool 'fonts'", code: 'UNKNOWN_TOOL' }) }], isError: true });
   });
 
   it('row 6: a successful MCP result has no isError key', async () => {

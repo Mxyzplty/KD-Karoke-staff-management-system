@@ -9,7 +9,7 @@ export type Transcript = {
   language: string; languages: string[]; total_duration: number;
   segments: { id: number; start: number; end: number; text: string; speaker: number; words: Word[] }[];
 };
-export type TranscriptionResult = { status: 'complete'; transcript: Transcript } | { status: 'skipped'; transcript: null; reason: 'MUSIC_WITHOUT_VOCALS' };
+export type TranscriptionResult = { status: 'complete'; transcript: Transcript; music: boolean } | { status: 'skipped'; transcript: null; reason: 'MUSIC_WITHOUT_VOCALS' };
 export type Pair = [number, number];
 export type Rhythm = { bpm: number | null; averageBpm: number | null; beats: Pair[]; downbeats: Pair[]; silences: Pair[] };
 export type BeatAnalysis = { stored: Rhythm; tab: { bpm: number | null; beats: Pair[]; onsets: Pair[]; silences: Pair[]; firstBeat: number | null; tempoType: 'constant' | 'variable' | 'unknown' } };

@@ -116,10 +116,12 @@ describe('T01 library', () => {
   it('asset deletion removes timeline items and dependent transitions, increments rev, and invalidates stale editors', async () => {
     const { store } = setup(), p = await store.create(), a = await store.upload(file('a.mp4'));
     const doc = full(); doc.items[0].metadata = { assetId: a.id }; doc.transitions = [{ id: 't1', fromId: 'item1', toId: 'item2' }];
-    // Deliberate coordinator-approved gaps: T07 owns layout cell cleanup; T09 owns caption-source cleanup.
+    // T07 still owns layout cell cleanup (that gap remains). The caption here is a DETACHED caption of item1 (the deleted
+    // source): it stays by rule, the same real shape database.ts keys on (top-level captionSourceItemId + metadata.captionMode).
+    // A LINKED caption of a deleted source IS removed — covered in tests/t09-deletion.test.ts, which exercises that branch.
     const nested = [
       { id: 'layout', type: 'layout', trackId: 'v1', display: { from: 0, to: 900 }, details: { cells: [{ id: 'cell', source: { assetId: a.id } }] } },
-      { id: 'caption', type: 'caption', trackId: 'v1', display: { from: 0, to: 900 }, metadata: { captionSource: { sourceAssetId: a.id } } },
+      { id: 'caption', type: 'caption', trackId: 'v1', display: { from: 0, to: 900 }, captionSourceItemId: 'item1', metadata: { captionMode: 'detached' } },
     ];
     doc.items.push(...nested);
     await store.save(p.id, doc, 0); await store.deleteAssets([a.id]);

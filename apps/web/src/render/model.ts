@@ -18,6 +18,9 @@ import type { ShapePath } from '../timeline/shapes';
 import { animationState } from '../text/animation';
 import type { TextDraw } from '../text/draw';
 import { textStyle } from '../text/style';
+import { modeOf, renderConfig } from '../captions/render';
+import type { CaptionDraw } from '../captions/draw';
+import type { StoredWord } from '../captions/model';
 import { cellItem, cellsOf, LAYOUT_PARITY } from '../timeline/layouts';
 import { activeAt, KINDS, type Active } from '../timeline/transitions';
 import type { Pair } from './transitions';
@@ -153,7 +156,7 @@ export function previewRuns(doc: ProjectDocument): { trackIds: string[]; index: 
 
 // ---- One item's draw at timeline ms t (§53.4.2 order: alpha, blend, filter, box transform, rounded clip, content, border).
 export type Draw = {
-  item: RecordData; kind: 'video' | 'image' | 'motionGraphic' | 'shape' | 'text' | 'layout'; local: number;
+  item: RecordData; kind: 'video' | 'image' | 'motionGraphic' | 'shape' | 'text' | 'layout' | 'caption'; local: number;
   /** Source ms to show: the remap / trim clock for video (§53.3.1), property time for an image or a shape, graphic time for
    *  a motion graphic. */
   sourceMs: number;
@@ -173,6 +176,8 @@ export type Draw = {
   /** A text (T05): its style, its entrance animation state at this local ms (the box channels are already in box and alpha)
    *  and its look, drawn in box px by text/draw.ts. */
   text?: TextDraw;
+  /** A caption (T09): its style, render mode and the words with their item-local timing, drawn in box px by captions/draw.ts. */
+  caption?: CaptionDraw;
   /** A layout (T07): its cells in box px. */
   layout?: LayoutDraw;
   /** T11: one side of a transition pair (framePlan). */
@@ -229,7 +234,6 @@ export type DrawOptions = { cssScale?: number };
 /** What a frame needs that T15 does not render, with the owner ticket (shown on the stage, never drawn wrong). The
  *  compositor adds an item its effect stage could not draw, with the error code, category, recovery and sentence (T10 B3). */
 export type Pending = { itemId: string; owner: string; what: string; code?: string; category?: string; recovery?: string; message?: string };
-const OWNERS: Record<string, [string, string]> = { caption: ['T09', 'Captions'] };
 /** §56.3 a text animation's channels on the box and alpha: scale k about the box centre, translate (tx, ty) box sizes,
  *  rotation r and skew σ degrees added, alpha × o. w, h = the scaled box |W·sx|, |H·sy|. */
 function animateBox(box: Box, c: { k: number; tx: number; ty: number; r: number; skew: number }): Box {
@@ -249,15 +253,13 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
   const local = t - item.display.from;
   let alpha = Number(field(item, 'opacity', local, 1));
   if (!(alpha > 0)) return null;
-  const owner = OWNERS[isCaption(item) ? 'caption' : item.type];
-  if (owner) return { itemId: item.id, owner: owner[0], what: `${owner[1]} rendering` };
-  const mg = item.type === 'motionGraphic', shape = item.type === 'shape', text = item.type === 'text', layout = item.type === 'layout';
+  const mg = item.type === 'motionGraphic', shape = item.type === 'shape', text = item.type === 'text', layout = item.type === 'layout', caption = isCaption(item);
   // A motion graphic without code (the panel's blank graphic, a legacy one) is an empty graphic: nothing to draw (T08 notes).
   if (mg && !(typeof item.details?.code === 'string' && item.details.code)) return null;
-  if (item.type !== 'video' && item.type !== 'image' && !mg && !shape && !text && !layout) return { itemId: item.id, owner: '?', what: `Item type ${item.type}` };
+  if (item.type !== 'video' && item.type !== 'image' && !mg && !shape && !text && !layout && !caption) return { itemId: item.id, owner: '?', what: `Item type ${item.type}` };
   const unrendered = unrenderedEffect(item);
   if (unrendered) return { itemId: item.id, ...unrendered };
-  let box = itemBox(doc, item, local), textDraw: TextDraw | undefined;
+  let box = itemBox(doc, item, local), textDraw: TextDraw | undefined, captionDraw: CaptionDraw | undefined;
   const k = opts.cssScale ?? 1;
   if (text) {
     // §56: the entrance runs on item-local ms (trim ignored); its box channels move the box, o multiplies the alpha.
@@ -266,11 +268,21 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
     if (!(alpha > 0)) return null;
     textDraw = { item, style, anim, look: item.details?.look, shadowScale: k };
   }
+  if (caption) {
+    // §57: render modes animate each word; the independently chosen text entrance also animates the whole caption box.
+    // Render modes compare word times at local + trim.from (a split
+    // remnant keeps its timing); the per-grapheme preset runs on item-local ms (trim ignored, like a text entrance).
+    const style = textStyle(item, local, 'caption'), words = Array.isArray(item.details?.words) ? item.details.words as StoredWord[] : [];
+    const anim = animationState(item.details?.textAnimation, local, style.text);
+    box = animateBox(box, anim.channels); alpha *= anim.channels.o;
+    if (!(alpha > 0)) return null;
+    captionDraw = { item, style, mode: modeOf(item), config: renderConfig(item), words, wordTau: local + (item.trim?.from ?? 0), anim, shadowScale: k };
+  }
   const matrix = frameScale(doc, out, boxMatrix(box));
   if (!(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]) > 0)) return null;
   const fx = itemEffects(item, local, k);
   // A text's borderWidth / borderColor are its font stroke (text/draw.ts), not a box border.
-  const filter = [cssChain(item, local, k), ...fx.css].filter(Boolean).join(' '), bw = text ? 0 : Number(field(item, 'borderWidth', local, 0)) || 0;
+  const filter = [cssChain(item, local, k), ...fx.css].filter(Boolean).join(' '), bw = text || caption ? 0 : Number(field(item, 'borderWidth', local, 0)) || 0;
   // T12 (part 5 §54.1): video and image items only.
   const masks = item.type === 'video' || item.type === 'image' ? frameMasks(item, local, fpsOf(doc)) : [];
   const d: Draw = {
@@ -278,7 +290,7 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
     box, matrix, alpha: Math.min(1, alpha), blend: compositeOp(field(item, 'blendMode', local, 'normal')), filter,
     radius: Math.max(0, Number(field(item, 'borderRadius', local, 0)) || 0),
     border: bw > 0 ? { width: bw, color: String(field(item, 'borderColor', local, '#000000')) } : null, path: filter || fx.gpu.length || masks.length ? 'css' : 'direct',
-    stackedAlpha: isStackedAlpha(item), effects: fx.gpu, ...shape ? { shape: shapeDraw(item, local) } : {}, ...textDraw ? { text: textDraw } : {}, ...masks.length ? { masks } : {},
+    stackedAlpha: isStackedAlpha(item), effects: fx.gpu, ...shape ? { shape: shapeDraw(item, local) } : {}, ...textDraw ? { text: textDraw } : {}, ...captionDraw ? { caption: captionDraw } : {}, ...masks.length ? { masks } : {},
   };
   if (layout) d.layout = layoutDraw(item, local, box, d);
   return d;

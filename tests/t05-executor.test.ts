@@ -54,6 +54,19 @@ describe('T05 executor font path (R2 M3, Q5 branch of agent/executor.ts)', () =>
     expect(texts(b)).toHaveLength(1); expect(b.labels()).toEqual(['Add items']); // the re-handle ran on the current project
   });
 
+  it('a user edit during the font load fails the in-run re-check: STALE_READ_REFRESHED, nothing added (D34 Minor 1)', async () => {
+    const e = createEditor(textDoc());
+    const ex = mk(() => e.runtime);                                 // same runtime throughout: no swap, so the re-check runs, not a re-handle
+    await open(ex);                                                 // gate open (timeline scope)
+    // A real user edit lands during the awaited load, closing the gate the call was checked against before it ran.
+    fonts.loadFont.mockImplementation(async () => { e.bus.run('Add track', 'user', doc => { doc.tracks.push(mkTrack('O2', 'overlay')); }); });
+    const r = await ex.execute(call('addText', addArgs)) as { success: boolean; code: string; scope: string };
+    expect([r.success, r.code]).toEqual([false, 'STALE_READ_REFRESHED']);  // removing the in-run `this.gated(…) ??` re-check makes this the agent's text instead
+    expect(r.scope).toBe('timeline');
+    expect(texts(e)).toHaveLength(0);                               // the agent landed nothing
+    expect(e.labels()).toEqual(['Add track']);                      // only the user's edit is on the stack
+  });
+
   it('the stale-read gate refuses addText before any font is loaded (a refused call loads nothing)', async () => {
     const e = createEditor(textDoc());
     const ex = mk(() => e.runtime);                                  // no context read: the gate is closed

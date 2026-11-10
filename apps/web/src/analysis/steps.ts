@@ -39,8 +39,9 @@ export async function transcriptionStep({ blob, asset, info, signal }: AnalysisA
   if (!hosted && !(await analysisService.available()).transcription) return { state: 'unavailable' };
   try {
     const samples = await runWorker<Float32Array>({ op: 'pcm', blob, info }, signal);
-    const result: TranscriptionResult = hosted ? { status: 'complete', transcript: await hosted(samples, signal) } : await analysisService.request<TranscriptionResult>({ task: 'transcribe', pcm: { sampleRate: 16000, channels: 1, data: [samples] } }, [samples.buffer], signal);
-    const row: TranscriptRow = { id: asset.id, status: result.status, transcript: result.transcript, ...(result.status === 'skipped' ? { reason: result.reason } : {}), created_at: now() };
+    const result = hosted ? { status: 'complete' as const, transcript: await hosted(samples, signal) } : await analysisService.request<TranscriptionResult>({ task: 'transcribe', pcm: { sampleRate: 16000, channels: 1, data: [samples] } }, [samples.buffer], signal);
+    // A hosted transcript (T21) has no sound classifier, so its row carries no `music` flag (T09 then reads music from a beat row only).
+    const row: TranscriptRow = { id: asset.id, status: result.status, transcript: result.transcript, ...(result.status === 'skipped' ? { reason: result.reason } : 'music' in result ? { music: result.music } : {}), created_at: now() };
     return { state: result.status, value: result.transcript, puts: [{ store: 'transcripts', value: row }] };
   } catch (e) {
     // C2 (part 2 §25, a voice-over or any other asset): the asset stays ready and its transcript row says why,

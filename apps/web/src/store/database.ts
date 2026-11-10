@@ -291,10 +291,13 @@ export class ProjectStore {
     // Keep tombstones so type counters do not recycle a previously issued agent_id.
     for (const link of links) if (removed.has(link.assetId)) await request(tx.objectStore('links').put({ ...link, deleted_at: this.stamp() }));
     for (const row of await request<{ projectId: string; document: ProjectDocument }[]>(tx.objectStore('documents').getAll())) {
-      const items = row.document.items.filter(i => !removed.has(i.metadata?.assetId));
       const deletedIds = new Set(row.document.items.filter(i => removed.has(i.metadata?.assetId)).map(i => i.id));
-      if (deletedIds.size) {
-        const document = { ...row.document, items, transitions: row.document.transitions.filter(t => !deletedIds.has(t.fromId) && !deletedIds.has(t.toId)), rev: row.document.rev + 1 };
+      // T09 (coordinator Q3): a caption linked to a removed source item is deleted in the same transaction; a detached caption stays.
+      const gone = new Set(deletedIds);
+      for (const i of row.document.items) if (i.type === 'caption' && typeof i.captionSourceItemId === 'string' && deletedIds.has(i.captionSourceItemId) && i.metadata?.captionMode !== 'detached') gone.add(i.id);
+      if (gone.size) {
+        const items = row.document.items.filter(i => !gone.has(i.id));
+        const document = { ...row.document, items, transitions: row.document.transitions.filter(t => !gone.has(t.fromId) && !gone.has(t.toId)), rev: row.document.rev + 1 };
         await request(tx.objectStore('documents').put({ ...row, document }));
         const record = await request<ProjectRecord | undefined>(tx.objectStore('projects').get(row.projectId));
         if (record) await request(tx.objectStore('projects').put({ ...record, updated_at: this.stamp() }));

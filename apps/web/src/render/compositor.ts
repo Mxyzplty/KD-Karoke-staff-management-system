@@ -8,6 +8,7 @@ import { maskCanvas } from '../masks/render';
 import { segments } from '../timeline/shapes';
 import type { ShapeDraw } from './model';
 import { drawText } from '../text/draw';
+import { drawCaption } from '../captions/draw';
 import { combine, surfaces } from './transitions';
 
 /** One draw's picture. width × height is the fit size (a video's display size, the merged half for stacked alpha): the
@@ -19,7 +20,7 @@ export type Source = { image: CanvasImageSource; width: number; height: number }
 /** A source with a picture to draw. */
 export const isPicture = (s: Source): s is Extract<Source, { image: CanvasImageSource }> => s !== null && s !== 'failed' && 'image' in s;
 /** Whether a draw has all it shows: its picture, a shape (no source), or a layout whose filled cells all have theirs. */
-export const complete = (s: Source, d: Draw): boolean => d.kind === 'shape' || isPicture(s)
+export const complete = (s: Source, d: Draw): boolean => d.kind === 'shape' || d.kind === 'caption' || isPicture(s)
   || (!!d.layout && !!s && typeof s === 'object' && 'cells' in s && d.layout.cells.every((c, k) => !c.media || isPicture(s.cells[k] ?? null)));
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -71,6 +72,7 @@ function content(ctx: Ctx, d: Draw, src: Source) {
   const { W, H } = d.box;
   if (d.shape) { shapeContent(ctx, d.shape); return; }
   if (d.text) { drawText(ctx, d.text, W, H); return; }
+  if (d.caption) { drawCaption(ctx, d.caption, W, H); return; }
   if (d.layout) { layoutContent(ctx, d.layout, src); return; }
   if (src === null) return;
   if (src === 'failed') { ctx.fillStyle = MISSING_MEDIA; ctx.fillRect(0, 0, W, H); return; }

@@ -325,6 +325,21 @@
           "sha256": "9e1126340eeef0124a7f3512b79ca437dd90891f175b22e9c83f294554a0a1b2"
         }
       ]
+    },
+    {
+      "name": "Open Sans 3.003 variable normal face (T09 offline positive-delivery test fixture only)",
+      "license": "OFL-1.1",
+      "licenseEvidence": "Official Google Fonts ofl/opensans/OFL.txt, unmodified: Copyright 2020 The Open Sans Project Authors; SIL Open Font License 1.1. The original font bytes are stored losslessly as ASCII base64 to preserve the apply_patch-only rule; only T09 Playwright positive-delivery routes decode and serve them. No production font registration/loading/bundling change. Name table: Open Sans Regular, Version 3.003; normal style, wght 300-800 (default 400), wdth 75-100 (default 100).",
+      "source": {
+        "repository": "https://github.com/google/fonts",
+        "commit": "8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5",
+        "font": { "url": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf", "bytes": 532636, "sha256": "36643644f318a812aab2d2ed3bb98f8cf0872527f835fe9398d95fe6b9adb878", "storage": "ASCII base64; decode without changing bytes" },
+        "license": { "url": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/opensans/OFL.txt" }
+      },
+      "files": [
+        { "path": "vendor/open-sans/OpenSans.ttf.b64", "bytes": 716103, "sha256": "11f82b62241be8eef91ff76250ec25a08a781ec63c853f38b06b2098f905bdb0" },
+        { "path": "vendor/open-sans/OFL.txt", "bytes": 4389, "sha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602" }
+      ]
     }
   ],
   "effectiveLicenses": {

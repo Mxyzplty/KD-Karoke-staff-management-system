@@ -5,9 +5,9 @@ import type { ProjectDocument, RecordData } from '../store/model';
 import { layerEntries } from '../editor/geometry';
 import type { Entry } from '../editor/geometry';
 
-/** A refused command: nothing changed. `error` is the agent-facing text, `message` / `data` / `failures` extra result fields. */
+/** A refused command: nothing changed. `error` is the agent-facing text; extra fields preserve the tool's failure envelope. */
 export class CommandError extends Error {
-  constructor(public code: string, public error: string, public extra: { message?: string; data?: RecordData; mayHaveRun?: boolean; failures?: RecordData[] } = {}) { super(error); }
+  constructor(public code: string, public error: string, public extra: { message?: string; data?: RecordData; details?: RecordData; mayHaveRun?: boolean; failures?: RecordData[] } = {}) { super(error); }
 }
 export function fail(code: string, error: string, extra?: CommandError['extra']): never { throw new CommandError(code, error, extra); }
 

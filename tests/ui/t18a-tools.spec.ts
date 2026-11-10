@@ -80,12 +80,12 @@ const CONTEXT = {
 
 test.describe('the served tools against a Chromium tab (row 10)', () => {
   // T10 (C8 assertion-only edit): writeEffects is served, so tools/list has 24 tools. T06 (C8): + addShape, writeShapePoints = 26. T07 (C8): + addLayout, editLayout = 28.
-  // T11 (C8): + applyTransition = 29. T05: + addText = 30. T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints = 34; its smart-mask tools = 38; T21's help tools = 40.
-  test('row 10: tools/list is exactly the 40 served tools', async ({ page }) => {
+  // T11 (C8): + applyTransition = 29. T05: + addText = 30. T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints = 34; its smart-mask tools = 38; T21's help tools = 40. T09: + addCaptions, editAllCaptionStyles, listCaptionTemplates = 43.
+  test('row 10: tools/list is exactly the 43 served tools', async ({ page }) => {
     const { client } = await connected(page);
     const { tools } = await client.listTools();
     expect(tools.map(t => t.name).sort()).toEqual([...SERVED_TOOLS].sort());
-    expect(tools).toHaveLength(40);
+    expect(tools).toHaveLength(43);
   });
 
   test('row 10: `context` is layout L — the open project\'s tracks top-first with {id,start,end} items in seconds, markers without ids, and the UI\'s selection and playhead', async ({ page }) => {

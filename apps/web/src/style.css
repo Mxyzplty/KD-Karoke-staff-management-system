@@ -170,3 +170,19 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); tex
 .demo-audio { list-style: none; padding: 0; display: grid; gap: .3rem; font-size: .85rem; } .demo-audio li, .demo-grid li small { color: var(--muted); }
 .demo-intro, .demo-gate { position: fixed; inset: 0; display: grid; place-content: center; gap: 1rem; max-width: 560px; margin: auto; padding: 2rem; text-align: center; z-index: 40; background: var(--surface); } .demo-intro ol { text-align: left; display: grid; gap: .5rem; list-style: none; padding: 0; }
 .demo-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 41; } .demo-confetti i { position: absolute; top: -10px; width: 8px; height: 12px; border-radius: 2px; animation: demo-fall 2.4s ease-in forwards; } @keyframes demo-fall { to { transform: translateY(105vh) rotate(540deg); opacity: 0; } }
+
+/* T09 captions UI (part 3 §44, §46.5). Reuses .tool-panel, .popover, .row, .animation-grid, .slider-row, .switch. */
+.captions-panel { display: grid; gap: .55rem; } .captions-panel .row[role="radiogroup"] { flex-wrap: wrap; gap: .3rem; } .captions-panel .row[role="radiogroup"] button { flex: 1 0 28%; padding: .35rem; font-size: .78rem; } .captions-panel button[aria-checked="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.caption-ai-templates { position: relative; display: grid; gap: .4rem; padding: .5rem; border: 1px solid var(--line); border-radius: 8px; } .caption-ai-templates h4 { margin: 0; font-size: .8rem; }
+.caption-template-preview { min-height: 2.4rem; display: grid; place-items: center; padding: .4rem; border-radius: 6px; background: #000; font-size: 1.1rem; overflow: hidden; text-align: center; }
+.caption-template-name { flex: 1; font-size: .82rem; } .caption-template-apply:disabled { opacity: .5; }
+.caption-template-gallery { width: min(320px, 94vw); display: grid; gap: .4rem; } .caption-template-search { width: 100%; padding: .35rem; } .caption-template-grid { display: grid; gap: .4rem; max-height: 48vh; overflow-y: auto; }
+.caption-template-tile { display: grid; gap: .15rem; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: .45rem; cursor: pointer; } .caption-template-tile[aria-selected="true"] { outline: 2px solid var(--accent); outline-offset: -2px; } .caption-template-tile small { color: var(--muted); font-size: .72rem; }
+.caption-template-tile-preview { display: inline-grid; place-items: center; min-height: 1.6rem; padding: .1rem .3rem; border-radius: 4px; background: #000; font-size: 1rem; }
+.caption-template-accents { display: flex; gap: .25rem; margin-top: .2rem; } .caption-template-accents span { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); }
+.caption-template-footer { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; color: var(--muted); }
+.caption-settings { display: grid; gap: .4rem; } .caption-range { display: flex; gap: .5rem; } .caption-range label { display: flex; align-items: center; gap: .25rem; font-size: .8rem; } .caption-range input { width: 4.5rem; }
+.caption-generate { width: 100%; padding: .6rem; font-weight: 600; } .caption-generate:disabled { opacity: .7; }
+.caption-word-behavior { display: grid; gap: .4rem; }
+.caption-text { display: grid; gap: .4rem; } .caption-correction { align-items: flex-start; } .caption-correction textarea { flex: 1; min-height: 3.4rem; resize: vertical; font: inherit; }
+.caption-words { list-style: none; padding: 0; margin: 0; max-height: 40vh; overflow-y: auto; font-size: .8rem; } .caption-words li { display: flex; gap: .5rem; padding: .1rem 0; } .caption-words .word-time { color: var(--muted); min-width: 3.2rem; }

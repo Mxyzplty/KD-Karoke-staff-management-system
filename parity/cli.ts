@@ -66,6 +66,36 @@ async function main() {
     if (report.status !== 'passed') process.exitCode = report.status === 'uncompared' ? 2 : 1;
     return;
   }
+  if (golden === 'G-18') {
+    // Author-run only (D2): replays the stored G-18 caption render-mode capture and, with --export, compares Cutframe's export frames against frames/export/<mode>/ (parity/g18.ts, parity/g18-export.ts, T09).
+    const usage = 'Use --golden G-18 --xapp-ref <dir> --calls <calls.json> --assets <assets.json> --plan <plan.json> --tool-field <name> --input-field <name> [--block-base 0|1] [--output <dir>] [--export --modes <m1,m2,…> --frame-name <regex> --frame-time-unit ms|s|frame [--media speech=<file>] [--media action=<file>]]';
+    const ref = option('--xapp-ref'), calls = option('--calls'), assets = option('--assets'), plan = option('--plan'), base = option('--block-base'), unit = option('--frame-time-unit');
+    if (!ref || !calls || !assets || !plan) throw Error(usage);
+    if (base !== undefined && base !== '0' && base !== '1') throw Error('--block-base must be 0 or 1');
+    // --export (the authoritative G-18 check, results §12 decision 3): the frame names, their time unit and the <mode> subfolder names are not documented (results §12 names the modes in prose; T00 harness runbook l.50), so each is a flag.
+    const doExport = args.includes('--export'), exportFlags = ['--modes', '--frame-name', '--media'].filter(f => args.includes(f));
+    if (!doExport && (exportFlags.length || unit !== undefined)) throw Error('--modes, --frame-name, --frame-time-unit and --media are only used with --export');
+    let exportCompare: import('./g18-export').G18Export | undefined;
+    if (doExport) {
+      const modes = option('--modes'), frameName = option('--frame-name');
+      if (!modes || !frameName || !unit) throw Error('--export needs --modes <m1,m2,…> (the render-mode subfolder names), --frame-name <regex> (group 1 = the frame time) and --frame-time-unit ms|s|frame: the names of frames/export/<mode>/ and the <mode> subfolders are not documented (results §12 names the modes in prose; T00 harness runbook l.50)');
+      const media: Record<string, string> = {};
+      args.forEach((a, i) => {
+        if (a !== '--media') return;
+        const m = /^(speech|action)=(.+)$/.exec(args[i + 1] ?? '');
+        if (!m) throw Error('--media takes speech=<file> or action=<file>');
+        if (m[1] in media) throw Error(`--media ${m[1]} is given twice`);
+        media[m[1]] = m[2];
+      });
+      const ex = await import('./g18-export');
+      exportCompare = ex.compareExport(ref, { modes: modes.split(',').map(s => s.trim()).filter(Boolean), frameName, frameUnit: unit as 'ms' | 's' | 'frame', media });
+    }
+    const report = await (await import('./g18')).runG18(ref, { calls: JSON.parse(await readFile(calls, 'utf8')), assets: JSON.parse(await readFile(assets, 'utf8')), plan: JSON.parse(await readFile(plan, 'utf8')),
+      toolField: option('--tool-field') ?? '', inputField: option('--input-field') ?? '', blockBase: base === undefined ? undefined : Number(base) as 0 | 1, output: option('--output'), export: exportCompare });
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== 'passed') process.exitCode = report.status === 'uncompared' ? 2 : 1;
+    return;
+  }
   if (golden !== undefined) {
     // Author-run only (D2): replays the stored G-01 / G-02 / G-04 / G-07 / G-08 sequence through the direct-call harness (parity/g01.ts, parity/g02.ts, parity/g04.ts, parity/g07.ts, parity/g08.ts).
     const usage = 'Use --golden G-01 --xapp-ref <dir> --calls <calls.json> --assets <assets.json> --tool-field <name> --input-field <name> [--block-base 0|1] [--output <dir>], or --golden G-02 with the same options and [--item <xapp-item-id>] [--frames --frame-time-unit ms|s|frame], or --golden G-07 with the G-01 options (--assets maps Xapp asset ids to S3a, S3b or S3c), or --golden G-04 with the G-01 options but no --assets (T06: shapes only), or --golden G-08 with the G-01 options (--assets maps Xapp asset ids to S1 or S2c) and [--export --frame-name <regex> --frame-time-unit ms|s|frame --windows <spec> [--media S1=<file>] [--media S2c=<file>] [--export-ffprobe <file>]]';
@@ -112,7 +142,7 @@ async function main() {
     return;
   }
   const sequence = option('--sequence');
-  if (!sequence) throw Error('Use --self-check, import-reference <capture-dir> <out-dir> …, --golden G-01|G-02|G-04|G-07|G-08|G-09 …, --ot6-fade <export file> [--output <dir>], or --sequence <scenario.json> [--adapter <module.ts>] [--no-provider] [--xapp-ref <explicit-directory>]');
+  if (!sequence) throw Error('Use --self-check, import-reference <capture-dir> <out-dir> …, --golden G-01|G-02|G-04|G-07|G-08|G-09|G-18 …, --ot6-fade <export file> [--output <dir>], or --sequence <scenario.json> [--adapter <module.ts>] [--no-provider] [--xapp-ref <explicit-directory>]');
   const scenario = JSON.parse(await readFile(sequence, 'utf8')) as Scenario;
   const module = option('--adapter');
   const adapter: ParityAdapter = module ? (await import(pathToFileURL(path.resolve(module)).href)).createAdapter() : new EditorAdapter();

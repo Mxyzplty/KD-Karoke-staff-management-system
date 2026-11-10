@@ -3,6 +3,7 @@
 // document: it either completes (one undo entry, one journal record) or throws and leaves the document untouched.
 // Nested commands run inside the outer draft and add no entry of their own.
 import type { ProjectDocument } from '../store/model';
+import { reconcileCaptions } from '../captions/links';
 import { contentEnd } from './model';
 import { repairTransitions } from './transitions';
 
@@ -66,6 +67,9 @@ export class CommandBus {
     this.draft = draft; this.tx = tx;
     let result: T;
     try { result = op(draft, tx); } finally { this.draft = undefined; this.tx = undefined; }
+    // Linked captions follow the items the command moved, and a locked or overlapping dependency refuses the whole edit
+    // (T09, caption contract §3/§6): this runs after the op, so a throw here leaves the host document untouched.
+    reconcileCaptions(base, draft);
     // Duration follows the content after every item edit (G-01); transitions are repaired then (T11, part 5 §55.1).
     if (!same(draft.items, base.items)) { draft.duration = contentEnd(draft); repairTransitions(draft); }
     const before = snapshot(base), after = snapshot(draft);

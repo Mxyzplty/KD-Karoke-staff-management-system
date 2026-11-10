@@ -62,7 +62,7 @@ export class AnalysisEngine {
     const transcript = makeTranscript(chunks, audio, duration, language || 'en', voice);
     await this.realign(audio, transcript);
     await this.models.diarize(audio, transcript);
-    return { status: 'complete', transcript };
+    return { status: 'complete', transcript, music: classification.isMusic };
   }
   /**
    * T19q T6: per voice region, whisper-small's words, unless Qwen3-ASR's differ from them and the CTC aligner scores

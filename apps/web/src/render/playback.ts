@@ -357,7 +357,7 @@ function poolBehind(c: Clip, d: Draw, m: ItemMedia): boolean {
 /** The picture of one draw while playing: what is ready now (null = nothing yet, the item is not drawn this frame). */
 export function livePicture(d: Draw): Source {
   const h = host!;
-  if (d.kind === 'shape' || d.kind === 'text') return null; // T06 / T05: drawn by the compositor, no source
+  if (d.kind === 'shape' || d.kind === 'text' || d.kind === 'caption') return null; // T06 / T05 / T09: drawn by the compositor, no source
   if (d.kind === 'layout') return { cells: (d.layout?.cells ?? []).map(c => c.media ? livePicture(c.media.draw) : null) }; // T07
   if (d.kind === 'motionGraphic') {
     const g = liveGraphic(h.store, d);

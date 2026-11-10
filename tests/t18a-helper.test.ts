@@ -25,8 +25,8 @@ const BIN = fileURLToPath(new URL('../apps/helper/bin/cutframe-connect.mjs', imp
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // Server order follows TOOL_LIST's declaration order in schemas.ts, not SERVED_TOOLS's; T12's vector-mask tools, then its
 // smart-mask tools, are declared last there, in two trailing blocks.
-const SERVED = ['addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'deleteItems', 'editLayout', 'editMotionGraphic', 'editProperties', 'getHelpSection', 'manageMarkers', 'manageTrack', 'manageTrackGroup', 'moveItem', 'reorderItems',
-  'resizeCanvas', 'searchHelpDocs', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeShapePoints', // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText
+const SERVED = ['addCaptions', 'addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyTransition', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'deleteItems', 'editAllCaptionStyles', 'editLayout', 'editMotionGraphic', 'editProperties', 'getHelpSection', 'listCaptionTemplates', 'manageMarkers', 'manageTrack', 'manageTrackGroup', 'moveItem', 'reorderItems',
+  'resizeCanvas', 'searchHelpDocs', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeShapePoints', // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText; T09 (C8 assertion-only edit): + addCaptions, editAllCaptionStyles, listCaptionTemplates
   'createMask', 'editMaskProperties', 'removeMask', 'writeMaskPoints', // T12 (C8): declared last in schemas.ts
   'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground']; // T12 smart masks (C8): declared last of all
 
@@ -302,7 +302,7 @@ describe('t18a MCP (row 1)', () => {
     return { client, transport };
   }
 
-  it('row 1: MCP over Streamable HTTP — server info, capabilities, instructions and the 40 tools', async () => {
+  it('row 1: MCP over Streamable HTTP — server info, capabilities, instructions and the 43 tools', async () => {
     const { helper } = await start();
     const { client } = await httpClient(helper.port);
     expect(client.getServerVersion()).toMatchObject({ name: 'cutframe-helper', version: VERSION });
@@ -348,7 +348,7 @@ describe('t18a MCP (row 1)', () => {
     expect([unknown.status, JSON.parse(unknown.body)]).toEqual([404, rpc(-32001, 'Session not found')]);
   });
 
-  it('row 1: MCP over stdio — a helper started by the client serves the 40 tools and logs to stderr', async () => {
+  it('row 1: MCP over stdio — a helper started by the client serves the 43 tools and logs to stderr', async () => {
     const dir = tmp();
     const transport = new StdioClientTransport({ command: process.execPath, args: [BIN, '--stdio', '--port', '0', '--config-dir', dir], cwd: ROOT, stderr: 'pipe' });
     const err: string[] = [];

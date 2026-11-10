@@ -20,7 +20,7 @@ export const MODEL_ROOT = '/models/';
 export type IndexRow = { id: string; embedder: string; entry: IndexEntry };
 export type AnalysisRow = { id: string; analysis: VisualAnalysis; created_at: string };
 /** `failed` is a voice-over whose transcription failed (Xapp part 2 §25: the asset is ready, transcription failed). */
-export type TranscriptRow = { id: string; status: 'complete' | 'skipped' | 'failed'; transcript: Transcript | null; reason?: string; error?: string; created_at: string };
+export type TranscriptRow = { id: string; status: 'complete' | 'skipped' | 'failed'; transcript: Transcript | null; music?: boolean; reason?: string; error?: string; created_at: string };
 /** `analysis: null` = audio the classifier treats as speech or sound (BEATS_NOT_MUSIC), kept so it is not re-run. */
 export type RhythmRow = { id: string; analysis: BeatAnalysis | null; reason?: 'BEATS_NOT_MUSIC'; created_at: string };
 type Current = { worker: AnalysisWorker; ready: Promise<unknown>; indexed: Map<string, string> };

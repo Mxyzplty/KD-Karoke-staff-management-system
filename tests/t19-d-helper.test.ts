@@ -187,9 +187,9 @@ describe('T19 D through the helper: addMedia transcriptRange', () => {
 
 describe('T19 D through the helper: schema refusals (INVALID_TOOL_INPUT) never reach the tab', () => {
   const ENUM_MSG = 'must be equal to one of the allowed values';
-  // T10 (C8 assertion-only edit): writeEffects is served too, so the list has 24. T06 (C8): + addShape, writeShapePoints = 26. T07 (C8): + addLayout, editLayout = 28. T11 (C8): + applyTransition = 29. T05: + addText = 30. T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints = 34. T12 smart masks (C8): + viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground = 38. T21: + getHelpSection, searchHelpDocs = 40.
-  it('the 40 served tools include the two new ones, in the retained protocol list', () => {
-    expect(SERVED_TOOLS).toHaveLength(40);
+  // T10 (C8 assertion-only edit): writeEffects is served too, so the list has 24. T06 (C8): + addShape, writeShapePoints = 26. T07 (C8): + addLayout, editLayout = 28. T11 (C8): + applyTransition = 29. T05: + addText = 30. T12 (C8): + createMask, editMaskProperties, removeMask, writeMaskPoints = 34. T12 smart masks (C8): + viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground = 38. T21: + getHelpSection, searchHelpDocs = 40. T09 (C8 assertion-only edit): + addCaptions, editAllCaptionStyles, listCaptionTemplates = 43.
+  it('the 43 served tools include the two new ones, in the retained protocol list', () => {
+    expect(SERVED_TOOLS).toHaveLength(43);
     expect(SERVED_TOOLS).toContain('syncAndSwap'); expect(SERVED_TOOLS).toContain('viewItemDetails');
   });
   const TABLE: [string, Rec, { path: string; code: string; message: string }[]][] = [

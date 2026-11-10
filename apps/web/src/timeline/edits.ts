@@ -6,7 +6,7 @@
 import type { ProjectDocument, RecordData } from '../store/model';
 import { changedFields } from './changes';
 import { MIN_ITEM_MS, rippleAt } from './items';
-import { EPS, fail, fmt, groupOf, isCaption, item, itemsOn, span, toMs, trackLocked } from './model';
+import { CommandError, EPS, fail, fmt, groupOf, isCaption, item, itemsOn, span, toMs, trackLocked } from './model';
 import type { Keyframe, KeyframePatch, KeyframeRef } from './properties';
 import {
   EASINGS, ensureProp, evaluate, KEYFRAME_PROPERTIES, keyframeId, keyframeList, keyframesBlock, prop, rateOf, RATE, REGISTRY, REMAP_TYPES, remapKeyframes,
@@ -17,6 +17,7 @@ import { checkTextProperty, isTextKey, TEXT_EDIT_KEYS, writeTextProperties } fro
 import { MASK_KEYS, MASK_RANGE } from '../masks/model';
 import type { MaskKey } from '../masks/model';
 import { isMaskKey, maskProp, maskTarget } from '../masks/keyframes';
+import { editCaptionProperties } from '../captions/properties';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const show = (v: unknown) => v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v);
@@ -327,6 +328,14 @@ const speedNote = (c: SpeedChange) => c.blocked
   ? `'${c.id}' at ${c.rate}× was stopped at ${fmt(c.to)}s by the next clip on its track, so less of its footage now plays; trimItem with ripple: true can lengthen it and push later clips along.`
   : `'${c.id}' at ${c.rate}× now spans ${fmt(c.from)}–${fmt(c.to)}s (it ended at ${fmt(c.oldEnd)}s); later clips did not move.`;
 
+/** The editProperties result for a caption batch: the normal `{itemIds, changedFields}` data, plus `appliedToCount` when
+ *  applyToAll restyled further captions on the same track(s). */
+function captionEditResult(r: { results: { itemId: string; changed: string[]; appliedToCount: number }[] }): RecordData {
+  const n = r.results.length, extra = r.results.reduce((s, x) => s + x.appliedToCount, 0);
+  return { success: true, message: `Updated ${n} caption${n === 1 ? '' : 's'}${extra ? `, and applied the style to ${extra} more on the track` : ''}.`,
+    data: { itemIds: r.results.map(x => x.itemId), changedFields: Object.fromEntries(r.results.map(x => [x.itemId, x.changed])), ...(extra ? { appliedToCount: extra } : {}) } };
+}
+
 export function editProperties(doc: ProjectDocument, args: RecordData): RecordData {
   const props = args.properties, ids: string[] | null = Array.isArray(args.itemIds) ? args.itemIds : args.itemId !== undefined ? [args.itemId] : null;
   if (!props || typeof props !== 'object' || Array.isArray(props) || !Object.keys(props).length) fail('MISSING_PARAM', 'properties is required');
@@ -335,7 +344,17 @@ export function editProperties(doc: ProjectDocument, args: RecordData): RecordDa
   const missing = unique.filter(id => !item(doc, id));
   if (missing.length) fail('ITEM_NOT_FOUND', `Unknown item ID(s): ${missing.join(', ')}`);
   const items = unique.map(id => item(doc, id)!), text = keys.filter(k => TEXT_KEYS.has(k)), element = keys.filter(k => ELEMENT_KEYS.has(k));
-  if (text.length && items.some(isCaption)) fail('NOT_IMPLEMENTED', `${text.join(', ')} ${text.length === 1 ? 'is' : 'are'} not yet implemented (T09).`);
+  // A caption batch is the T09 caption path (text is a correction; style keys restyle, applyToAll the whole track). It
+  // cannot mix with other item types (the text-item style keys mean different things on a caption).
+  const captions = items.filter(isCaption);
+  if (captions.length) {
+    if (captions.length !== items.length) fail('MIXED_CAPTION_BATCH', 'A batch cannot mix captions with other item types.', { message: `This call targets ${captions.length} caption(s) and ${items.length - captions.length} other item(s); edit captions in their own call.` });
+    try { return captionEditResult(editCaptionProperties(doc, unique, props, args.applyToAll === true)); } catch (e) {
+      if (e instanceof CommandError) throw e;
+      const reason = e instanceof Error ? e.message : String(e);
+      fail('PROPERTY_UPDATE_FAILED', 'Property update failed', { message: `Failed to update caption: ${reason}`, details: { agentId: ids[0], error_message: reason } });
+    }
+  }
   if (element.length) fail('NOT_IMPLEMENTED', `${element.join(', ')} ${element.length === 1 ? 'is' : 'are'} not yet implemented (T22).`);
   // All items are validated first, then written in one update ("atomically").
   for (const i of items) {

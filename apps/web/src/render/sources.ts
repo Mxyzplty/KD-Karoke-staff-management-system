@@ -62,7 +62,7 @@ export const readyImage = (item: RecordData) => readyImages.get(String(item.meta
  *  a motion graphic's retry rule (mg/frames.ts graphicPicture). assetOf: a layout's cell assets by stored id (T07). */
 export async function picture(store: ProjectStore, d: Draw, asset: Asset | undefined, purpose: 'preview' | 'capture' = 'preview', assetOf?: (id: string) => Asset | undefined): Promise<Source> {
   if (d.kind === 'motionGraphic') return graphicPicture(store, d, purpose);
-  if (d.kind === 'shape' || d.kind === 'text') return null; // T06 / T05: drawn by the compositor, no source
+  if (d.kind === 'shape' || d.kind === 'text' || d.kind === 'caption') return null; // T06 / T05 / T09: drawn by the compositor, no source
   if (d.kind === 'layout') return { cells: await Promise.all((d.layout?.cells ?? []).map(c => c.media ? picture(store, c.media.draw, assetOf?.(String(c.media.draw.item.metadata?.assetId)), purpose) : null)) };
   try {
     if (d.kind === 'image') { const b = await imageBitmap(store, d.item); return b === 'failed' ? b : { image: b, width: b.width, height: b.height }; }

@@ -9,6 +9,7 @@ import { hasSource } from '../timeline/items';
 import { isCaption, item as itemOf, span } from '../timeline/model';
 import { keyframesBlock, rateOf, remapKeyframes } from '../timeline/properties';
 import { shapeDetails } from '../timeline/shape-tools';
+import { captionDetails } from '../captions/details';
 import { readBeats, snapCuts } from './helpers';
 import { SOURCE, currentAsset, importTranscript, placement, transcription } from './read';
 import type { AnalysisService, RhythmRow, TranscriptRow } from './service';
@@ -102,7 +103,7 @@ async function details(ctx: DetailsContext, t: Target, include: Set<string>, key
     : { id, type: asset!.type, startTime: 0, endTime: length, duration: length, layer: `${asset!.type}_track_available`, hasKeyframes: false, hasMasks: false, hasEffects: false };
   if (asset?.recorded_at) d.recordedAt = asset.recorded_at;
   Object.assign(d, flags(ctx, t), capabilities(asset));
-  if (general && item) Object.assign(d, shapeDetails(ctx.doc, item));
+  if (general && item) Object.assign(d, item.type === 'shape' ? shapeDetails(ctx.doc, item) : captionDetails(ctx.doc, item));
   if (include.has('transcript') && asset && asset.type !== 'image' && (!item || item.type === 'video' || item.type === 'audio')) {
     const transcript = importTranscript((await ctx.store.row<TranscriptRow>('transcripts', asset.id))?.transcript);
     // Item: item start + source − trim start, playback rate not applied (results §2).
@@ -230,8 +231,8 @@ export async function viewItemDetails(ctx: DetailsContext, input: Record<string,
   const include = new Set(words(input.include));
   if (include.has('beats')) return beats(ctx, ids, input); // beats-only; other include values are ignored
   const known = [...include].filter(w => SERVED.has(w) || OWNED.has(w)), unserved = known.length ? known.filter(w => OWNED.has(w)) : ['general'];
-  // T06: `general` is served when every target is a shape item; any other target keeps the call-level refusal (T18).
-  const general = unserved.length > 0 && unserved.every(w => w === 'general') && ids.every(id => itemOf(ctx.doc, id)?.type === 'shape');
+  // T06 / T09: `general` is served when every target is a shape or a caption item; any other target keeps the call-level refusal (T18).
+  const general = unserved.length > 0 && unserved.every(w => w === 'general') && ids.every(id => { const ty = itemOf(ctx.doc, id)?.type; return ty === 'shape' || ty === 'caption'; });
   if (unserved.length && !general) return notImplemented(unserved);
   const results: Result[] = [], keyframesRead: string[] = [], masksRead: string[] = [];
   for (const id of ids) { const t = await resolve(ctx, id); results.push(isReason(t) ? { id, ...t } : { id, success: true, data: await details(ctx, t, include, keyframesRead, masksRead, general) }); }
