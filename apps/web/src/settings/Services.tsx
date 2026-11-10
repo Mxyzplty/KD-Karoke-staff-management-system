@@ -123,17 +123,24 @@ function LocalModels() {
   </>;
 }
 export function Services() {
-  const [settings, setSettings] = useState<ProviderSettings>(), [adding, setAdding] = useState(false);
-  useEffect(() => { void readProviders(projectStore).then(setSettings).catch(reportError); }, []);
+  const [settings, setSettings] = useState<ProviderSettings>(), [adding, setAdding] = useState(false), [failed, setFailed] = useState(false), [attempt, setAttempt] = useState(0);
+  // One read per attempt. A rejection, or 10 s without an answer, offers Try again; an answer that comes later still shows the section.
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(() => setFailed(true), 10_000);
+    void readProviders(projectStore).then(s => { if (live) setSettings(s); }).catch(e => { if (live) { setFailed(true); reportError(e); } }).finally(() => clearTimeout(timer));
+    return () => { live = false; clearTimeout(timer); };
+  }, [attempt]);
   return <section aria-labelledby="ai-services"><h2 id="ai-services">AI and services</h2>
     <p>Everything here is optional. Cutframe adds no fee, and each provider bills you directly. <small>Hosted providers are called from this browser. A local server has to allow this page: see <a href="/help/local-model-servers">Local model servers</a>.</small></p>
-    {settings && <>
-      <h3>Model connections</h3>
+    <h3>Model connections</h3>
+    {settings ? <>
       {settings.connections.length ? <ul className="settings-list" aria-label="Model connections">{settings.connections.map(c => <ConnectionRow key={c.id} connection={c} changed={setSettings} />)}</ul> : <p className="empty">No model connections.</p>}
       {adding ? <ConnectionForm saved={next => { setSettings(next); setAdding(false); }} cancel={() => setAdding(false)} /> : <button onClick={() => setAdding(true)}>＋ Add connection</button>}
       <Models settings={settings} changed={setSettings} />
       <Speech settings={settings} changed={setSettings} />
-    </>}
+    </> : failed ? <p role="alert" className="unavailable">Couldn’t read your model connections from this browser’s storage. <button onClick={() => { setFailed(false); setAttempt(a => a + 1); }}>Try again</button></p>
+      : <p className="empty">Loading your model connections…</p>}
     <StockKeys />
     <LocalModels />
   </section>;
