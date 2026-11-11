@@ -208,7 +208,7 @@ export async function exportRanges(doc: ProjectDocument, media: Record<string, s
     const names = Object.fromEntries(Object.entries(media).map(([k, f]) => [k, path.basename(f)]));
     const id = await page.evaluate(`(${PAGE_SETUP})(${JSON.stringify({ doc, title: o.title ?? 'G-08 export', media: names })})`) as string;
     await page.goto(`${base}project/${id}`);
-    await page.waitForFunction(`(${PAGE_READY})()`, undefined, { timeout: 180_000, polling: 250 });
+    for (const until = Date.now() + 180_000; !(await page.evaluate(`(${PAGE_READY})()`)); await page.waitForTimeout(250)) if (Date.now() >= until) throw Error('The project was not saved with its media ready within 180 s.');
     const failed = await page.evaluate(`(async () => (await (await import('/src/store/database.ts')).projectStore.library()).assets.filter(a => a.processing_status === 'failed').map(a => a.name))()`) as string[];
     if (failed.length) throw Error(`Ingest failed for ${failed.join(', ')}`);
     let reloaded = false;
