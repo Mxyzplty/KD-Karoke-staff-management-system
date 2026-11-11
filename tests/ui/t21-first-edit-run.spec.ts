@@ -255,7 +255,7 @@ test.describe('the scripted demo, run twice', () => {
       let tidy: () => unknown = () => undefined;
       if (via === 'by hand') {
         await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
-        await page.waitForFunction(async () => { const m = '/src/timeline/runtime.ts'; return !!(await import(m)).activeRuntime; });
+        await expect.poll(() => page.evaluate(async () => { const m = '/src/timeline/runtime.ts'; return !!(await import(m)).activeRuntime; }), { message: 'activeRuntime is set once the project is open', timeout: 30_000 }).toBe(true);
         await page.evaluate(async ({ args }) => {
           const m = '/src/timeline/runtime.ts', { activeRuntime } = await import(m), call = (t: string, a: Record<string, unknown>) => { const r = activeRuntime!.call(t, a); if (!r.success) throw new Error(`${t}: ${JSON.stringify(r)}`); return r.data as any; };
           const a = call('manageTrack', { action: 'create', kind: 'audio' }).track.id;
