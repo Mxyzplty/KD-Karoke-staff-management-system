@@ -70,7 +70,7 @@ async function rig(toolTimeoutMs: number) {
 
 describe('LONG_TOOLS (trackSmartMask, removeBackground) through the real helper', () => {
   it('a long tool outlasts the tool time-out while the tab stays connected, and does not hold up another mutating call', async () => {
-    const r = await rig(100);
+    const r = await rig(1000);
     const longCall = r.helper.call('trackSmartMask', { selectionId: 's1', sourceStartSeconds: 0, sourceEndSeconds: 1 }, 'sess');
     await wait(20);
     expect(r.received).toHaveLength(1);
@@ -82,7 +82,7 @@ describe('LONG_TOOLS (trackSmartMask, removeBackground) through the real helper'
     r.answer(r.received[1].callId, { success: true, data: {} });
     await expect(moveCall).resolves.toMatchObject({ success: true });
 
-    await wait(150); // well past the 100ms tool time-out
+    await wait(1500); // well past the 1000ms tool time-out
     let settled = false;
     longCall.then(() => { settled = true; });
     await wait(0);
@@ -102,19 +102,19 @@ describe('LONG_TOOLS (trackSmartMask, removeBackground) through the real helper'
   });
 
   it('a long tool left running keeps running, with no new time-out, when the same tab reconnects before the tool time-out', async () => {
-    const r = await rig(150);
+    const r = await rig(1500);
     const longCall = r.helper.call('trackSmartMask', { selectionId: 's1', sourceStartSeconds: 0, sourceEndSeconds: 1 }, 'sess');
     await wait(20);
     expect(r.received).toHaveLength(1);
     const callId = r.received[0].callId;
     await r.disconnect();
-    await wait(50); // well under the 150ms tool time-out
+    await wait(50); // well under the 1500ms tool time-out
     await r.reconnect();
     await wait(20);
     expect(r.received).toHaveLength(2); // the same call, re-sent to the reconnected tab
     expect(r.received[1].callId).toBe(callId);
 
-    await wait(200); // past the original tool time-out, measured from either the first send or the disconnect
+    await wait(2000); // past the original tool time-out, measured from either the first send or the disconnect
     let settled = false;
     longCall.then(() => { settled = true; });
     await wait(0);
