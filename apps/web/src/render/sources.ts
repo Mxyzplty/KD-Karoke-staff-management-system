@@ -50,7 +50,32 @@ export function imageBitmap(store: ProjectStore, item: RecordData): Promise<Imag
   const id = String(item.metadata?.assetId);
   let p = images.get(id);
   if (!p) {
-    p = store.media.read(id).then(blob => createImageBitmap(blob)).catch(() => 'failed' as const).then(b => { readyImages.set(id, b); return b; });
+    p = store.media.read(id).then(async blob => {
+      const asset = await store.row<Asset>('assets', id);
+      if (!asset) throw new Error('The image asset is missing.');
+      const info = asset.media;
+      if (info?.container !== 'svg+xml') return createImageBitmap(blob);
+      const { width, height } = info.image!;
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new Error('Invalid SVG dimensions.');
+      let divisor = width, remainder = height;
+      while (remainder) { const next = divisor % remainder; divisor = remainder; remainder = next; }
+      const unitW = width / divisor, unitH = height / divisor, unitMax = Math.max(unitW, unitH), longer = Math.max(width, height);
+      let W = width, H = height;
+      // Keep the fit ratio exact where the integer canvas bounds allow it (layout cells fit by this ratio).
+      if (longer < 2048 || longer > 4096 && unitMax <= 4096) {
+        const k = longer < 2048 ? Math.ceil(2048 / unitMax) : Math.floor(4096 / unitMax);
+        W = k * unitW; H = k * unitH;
+      } else if (longer > 4096) {
+        W = Math.max(1, Math.round(width * 4096 / longer)); H = Math.max(1, Math.round(height * 4096 / longer));
+      }
+      const url = URL.createObjectURL(new Blob([blob], { type: 'image/svg+xml' }));
+      try {
+        const img = new Image(); img.src = url; await img.decode();
+        const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, W, H);
+        return await createImageBitmap(canvas);
+      } finally { URL.revokeObjectURL(url); }
+    }).catch(() => 'failed' as const).then(b => { readyImages.set(id, b); return b; });
     images.set(id, p);
   }
   return p;
