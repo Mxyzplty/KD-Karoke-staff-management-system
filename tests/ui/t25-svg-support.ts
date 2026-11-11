@@ -75,6 +75,13 @@ export const EXTRA_SVGS: readonly SvgFixture[] = [
 export const SVG_FIXTURES: readonly SvgFixture[] = [...CORE_SVGS, ...EXTRA_SVGS];
 export const ICON_FIXTURE = EXTRA_SVGS[3];
 export const BROKEN_FIXTURE: SvgFixture = { key: 'broken', svg: BROKEN_SVG, storedSize: null, rasterSize: null, samples: [] };
+export const FOREIGN_OBJECT_FIXTURE: SvgFixture = {
+  key: 'foreign-object', svg: '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#0000ff"/><foreignObject x="128" y="128" width="256" height="256"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;background:#ff0000"></div></foreignObject></svg>',
+  storedSize: { width: 512, height: 512 }, rasterSize: { width: 2048, height: 2048 }, samples: [
+    { label: 'red foreignObject interior', u: 0.5, v: 0.5, rgba: [255, 0, 0, 255] },
+    { label: 'blue SVG background', u: 0.125, v: 0.5, rgba: [0, 0, 255, 255] },
+  ],
+};
 export const MIME_CASES = [{ label: 'typed', mimeType: 'image/svg+xml' }, { label: 'untyped', mimeType: '' }] as const;
 export const FRAME_SIZE: Size = { width: 320, height: 320 };
 export const ICON_FRAME_SIZE: Size = { width: 1920, height: 1920 };

@@ -5,8 +5,8 @@ import { expect, test } from '@playwright/test';
 import { skipTour } from './t02-support';
 import {
   bitmapSize, breakPlacedSvg, BROKEN_FIXTURE, CAPTURE_TOLERANCE, captureRegions, CORE_SVGS, EDGE_TRANSITION_LIMIT,
-  expectRegions, expectSharpEdges, expectSvgIngest, FRAME_SIZE, greySamples, ICON_FIXTURE, ICON_FRAME_SIZE, intrinsicSize,
-  lowResolutionIconRows, measureEdges, MIME_CASES, openAndPlaceSvg, openSvgProject, PREVIEW_TOLERANCE, previewCanvas,
+  expectRegions, expectSharpEdges, expectSvgIngest, FOREIGN_OBJECT_FIXTURE, FRAME_SIZE, greySamples, ICON_FIXTURE, ICON_FRAME_SIZE, intrinsicSize,
+  lowResolutionIconRows, measureEdges, MIME_CASES, openAndPlaceSvg, openSvgProject, placeUploadedSvg, PREVIEW_TOLERANCE, previewCanvas,
   previewEdgeRows, previewRegions, samplesInFrame, SVG_FIXTURES, uploadSvg,
 } from './t25-svg-support';
 
@@ -73,4 +73,35 @@ for (const mime of MIME_CASES) test(`T25 AC4 broken after valid ingest ${mime.la
     const s = '/src/store/database.ts', r = '/src/render/sources.ts', { projectStore } = await import(s), { readyImage } = await import(r);
     return { state: (await projectStore.row('assets', assetId)).processing_status, ready: readyImage({ metadata: { assetId } }) };
   }, uploaded.asset.id)).toEqual({ state: 'ready', ready: 'failed' });
+});
+
+// D97 stages stand alone: a thumbnail failure must not hide preview taint or a capture refusal.
+for (const mime of MIME_CASES) {
+  test(`T25 D97 foreignObject upload ${mime.label}: ready with complete thumbnail and no error`, async ({ page }) => {
+    const projectId = await openSvgProject(page), uploaded = await uploadSvg(page, projectId, FOREIGN_OBJECT_FIXTURE, mime.mimeType);
+    expectSvgIngest(uploaded, FOREIGN_OBJECT_FIXTURE); expect(uploaded.asset.last_error_code).toBeNull();
+  });
+
+  test(`T25 D97 foreignObject preview ${mime.label}: exact frame and fixture colours`, async ({ page }) => {
+    await openAndPlaceSvg(page, FOREIGN_OBJECT_FIXTURE, mime.mimeType);
+    const canvas = previewCanvas(page); await expect(canvas).toHaveAttribute('data-exact', 'true'); await expect(canvas).toHaveAttribute('data-frame', '0');
+    const points = samplesInFrame(FOREIGN_OBJECT_FIXTURE);
+    expectRegions(await previewRegions(page, points), points, PREVIEW_TOLERANCE, `foreignObject ${mime.label} preview`);
+  });
+
+  test(`T25 D97 foreignObject capture ${mime.label}: one readable JPEG with fixture colours`, async ({ page }) => {
+    await openAndPlaceSvg(page, FOREIGN_OBJECT_FIXTURE, mime.mimeType);
+    const points = samplesInFrame(FOREIGN_OBJECT_FIXTURE), capture = await captureRegions(page, points);
+    expect(capture.success, JSON.stringify(capture)).toBe(true); expect(capture.imageCount).toBe(1); expect(capture.magic).toEqual([0xff, 0xd8, 0xff]);
+    expectRegions(capture.regions, points, CAPTURE_TOLERANCE, `foreignObject ${mime.label} capture JPEG versus fixture`);
+  });
+}
+
+test('T25 D97 large SVG typed: above 2 MB uploads with thumbnail and exact fixture pixels', async ({ page }) => {
+  const square = CORE_SVGS[0], fixture = { ...square, key: 'large-square', svg: square.svg.replace('</svg>', `<!--${'x'.repeat(2 * 1024 * 1024)}--></svg>`) };
+  expect(Buffer.byteLength(fixture.svg, 'utf8')).toBeGreaterThan(2 * 1024 * 1024);
+  const projectId = await openSvgProject(page), uploaded = await uploadSvg(page, projectId, fixture, 'image/svg+xml');
+  expectSvgIngest(uploaded, fixture); await placeUploadedSvg(page, uploaded);
+  const canvas = previewCanvas(page); await expect(canvas).toHaveAttribute('data-exact', 'true'); await expect(canvas).toHaveAttribute('data-frame', '0');
+  const points = samplesInFrame(fixture); expectRegions(await previewRegions(page, points), points, PREVIEW_TOLERANCE, 'large square SVG preview');
 });

@@ -65,7 +65,7 @@ describe('T25 exact-ratio raster sizes (accepted table, not a recomputed clamp o
     expect(drawImage).toHaveBeenCalledExactlyOnceWith(madeImages[0], 0, 0, W, H);
     expect(createBitmap.mock.calls[0][0]).not.toBe(madeImages[0]);
     expect(createBitmap.mock.calls[0][0]).not.toBe(stored);
-    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:svg-test');
+    expect(createUrl).not.toHaveBeenCalled(); expect(revokeUrl).not.toHaveBeenCalled();
   });
 
   it.each([[2047, 2048], [2048, 2048], [4096, 4096], [4097, 4096]])('long-side edge %i preserves the stated branch result %i', async (side, expected) => {
@@ -152,12 +152,13 @@ describe('T25 row lookup and unchanged native path', () => {
   });
 });
 
-describe('T25 SVG MIME restoration, promise identity and URL lifetime', () => {
-  it.each(['image/svg+xml', ''])('stored Blob type %j is rewrapped with the same bytes as image/svg+xml', async type => {
+describe('T25 SVG data URLs and promise identity', () => {
+  it.each(['image/svg+xml', ''])('stored Blob type %j decodes from the stored file data URL without object URLs', async type => {
     stored = new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], { type });
-    const result = await imageBitmap(store, item()), wrapped = createUrl.mock.calls[0][0] as Blob;
-    expect(wrapped).not.toBe(stored); expect(wrapped.type).toBe('image/svg+xml'); expect(await wrapped.text()).toBe(await stored.text());
-    expect(madeImages[0].src).toBe('blob:svg-test'); expect(decode).toHaveBeenCalledTimes(1);
+    const result = await imageBitmap(store, item());
+    expect(createUrl).not.toHaveBeenCalled(); expect(revokeUrl).not.toHaveBeenCalled();
+    expect(madeImages[0].src).toBe('data:image/svg+xml;base64,' + Buffer.from(await stored.arrayBuffer()).toString('base64'));
+    expect(decode).toHaveBeenCalledTimes(1);
     expect(createElement).toHaveBeenCalledExactlyOnceWith('canvas'); expect(canvases[0].getContext).toHaveBeenCalledExactlyOnceWith('2d');
     expect(createBitmap).toHaveBeenCalledExactlyOnceWith(canvases[0]); expect(readyImage(item())).toBe(result);
   });
@@ -172,18 +173,10 @@ describe('T25 SVG MIME restoration, promise identity and URL lifetime', () => {
     gate.resolve(row()); const result = await a;
     expect(result).toBe(madeBitmaps[0]); expect(await b).toBe(result); expect(imageBitmap(store, item())).toBe(a);
     expect(decode).toHaveBeenCalledTimes(1); expect(readRow).toHaveBeenCalledTimes(1); expect(readyImage(item())).toBe(result);
-  });
-  it('the object URL remains live until the bitmap-from-canvas promise settles, then is revoked once', async () => {
-    const reached = deferred<void>(), gate = deferred<ImageBitmap>();
-    createBitmap.mockImplementation(() => { reached.resolve(); return gate.promise; });
-    const pending = imageBitmap(store, item()); await reached.promise;
-    expect(revokeUrl).not.toHaveBeenCalled(); expect(readyImage(item())).toBeUndefined();
-    const bitmap = { width: 2048, height: 2048, close: vi.fn() } as unknown as ImageBitmap;
-    gate.resolve(bitmap); expect(await pending).toBe(bitmap);
-    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:svg-test'); expect(readyImage(item())).toBe(bitmap);
+    expect(createUrl).not.toHaveBeenCalled(); expect(revokeUrl).not.toHaveBeenCalled();
   });
 
-  it.each(['Image constructor', 'decode', 'null 2d context', 'drawImage', 'bitmap'])('%s failure revokes the URL and settles the same cached failed promise', async stage => {
+  it.each(['Image constructor', 'decode', 'null 2d context', 'drawImage', 'bitmap'])('%s failure settles the same cached failed promise without object URLs', async stage => {
     if (stage === 'Image constructor') vi.stubGlobal('Image', class { constructor() { throw new Error('Image unavailable'); } });
     if (stage === 'decode') decode.mockRejectedValue(new Error('malformed SVG'));
     if (stage === 'null 2d context') createElement.mockImplementation(() => ({ width: 0, height: 0, getContext: () => null }));
@@ -191,13 +184,15 @@ describe('T25 SVG MIME restoration, promise identity and URL lifetime', () => {
     if (stage === 'bitmap') createBitmap.mockRejectedValue(new Error('canvas bitmap refused'));
     const pending = imageBitmap(store, item()); expect(await pending).toBe('failed');
     expect(imageBitmap(store, item())).toBe(pending); expect(readyImage(item())).toBe('failed');
-    expect(createUrl).toHaveBeenCalledTimes(1); expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:svg-test');
+    expect(createUrl).not.toHaveBeenCalled(); expect(revokeUrl).not.toHaveBeenCalled();
     expect(read).toHaveBeenCalledTimes(1); expect(readRow).toHaveBeenCalledTimes(1);
   });
-  it('URL creation failure is cached failed and does not try to revoke an uncreated URL', async () => {
-    createUrl.mockImplementation(() => { throw new Error('URL refused'); });
-    const pending = imageBitmap(store, item()); expect(await pending).toBe('failed'); expect(imageBitmap(store, item())).toBe(pending);
-    expect(revokeUrl).not.toHaveBeenCalled(); expect(madeImages).toEqual([]); expect(readyImage(item())).toBe('failed');
+  it('stored file read failure settles the same cached failed promise', async () => {
+    read.mockRejectedValue(new Error('stored file read refused'));
+    const pending = imageBitmap(store, item()); expect(await pending).toBe('failed');
+    expect(imageBitmap(store, item())).toBe(pending); expect(readyImage(item())).toBe('failed');
+    expect(read).toHaveBeenCalledExactlyOnceWith('asset-one'); expect(readRow).not.toHaveBeenCalled();
+    expect(madeImages).toEqual([]); expect(createUrl).not.toHaveBeenCalled(); expect(revokeUrl).not.toHaveBeenCalled();
   });
   it('different asset ids do not share row reads, URLs or bitmaps', async () => {
     const [a, b] = await Promise.all([imageBitmap(store, item()), imageBitmap(store, item('asset-two'))]);

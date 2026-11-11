@@ -10,7 +10,7 @@ import { skipTour } from './t02-support';
 import { decodeRgba, streams } from './t16a-support';
 import {
   breakPlacedSvg, CORE_SVGS, DURATION_MS, EDGE_TRANSITION_LIMIT, EXPORT_TOLERANCE, expectRegions, expectSharpEdges,
-  expectSvgIngest, FPS, FRAME_SIZE, greySamples, ICON_FIXTURE, ICON_FRAME_SIZE, ICON_ROWS, lowResolutionIconRows,
+  expectSvgIngest, FOREIGN_OBJECT_FIXTURE, FPS, FRAME_SIZE, greySamples, ICON_FIXTURE, ICON_FRAME_SIZE, ICON_ROWS, lowResolutionIconRows,
   measureEdges, MIME_CASES, openAndPlaceSvg, PREVIEW_TOLERANCE, previewCanvas, previewEdgeRows, samplesInFrame,
   SVG_FIXTURES, type EdgeRow, type PixelRegion, type SamplePoint, type Size,
 } from './t25-svg-support';
@@ -142,5 +142,13 @@ for (const mime of MIME_CASES) test(`T25 AC4 export broken-after-ingest ${mime.l
   expectSvgIngest(uploaded, CORE_SVGS[0]); await breakPlacedSvg(page, uploaded);
   const canvas = previewCanvas(page); await expect(canvas).toHaveAttribute('data-frame', '0'); await expect(canvas).toHaveAttribute('data-exact', 'false');
   const points = greySamples(), run = await observedExport(page, projectId, points);
+  expectReadback(run, points, FRAME_SIZE); expectDecodedOutput(run, testInfo, points, FRAME_SIZE);
+});
+
+// D97 export is independent of thumbnail and preview readback assertions, so its own taint remains the first red.
+for (const mime of MIME_CASES) test(`T25 D97 foreignObject export ${mime.label}: completed encode/readback and decoded fixture colours`, async ({ page }, testInfo) => {
+  const { projectId } = await openAndPlaceSvg(page, FOREIGN_OBJECT_FIXTURE, mime.mimeType);
+  const points = samplesInFrame(FOREIGN_OBJECT_FIXTURE), run = await observedExport(page, projectId, points);
+  expect({ status: run.status, exceptions: run.readback.exceptions }, JSON.stringify(run.error)).toEqual({ status: 'completed', exceptions: [] });
   expectReadback(run, points, FRAME_SIZE); expectDecodedOutput(run, testInfo, points, FRAME_SIZE);
 });

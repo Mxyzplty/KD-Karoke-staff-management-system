@@ -58,14 +58,18 @@ export async function embeddingsStep({ asset, results, signal }: AnalysisArgs): 
   return { states: { embeddings_description: analysis ? 'complete' : 'skipped', embeddings_transcript: transcript?.segments.length ? 'complete' : 'skipped' }, puts: [{ store: 'search_index', value: row }] };
 }
 /** SVG draws only through an <img> on the main thread (workers have no SVG decoder); <img> runs no SVG script. */
+/** The stored SVG bytes as a data URL: an object URL taints the canvas when the SVG has a foreignObject (D97). */
+async function svgDataUrl(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/svg+xml;base64,${btoa(s)}`;
+}
 async function svgFrame(blob: Blob): Promise<Frame> {
-  const url = URL.createObjectURL(new Blob([blob], { type: 'image/svg+xml' }));
-  try {
-    const img = new Image(); img.src = url; await img.decode();
-    const scale = Math.min(1, FRAME_BOX / Math.max(img.naturalWidth, img.naturalHeight, 1));
-    const width = Math.max(1, Math.round(img.naturalWidth * scale)), height = Math.max(1, Math.round(img.naturalHeight * scale));
-    const canvas = document.createElement('canvas'), context = canvas.getContext('2d')!;
-    canvas.width = width; canvas.height = height; context.drawImage(img, 0, 0, width, height);
-    return { timestamp: 0, width, height, data: context.getImageData(0, 0, width, height).data };
-  } finally { URL.revokeObjectURL(url); }
+  const img = new Image(); img.src = await svgDataUrl(blob); await img.decode();
+  const scale = Math.min(1, FRAME_BOX / Math.max(img.naturalWidth, img.naturalHeight, 1));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale)), height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas'), context = canvas.getContext('2d')!;
+  canvas.width = width; canvas.height = height; context.drawImage(img, 0, 0, width, height);
+  return { timestamp: 0, width, height, data: context.getImageData(0, 0, width, height).data };
 }

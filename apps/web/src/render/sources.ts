@@ -45,6 +45,13 @@ export function itemMedia(store: ProjectStore, item: RecordData, asset: Asset | 
 }
 export const readyMedia = (item: RecordData, asset: Asset | undefined) => ready.get(mediaKey(item, asset));
 
+/** The stored SVG bytes as a data URL: an object URL taints the canvas when the SVG has a foreignObject (D97). */
+async function svgDataUrl(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/svg+xml;base64,${btoa(s)}`;
+}
 /** An image item's bitmap (fetched and decoded once per asset); 'failed' fills grey. */
 export function imageBitmap(store: ProjectStore, item: RecordData): Promise<ImageBitmap | 'failed'> {
   const id = String(item.metadata?.assetId);
@@ -68,13 +75,10 @@ export function imageBitmap(store: ProjectStore, item: RecordData): Promise<Imag
       } else if (longer > 4096) {
         W = Math.max(1, Math.round(width * 4096 / longer)); H = Math.max(1, Math.round(height * 4096 / longer));
       }
-      const url = URL.createObjectURL(new Blob([blob], { type: 'image/svg+xml' }));
-      try {
-        const img = new Image(); img.src = url; await img.decode();
-        const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-        canvas.getContext('2d')!.drawImage(img, 0, 0, W, H);
-        return await createImageBitmap(canvas);
-      } finally { URL.revokeObjectURL(url); }
+      const img = new Image(); img.src = await svgDataUrl(blob); await img.decode();
+      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, W, H);
+      return await createImageBitmap(canvas);
     }).catch(() => 'failed' as const).then(b => { readyImages.set(id, b); return b; });
     images.set(id, p);
   }

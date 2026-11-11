@@ -7,6 +7,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { ffmpegAvailable } from '../media-fixtures';
 import { openEditor, skipTour } from './t02-support';
 import { makeClip, openWithVideos, videoDoc } from './t15-support';
+import type { AnalysisRequest } from '../../apps/web/src/analysis/protocol';
+import type { Frame } from '../../apps/web/src/analysis/types';
+import type { Asset } from '../../apps/web/src/store/model';
+import { FOREIGN_OBJECT_FIXTURE } from './t25-svg-support';
 
 test.setTimeout(150_000);
 const BUFFER = 100_000;
@@ -53,4 +57,31 @@ test.describe('with media', () => {
     await expect.poll(() => page.evaluate(async () => { const p = '/src/store/database.ts'; const { projectStore } = await import(p); return (await projectStore.library()).assets.every((a: { processing_status: string }) => a.processing_status === 'ready' || a.processing_status === 'failed'); }), { timeout: 120_000 }).toBe(true);
     await expectNoHeavyModules(page);
   });
+});
+
+// D106: real SVG frame extraction; only availability and the model response are substituted, never the pixels.
+test('T25 D97 foreignObject analysis: real svgFrame has a red centre and the step completes', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async svg => {
+    const p = '/src/analysis/steps.ts', s = '/src/analysis/service.ts';
+    const { analysisStep } = await import(p), { analysisService } = await import(s);
+    const available = analysisService.available, request = analysisService.request, frames: Frame[] = [];
+    analysisService.available = async () => ({ analysis: true, transcription: false, embeddings: false, beats: false });
+    analysisService.request = async <T>(message: AnalysisRequest): Promise<T> => {
+      if (message.task !== 'describe') throw new Error(`Unexpected analysis task: ${message.task}`);
+      frames.push(...message.frames);
+      return { width: 512, height: 512, aspectRatio: 1, tags: [], summary: 'synthetic model response', segments: [] } as T;
+    };
+    try {
+      const outcome = await analysisStep({ blob: new Blob([svg], { type: 'image/svg+xml' }), asset: { id: 'foreign-object', name: 'foreign-object.svg', type: 'image' } as Asset,
+        info: { container: 'svg+xml', mimeType: 'image/svg+xml', durationMs: null, video: null, audio: null, image: { width: 512, height: 512, orientation: 1 },
+          capturedAt: null, latitude: null, longitude: null, decoder: 'native-image' }, signal: new AbortController().signal, results: {} });
+      return { outcome, frames: frames.map(frame => {
+        const offset = (Math.floor(frame.height / 2) * frame.width + Math.floor(frame.width / 2)) * 4;
+        return { timestamp: frame.timestamp, width: frame.width, height: frame.height, centre: Array.from(frame.data.subarray(offset, offset + 4)) };
+      }) };
+    } finally { analysisService.available = available; analysisService.request = request; }
+  }, FOREIGN_OBJECT_FIXTURE.svg);
+  expect(result.outcome).toMatchObject({ state: 'complete' }); expect(result.frames).toHaveLength(1);
+  expect(result.frames[0]).toMatchObject({ timestamp: 0, width: 512, height: 512, centre: [255, 0, 0, 255] });
 });

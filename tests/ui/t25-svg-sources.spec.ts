@@ -18,8 +18,8 @@ async function rasterSource(page: Page, fixture: SvgFixture, mimeType: string, s
     clearSources();
     const blob = new Blob([svg], { type: mimeType }), item = { id: 'image', type: 'image', metadata: { assetId: 'svg-function' } };
     const asset = { id: 'svg-function', type: 'image', media: { container: 'svg+xml', image: { ...storedSize, orientation: 1 } } };
-    let reads = 0, rows = 0, imageCount = 0;
-    const rowRequests: string[][] = [], inputs: string[] = [], urlBlobs: Blob[] = [], revoked: string[] = [];
+    let reads = 0, rows = 0, imageCount = 0, urlsCreated = 0;
+    const rowRequests: string[][] = [], inputs: string[] = [], madeImages: HTMLImageElement[] = [], revoked: string[] = [];
     const nativeBitmap = globalThis.createImageBitmap, NativeImage = globalThis.Image, nativeUrl = URL.createObjectURL, nativeRevoke = URL.revokeObjectURL;
     const store = { media: { read: async (id: string) => { reads++; if (id !== asset.id) throw new Error('wrong stored id'); return blob; } },
       row: async (table: string, id: string) => { rows++; rowRequests.push([table, id]); return asset; } };
@@ -27,14 +27,13 @@ async function rasterSource(page: Page, fixture: SvgFixture, mimeType: string, s
       inputs.push(args[0] instanceof HTMLCanvasElement ? 'canvas' : args[0] instanceof HTMLImageElement ? 'Image' : args[0] instanceof Blob ? 'Blob' : 'other');
       return Reflect.apply(nativeBitmap, globalThis, args);
     }) as typeof createImageBitmap;
-    globalThis.Image = class extends NativeImage { constructor(width?: number, height?: number) { super(width, height); imageCount++; } };
-    URL.createObjectURL = object => { if (object instanceof Blob) urlBlobs.push(object); return nativeUrl.call(URL, object); };
+    globalThis.Image = class extends NativeImage { constructor(width?: number, height?: number) { super(width, height); imageCount++; madeImages.push(this); } };
+    URL.createObjectURL = object => { urlsCreated++; return nativeUrl.call(URL, object); };
     URL.revokeObjectURL = url => { revoked.push(url); nativeRevoke.call(URL, url); };
     try {
       const pending = imageBitmap(store, item), shared = imageBitmap(store, { ...item, id: 'second-item' }) === pending, bitmap = await pending;
-      const wrapped = urlBlobs[0], common = { reads, rows, rowRequests, shared, imageCount, inputs, originalType: blob.type,
-        restoredType: wrapped?.type, rewrapped: wrapped !== blob, sameBytes: wrapped ? await wrapped.text() === svg : false,
-        urlsCreated: urlBlobs.length, urlsRevoked: revoked.length, ready: readyImage(item) === bitmap, cached: imageBitmap(store, item) === pending };
+      const common = { reads, rows, rowRequests, shared, imageCount, inputs, originalType: blob.type, imageSrc: madeImages[0]?.src,
+        urlsCreated, urlsRevoked: revoked.length, ready: readyImage(item) === bitmap, cached: imageBitmap(store, item) === pending };
       if (bitmap === 'failed') return { ...common, status: 'failed', size: null, regions: [] };
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height), ctx = canvas.getContext('2d')!; ctx.drawImage(bitmap, 0, 0);
       const regions = samples.map(sample => {
@@ -54,15 +53,16 @@ test.describe('T25 actual typed and untyped SVG source Blobs', () => {
     const expected = bitmapSize(fixture), result = await rasterSource(page, fixture, mime.mimeType, intrinsicSize(fixture));
     expect(result.status).toBe('ready'); expect(result.size).toEqual(expected);
     expect(result).toMatchObject({ reads: 1, rows: 1, rowRequests: [['assets', 'svg-function']], shared: true, imageCount: 1,
-      inputs: ['canvas'], originalType: mime.mimeType, restoredType: 'image/svg+xml', rewrapped: true, sameBytes: true,
-      urlsCreated: 1, urlsRevoked: 1, ready: true, cached: true });
+      inputs: ['canvas'], originalType: mime.mimeType, urlsCreated: 0, urlsRevoked: 0, ready: true, cached: true });
+    expect(result.imageSrc).toBe('data:image/svg+xml;base64,' + Buffer.from(fixture.svg, 'utf8').toString('base64'));
     expectRegions(result.regions, fixture.samples.map(sample => ({ label: sample.label, x: 0, y: 0, rgba: sample.rgba })), PREVIEW_TOLERANCE, `${fixture.key} ${mime.label} source`);
   });
-  for (const mime of MIME_CASES) test(`malformed ${mime.label}: real Image decode fails and revokes its URL`, async ({ page }) => {
+  for (const mime of MIME_CASES) test(`malformed ${mime.label}: real Image decode fails without object URLs`, async ({ page }) => {
     const broken: SvgFixture = { key: 'malformed', svg: BROKEN_SVG, storedSize: { width: 512, height: 512 }, rasterSize: null, samples: [] };
     const result = await rasterSource(page, broken, mime.mimeType, intrinsicSize(broken));
     expect(result).toMatchObject({ status: 'failed', size: null, reads: 1, rows: 1, shared: true, imageCount: 1, inputs: [],
-      originalType: mime.mimeType, restoredType: 'image/svg+xml', rewrapped: true, sameBytes: true, urlsCreated: 1, urlsRevoked: 1, ready: true, cached: true });
+      originalType: mime.mimeType, urlsCreated: 0, urlsRevoked: 0, ready: true, cached: true });
+    expect(result.imageSrc).toBe('data:image/svg+xml;base64,' + Buffer.from(BROKEN_SVG, 'utf8').toString('base64'));
   });
 });
 

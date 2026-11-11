@@ -42,14 +42,18 @@ export function browserSteps(): Steps {
   };
 }
 /** SVG renders only through an <img> on the main thread (workers have no SVG decoder); <img> runs no SVG script. */
+/** The stored SVG bytes as a data URL: an object URL taints the canvas when the SVG has a foreignObject (D97). */
+async function svgDataUrl(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/svg+xml;base64,${btoa(s)}`;
+}
 async function svgThumbnails(blob: Blob, info: MediaInfo): Promise<Omit<ThumbnailRow, 'id'>> {
-  const url = URL.createObjectURL(new Blob([blob], { type: 'image/svg+xml' }));
-  try {
-    const img = new Image(); img.src = url;
-    try { await img.decode(); } catch { throw mediaError('DECODE_ERROR', 'The SVG could not be drawn.'); }
-    const size = fitBox(info.image!.width, info.image!.height, THUMB_MAX, THUMB_MAX), canvas = document.createElement('canvas');
-    canvas.width = size.width; canvas.height = size.height; canvas.getContext('2d')!.drawImage(img, 0, 0, size.width, size.height);
-    const poster = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(mediaError('DECODE_ERROR', 'The SVG could not be drawn.')), 'image/jpeg', POSTER_QUALITY));
-    return { ...size, poster, frames: [{ t: 0, blob: poster }] };
-  } finally { URL.revokeObjectURL(url); }
+  const img = new Image(); img.src = await svgDataUrl(blob);
+  try { await img.decode(); } catch { throw mediaError('DECODE_ERROR', 'The SVG could not be drawn.'); }
+  const size = fitBox(info.image!.width, info.image!.height, THUMB_MAX, THUMB_MAX), canvas = document.createElement('canvas');
+  canvas.width = size.width; canvas.height = size.height; canvas.getContext('2d')!.drawImage(img, 0, 0, size.width, size.height);
+  const poster = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(mediaError('DECODE_ERROR', 'The SVG could not be drawn.')), 'image/jpeg', POSTER_QUALITY));
+  return { ...size, poster, frames: [{ t: 0, blob: poster }] };
 }
