@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 / D93 + D100: the chip's explicit tab binding is authoritative; the copied defaults key is repaired on open.
 // Native ProjectStore on fake-indexeddb and native AutosaveSession, following t17-checkpoints; media bytes alone are fake.
-// Open with Author: the loaded record names a deleted B while the document still names A. No case pins that state.
+// D108: a loaded binding to deleted B still wins over an existing A named only by the document's defaults.
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectStore } from '../apps/web/src/store/database';
@@ -79,6 +79,17 @@ describe('D100: the tab chip supplies the binding; its document supplies only th
     await deleteTemplate(t.store, DEFAULTS_A.templateId); const original = (await t.store.read(t.id))!, mine = structuredClone(t.session.document);
     const copy = await saveAsCopy(t.session, t.store, recordAsLoaded, binding), stored = (await t.store.read(copy.id))!; boundRecord(copy, 'copy-template-a', 2); boundRecord(stored.record, 'copy-template-a', 2);
     expect(stored.document).toEqual({ ...mine, rev: 0 }); expect(await findTemplate(t.store, copy.template_id!)).toBeUndefined(); expect(await repairDefaults(t.store, stored.record, stored.document)).toBeNull(); expect(await t.store.read(t.id)).toEqual(original);
+  });
+
+  it('D108: the loaded chip names deleted B while the document names existing A; the copy keeps B and the unchanged A defaults', async () => {
+    const t = await open(document(DEFAULTS_A)); await saveTemplate(t.store, template()); await saveTemplate(t.store, template(DEFAULTS_B.templateId));
+    await bindTemplate(t.store, t.id, { templateId: DEFAULTS_A.templateId, expectedEpoch: 0, requestKey: 'before-loaded-b' });
+    await bindTemplate(t.store, t.id, { templateId: DEFAULTS_B.templateId, expectedEpoch: 1, requestKey: 'loaded-b' }); const recordAsLoaded = (await t.store.read(t.id))!.record;
+    expect(loadedBinding(recordAsLoaded)).toEqual({ id: 'copy-template-b', epoch: 2 }); await deleteTemplate(t.store, DEFAULTS_B.templateId);
+    expect(await findTemplate(t.store, DEFAULTS_A.templateId)).toBeDefined(); const original = (await t.store.read(t.id))!, mine = structuredClone(t.session.document);
+    const copy = await saveAsCopy(t.session, t.store, recordAsLoaded, loadedBinding(recordAsLoaded)), stored = (await t.store.read(copy.id))!;
+    boundRecord(copy, 'copy-template-b', 2); boundRecord(stored.record, 'copy-template-b', 2); expect(await findTemplate(t.store, copy.template_id!)).toBeUndefined();
+    expect(stored.document).toEqual({ ...mine, rev: 0 }); expect(stored.document.templateDefaults).toEqual(DEFAULTS_A); expect(await repairDefaults(t.store, stored.record, stored.document)).toBeNull(); expect(await t.store.read(t.id)).toEqual(original);
   });
 
   it('(c) a No template chip stays unbound even after another tab binds the stored project to B', async () => {
