@@ -18,6 +18,8 @@ import { MASK_KEYS, MASK_RANGE } from '../masks/model';
 import type { MaskKey } from '../masks/model';
 import { isMaskKey, maskProp, maskTarget } from '../masks/keyframes';
 import { editCaptionProperties } from '../captions/properties';
+import { editElements, elementKeys } from '../catalogue/edit';
+import type { Asset } from '../store/model';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const show = (v: unknown) => v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v);
@@ -281,7 +283,6 @@ export function deleteKeyframe(doc: ProjectDocument, ref: KeyframeRef) {
 // ---- editProperties (normal path; one result family, Cutframe note).
 const TEXT_KEYS = new Set(['text', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'color', 'backgroundColor', 'textAlign', 'textDecoration', 'textTransform',
   'lineHeight', 'letterSpacing', 'wordSpacing', 'wordWrap', 'wordBreak', 'look', 'textAnimation']);
-const ELEMENT_KEYS = new Set(['colors', 'media']);
 /** The 16 blend modes, stored kebab-case (part 5; UI order part 3). */
 export const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'];
 /** Accepted colour strings (provisional): hex, rgb()/rgba()/hsl()/hsla(), or a CSS colour name (incl. transparent, none). */
@@ -336,14 +337,14 @@ function captionEditResult(r: { results: { itemId: string; changed: string[]; ap
     data: { itemIds: r.results.map(x => x.itemId), changedFields: Object.fromEntries(r.results.map(x => [x.itemId, x.changed])), ...(extra ? { appliedToCount: extra } : {}) } };
 }
 
-export function editProperties(doc: ProjectDocument, args: RecordData): RecordData {
+export function editProperties(doc: ProjectDocument, args: RecordData, asset: (id: string) => Asset | undefined = () => undefined): RecordData {
   const props = args.properties, ids: string[] | null = Array.isArray(args.itemIds) ? args.itemIds : args.itemId !== undefined ? [args.itemId] : null;
   if (!props || typeof props !== 'object' || Array.isArray(props) || !Object.keys(props).length) fail('MISSING_PARAM', 'properties is required');
   if (!ids?.length) fail('MISSING_PARAM', 'Provide itemId (single) or itemIds (batch)');
   const unique = [...new Set(ids)], keys = Object.keys(props);
   const missing = unique.filter(id => !item(doc, id));
   if (missing.length) fail('ITEM_NOT_FOUND', `Unknown item ID(s): ${missing.join(', ')}`);
-  const items = unique.map(id => item(doc, id)!), text = keys.filter(k => TEXT_KEYS.has(k)), element = keys.filter(k => ELEMENT_KEYS.has(k));
+  const items = unique.map(id => item(doc, id)!), text = keys.filter(k => TEXT_KEYS.has(k));
   // A caption batch is the T09 caption path (text is a correction; style keys restyle, applyToAll the whole track). It
   // cannot mix with other item types (the text-item style keys mean different things on a caption).
   const captions = items.filter(isCaption);
@@ -355,24 +356,27 @@ export function editProperties(doc: ProjectDocument, args: RecordData): RecordDa
       fail('PROPERTY_UPDATE_FAILED', 'Property update failed', { message: `Failed to update caption: ${reason}`, details: { agentId: ids[0], error_message: reason } });
     }
   }
-  if (element.length) fail('NOT_IMPLEMENTED', `${element.join(', ')} ${element.length === 1 ? 'is' : 'are'} not yet implemented (T22).`);
   // All items are validated first, then written in one update ("atomically").
   for (const i of items) {
     // Every Xapp item type is in the registry; only a type Xapp itself rejects gets here. Xapp gives no code; MISSING_PARAM
     // is T03's placeholder for codeless refusals (wire shape → T18).
     if (!REGISTRY[i.type]) fail('MISSING_PARAM', `Unsupported item type: ${i.type}`);
     lockCheck(doc, i);
-    for (const k of keys) checkProperty(i, k, props[k]);
+    // T22: colors, media and an element's width / height are the element fields (catalogue/edit.ts).
+    for (const k of keys) if (!elementKeys(i, keys).includes(k)) checkProperty(i, k, props[k]);
   }
   const before = new Map(items.map(i => [i.id, structuredClone(i)])), notes: string[] = [];
+  const elements = items.some(i => elementKeys(i, keys).length) ? editElements(items, props, asset) : null;
+  if (elements) notes.push(...elements.notes);
   for (const i of items) for (const k of keys) {
+    if (elementKeys(i, keys).includes(k)) continue;
     if (i.type === 'text' && isTextKey(k)) { if (k === keys.find(isTextKey)) writeTextProperties(i, props); }
     else if (k !== 'playbackRate') writeProperty(i, k, props[k]);
     else if (props[k] !== rateOf(i)) notes.push(speedNote(changeSpeed(doc, i.id, props[k], false)));
   }
   const n = items.length;
   return { success: true, message: `Updated ${n} item${n === 1 ? '' : 's'} atomically${notes.length ? `. ${notes.join(' ')}` : ''}`,
-    data: { itemIds: ids, changedFields: Object.fromEntries(items.map(i => [i.id, changedFields(before.get(i.id)!, i)])) } };
+    data: { itemIds: ids, changedFields: Object.fromEntries(items.map(i => [i.id, changedFields(before.get(i.id)!, i)])), ...(elements ? { results: elements.results } : {}) } };
 }
 
 // ---- T15 Use Proxy (findings §2): `details.useProxy` of a video item picks proxy or original for the preview (export always

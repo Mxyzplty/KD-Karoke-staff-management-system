@@ -62,3 +62,29 @@ describe('A1: SR-17 content counts (catalogue step now; preset/template steps la
   it.todo('A1: at least one default project template (step 8)');
   it.todo('A1: all nine existing caption template ids resolve (template/font integration steps)');
 });
+
+describe('Lane A 01:36 ruling: the element box is the bounding box of its pieces', () => {
+  it('every multipart element spans 0..1 on both axes, to 1e-9', () => {
+    const multipart = ELEMENTS.filter(element => element.pieces?.length);
+    expect(multipart.length).toBeGreaterThan(0);
+    for (const element of multipart) {
+      const pieces = element.pieces!;
+      const x = Math.min(...pieces.map(piece => piece.x)), y = Math.min(...pieces.map(piece => piece.y));
+      const right = Math.max(...pieces.map(piece => piece.x + piece.width)), bottom = Math.max(...pieces.map(piece => piece.y + piece.height));
+      for (const [got, expected] of [[x, 0], [y, 0], [right, 1], [bottom, 1]]) expect(Math.abs(got - expected), element.id).toBeLessThanOrEqual(1e-9);
+      expect(Math.abs((right - x) * element.width - element.width), element.id).toBeLessThanOrEqual(1e-9);
+      expect(Math.abs((bottom - y) * element.height - element.height), element.id).toBeLessThanOrEqual(1e-9);
+    }
+  });
+  it('every SVG width, height and viewBox size equal the catalogue size (viewBox origins need not be zero)', () => {
+    for (const element of ELEMENTS) {
+      const tag = readFileSync(repoFile(element.file), 'utf8').match(/<svg\b[^>]*>/i)?.[0];
+      expect(tag, element.id).toBeDefined();
+      const width = Number(tag?.match(/\bwidth=["']([^"']+)["']/i)?.[1]), height = Number(tag?.match(/\bheight=["']([^"']+)["']/i)?.[1]);
+      const viewBox = tag?.match(/\bviewBox=["']([^"']+)["']/i)?.[1].trim().split(/[\s,]+/).map(Number);
+      expect([width, height], element.id).toEqual([element.width, element.height]);
+      expect(viewBox, element.id).toHaveLength(4); expect(viewBox?.slice(2), element.id).toEqual([element.width, element.height]);
+    }
+  });
+  it.todo('Later UI: each catalogue sound decodes in the browser and its durationMs equals the decoded length');
+});

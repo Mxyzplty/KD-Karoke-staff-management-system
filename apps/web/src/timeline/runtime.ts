@@ -42,6 +42,8 @@ export type RuntimeOptions = BusOptions & {
   onAssets?: (tools: { bus: CommandBus; asset(id: string): Asset | undefined }) => void;
   /** Downloads a stock item into the project (T14) and resolves to its asset. */
   addStock?: (item: StockItem) => Promise<Asset>;
+  /** T22: imports a built-in element or sound (`element:<id>` / `sound:<slug>`) into the project and resolves to its asset. */
+  addCatalogue?: (id: string) => Promise<Asset>;
 };
 const FLAG_ACTION = { hidden: 'hide', muted: 'mute', solo: 'solo', locked: 'lock' } as const;
 
@@ -273,7 +275,14 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
   const call = (name: string, args: RecordData = {}): ToolResult => callTool(tools, name, args);
   /** Set duration / Set fps / Set background, one undo step each (no UI control or agent tool reaches them yet). */
   const setSetting = (label: 'Set duration' | 'Set fps' | 'Set background', change: Parameters<typeof setSettings>[1]) => run(label, doc => setSettings(doc, change));
-  return { bus, assets, setAssets, handle, call, tools, setSetting, idle: () => pending };
+  /** T22 (agent addMedia): the built-in's project asset, indexed under its stored id and under the catalogue id. */
+  const addCatalogue = async (id: string) => {
+    if (!options.addCatalogue) throw new CommandError('UPLOAD_FAILED', 'Built-in elements and sounds cannot be added here.');
+    const a = await options.addCatalogue(id);
+    assets.set(a.id, a); assets.set(id, a);
+    return a;
+  };
+  return { bus, assets, setAssets, handle, call, tools, setSetting, addCatalogue, idle: () => pending };
 }
 
 // ---- Persistence (settings rows of the T01 store).

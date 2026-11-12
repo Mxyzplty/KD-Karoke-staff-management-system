@@ -500,8 +500,8 @@ describe('editProperties: remaining codes and strings (provisional where the wor
     const b = ed({ text: 'x', color: '#fff' }, 'txt'); expect(b.r.success).toBe(true); expect(itemOf(b.e.doc, 'txt').details.text).toBe('x'); expect(valueAt(itemOf(b.e.doc, 'txt'), 'color', 0)).toBe('#fff'); only(b.e, 'Edit items');
     const doc = base(); doc.items.push(mkItem('cap', 'O1', 5000, 6000, { type: 'caption' }));
     const c = ed({ fontSize: 40 }, 'cap', doc); expect(c.r.success).toBe(true); expect(valueAt(itemOf(c.e.doc, 'cap'), 'fontSize', 0)).toBe(40); only(c.e, 'Edit items'); // T09 (C8 assertion-only edit): caption fontSize now routes to editCaptionProperties (stored as a property), one 'Edit items' entry; was NOT_IMPLEMENTED (T09).
-    const d = ed({ colors: [] }); refused(d.e, d.before, d.r, 'NOT_IMPLEMENTED'); expect(d.r.error).toBe('colors is not yet implemented (T22).');
-    expect(ed({ media: {} }).r.error).toBe('media is not yet implemented (T22).');
+    const d = ed({ colors: [] }); refused(d.e, d.before, d.r, 'NOT_AN_ELEMENT'); expect(d.r.error).toBe("Item 'vid' is not a built-in element; colors, media and element size apply to elements only."); // T22 (C8 assertion-only edit): colors / media now route to catalogue/edit.ts; a single non-element target is NOT_AN_ELEMENT (error codes row 143); was NOT_IMPLEMENTED (T22).
+    expect(ed({ media: {} }).r.error).toBe("Item 'vid' is not a built-in element; colors, media and element size apply to elements only.");
   });
   it('INVALID_PROPERTY: error names the type and lists the allowed keys (registry plus playbackRate on video / audio); R2 shape { error, code }', () => {
     const { e, before, r } = ed({ bogus: 1 });

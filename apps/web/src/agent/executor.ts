@@ -16,6 +16,7 @@ import { callSmartTool, SMART_TOOLS } from '../masks/smart-tools';
 import { callMotionGraphicTool, MOTION_GRAPHIC_TOOLS } from '../mg/tools';
 import type { DryRun } from '../mg/tools';
 import { callTextTool, needsFontLoad } from '../text/agent';
+import { callCatalogueTool, usesCatalogue } from '../catalogue/assets';
 import { callCaptionStyleTool, callCaptionTool, needsCaptionFontLoad, needsCaptionPrep } from '../captions/agent';
 import { effectsBlock, paramProp, resolveAgentId } from '../timeline/effects';
 import { item } from '../timeline/model';
@@ -206,6 +207,11 @@ export class Executor {
     // T05 (coordinator ruling Q5): the same for a call that loads a font face first (addText, a font key in editProperties).
     if (needsFontLoad(tool, input))
       return callTextTool(runtime.tools, tool, input, { run: () => this.watcher.sync() !== runtime ? this.handle(tool, input, session)
+        : this.gated(runtime, tool, input, session) ?? this.watcher.asAgent(() => runtime.call(tool, input)) }).catch(unavailable);
+    // T22: addMedia with a built-in element or sound first imports its file into the project (async); a call that would be
+    // refused imports nothing.
+    if (usesCatalogue(tool, input))
+      return callCatalogueTool(runtime.tools, input, { ensure: id => runtime.addCatalogue(id), run: () => this.watcher.sync() !== runtime ? this.handle(tool, input, session)
         : this.gated(runtime, tool, input, session) ?? this.watcher.asAgent(() => runtime.call(tool, input)) }).catch(unavailable);
     // T09: addCaptions reads the sources' transcripts (async) and loads the caption faces before the synchronous add.
     if (needsCaptionPrep(tool)) return this.captions(runtime, tool, input, session);

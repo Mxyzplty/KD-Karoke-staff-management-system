@@ -296,6 +296,8 @@ describe('ELEMENTS: authored catalogue invariants', () => {
     expect(findElement('not-an-authored-element')).toBeUndefined();
   });
   it('elementTrackKind routes stickers to video, every other group to overlay', () => {
+    expect(element('corner-brackets').group).toBe('sticker');
+    expect(elementTrackKind(element('corner-brackets'))).toBe('video');
     for (const e of ELEMENTS) expect(elementTrackKind(e), e.id).toBe(e.group === 'sticker' ? 'video' : 'overlay');
   });
 });

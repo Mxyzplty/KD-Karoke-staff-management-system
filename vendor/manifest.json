@@ -482,7 +482,7 @@
         { "path": "vendor/t22/elements/phone-frame.svg", "bytes": 321, "sha256": "504937a8c5c95e21239d0b8f079262dee07a115949b61e2ed94cada0859af0ec" },
         { "path": "vendor/t22/elements/polaroid-frame.svg", "bytes": 174, "sha256": "1ac4a054c7ff5436de51fc918616f3fe18c1fa8476f37222f3171dfd29f2013f" },
         { "path": "vendor/t22/elements/ribbon-banner.svg", "bytes": 232, "sha256": "f9a2d0a55b40c0001e41282e0a9c77ee22611f28ce8aae5c30c85b29e3971cd9" },
-        { "path": "vendor/t22/elements/sparkles.svg", "bytes": 366, "sha256": "83a6ea258496d5a93f07e04178d54bac93a49f745f747d4af7f68fd6fa2a5999" },
+        { "path": "vendor/t22/elements/sparkles.svg", "bytes": 368, "sha256": "d9ce7c9da965e8ac9fdfeaa2495d39bde5ac804604c132b3067b4e16ee66f77b" },
         { "path": "vendor/t22/elements/speech-bubble.svg", "bytes": 289, "sha256": "2f6771da6bddcbcdf67e99df4ef5f49623c951397d832504daefda6baf862fe1" },
         { "path": "vendor/t22/elements/split-frame.svg", "bytes": 196, "sha256": "9705d3916c70a3aed467b9ccb3dd4ab2dad4ffc55c41a68b7c8dc97783ebe4e8" },
         { "path": "vendor/t22/elements/sticker-heart.svg", "bytes": 306, "sha256": "44986d57bd64998e57fa9c5c7645e715412f627ca83f31729cfd0a48e339c9cd" },

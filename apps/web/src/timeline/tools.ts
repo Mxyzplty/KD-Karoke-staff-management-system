@@ -9,7 +9,7 @@ import { editProperties, setTimeRemap, setUseProxy, writeKeyframes } from './edi
 import { writeEffects } from './effects';
 import { applyMoves, canInsertAfter, clone, insertAfter, mediaItem, remove, reorder, requireItems, RIPPLE_BOUNDARY, slip, specProblem, split, TOOL_IMAGE_MS, transform, trim } from './items';
 import type { MediaSpec } from './items';
-import { blockers, CommandError, fail, fmt, item, nextFree, span, stack, toMs, track, trackLocked } from './model';
+import { blockers, CommandError, fail, fmt, item, kindOf, nextFree, span, stack, toMs, track, trackLocked } from './model';
 import { consolidate, consolidateMessage, GROUP_LABEL, manageMarkers, manageTrack, manageTrackGroup, moveGroup, resizeCanvas, TRACK_LABEL } from './tracks';
 import { prop } from './properties';
 import { addMotionGraphic, editMotionGraphic } from '../mg/tools';
@@ -20,6 +20,11 @@ import { applyTransition } from './transitions';
 import { createMask, editMaskProperties, removeMask, writeMaskPoints } from '../masks/tools';
 import { CAPTION_TOOLS } from '../captions/tools';
 import type { SourceData } from '../captions/generation';
+import { findElement } from '../catalogue/elements';
+import type { CatalogueElement } from '../catalogue/elements';
+import { elementItemType, placeElement, placement } from '../catalogue/place';
+import type { PlaceOptions } from '../catalogue/place';
+import { findSound } from '../catalogue/sounds';
 
 export type ToolContext = {
   bus: CommandBus;
@@ -30,6 +35,8 @@ export type ToolContext = {
   /** T09 addCaptions: each asset's loaded transcript / music state (captions/agent.ts sets it before the sync call; with
    *  none, addCaptions captions nothing). */
   captionData?: (assetId: string) => SourceData;
+  /** T22: addMedia runs every check and the placement, then fails with DRY_RUN_OK so nothing is kept (catalogue/assets.ts). */
+  dryRun?: true;
 };
 export type ToolResult = RecordData & { success: boolean };
 type Handler = (ctx: ToolContext, args: RecordData) => ToolResult;
@@ -43,41 +50,68 @@ const run = <T>(ctx: ToolContext, label: Label, op: Parameters<CommandBus['run']
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 
 // ---- addMedia.
+/** T22: what an `element:<id>` / `sound:<slug>` id names in the built-in catalogue; null for any other id. */
+function catalogueRef(id: unknown): { element?: CatalogueElement; problem?: [string, string] } | null {
+  if (typeof id !== 'string') return null;
+  if (id.startsWith('element:')) {
+    const name = id.slice(8), element = findElement(name);
+    return element ? { element } : { problem: ['UNKNOWN_ELEMENT', `'${name}' is not a built-in element. Use an element:<id> from elements/.`] };
+  }
+  if (id.startsWith('sound:')) return findSound(id.slice(6)) ? {} : { problem: ['UNKNOWN_SOUND', `'${id.slice(6)}' is not in the sound catalog. Use a sound:<slug> from the catalog listing.`] };
+  return null;
+}
+/** The `element` block of an addMedia result (results §2): palette slots, the slot kind and its empty content. */
+const elementResult = (el: CatalogueElement): RecordData => ({ id: el.id, colors: el.palette.map(p => [p.name, p.base]),
+  ...(el.slot?.kind === 'text' ? { slot: 'text', text: '' } : el.slot?.kind === 'media' ? { slot: `media ×${el.slot.openings.length}`, media: el.slot.openings.map(() => null) } : {}) });
 const addMedia: Handler = (ctx, args) => run(ctx, args.insertAfterItemId !== undefined ? 'Insert items' : 'Add media', doc => {
   const ref = args.insertAfterItemId;
   if (ref !== undefined && (args.trackId !== undefined || args.timelineStart !== undefined))
     fail('INVALID_COMBINATION', `insertAfter cannot be used with ${['trackId', 'timelineStart'].filter(k => args[k] !== undefined).join(', ')}. Use insertAfterItemId alone, or trackId with timelineStart.`);
   const specs: MediaSpec[] = Array.isArray(args.items) ? args.items
     : args.assetId !== undefined ? [{ assetId: args.assetId, duration: args.duration, trimStart: args.trimStart, trimEnd: args.trimEnd, bounds: args.bounds, transcriptRange: args.transcriptRange, scaleMode: args.scaleMode } as MediaSpec] : [];
-  const assets = specs.map(sp => ctx.asset(sp.assetId));
+  const assets = specs.map(sp => ctx.asset(sp.assetId)), cat = specs.map(sp => catalogueRef(sp.assetId));
+  /** The item type a placement becomes: an element by its slot, else the asset's type. */
+  const becomes = (n: number) => cat[n]?.element ? elementItemType(cat[n]!.element!) : assets[n]?.type;
   if (ref !== undefined) {
     const r = item(doc, ref);
     if (!r) fail('INSERT_AFTER_NOT_FOUND', 'insertAfter item not found', { message: `Item '${ref}' not found on the timeline. Read context for current item ids.` });
     if (!track(doc, r.trackId)) fail('INSERT_AFTER_NO_TRACK', 'insertAfter item not on any track');
-    for (const a of assets) if (a && !canInsertAfter(a.type, r))
-      fail('INSERT_AFTER_TYPE_MISMATCH', 'insertAfter type mismatch', { message: `Cannot insert ${a.type} after ${r.type} item '${ref}'. The new item requires a compatible track kind.` });
+    assets.forEach((a, n) => { if (a && !canInsertAfter(becomes(n)!, r))
+      fail('INSERT_AFTER_TYPE_MISMATCH', 'insertAfter type mismatch', { message: `Cannot insert ${becomes(n)} after ${r.type} item '${ref}'. The new item requires a compatible track kind.` }); });
   } else if (!args.trackId) fail('MISSING_TRACK_ID', 'trackId is required. Use context() for stable track ids or create a track explicitly with manageTrack.');
   if (specs.some(sp => (sp as RecordData).transcriptRange !== undefined)) fail('NOT_IMPLEMENTED', 'transcriptRange is not yet implemented (T19).');
   if (!specs.length) fail('NO_ITEMS', 'No items provided', { message: 'items array must contain at least one item.' });
-  const types = [...new Set(assets.filter(Boolean).map(a => a!.type))];
+  const types = [...new Set(assets.map((a, n) => a ? becomes(n)! : '').filter(Boolean))];
   if (types.includes('audio') && types.length > 1) { const t = `Audio cannot share a call with visual media (found ${types.join(', ')}). Place audio in a separate call on an audio track.`; fail('MIXED_MEDIA_KINDS', t, { message: t }); }
+  if (types.some(t => kindOf(t) === 'overlay') && types.some(t => kindOf(t) !== 'overlay')) {
+    const t = `Elements with a text or media slot go on an overlay track; stickers, videos and images go on a video track (found ${types.join(', ')}). Place them in separate calls.`;
+    fail('MIXED_MEDIA_KINDS', t, { message: t });
+  }
   // Per-item validation (all or nothing); every failure keeps its own code (Cutframe note).
   const start0 = ref !== undefined ? 0 : toMs(args.timelineStart ?? 0), failures: RecordData[] = [];
   specs.forEach((sp, n) => {
     const raw = sp as RecordData;
     let problem: [string, string] | null = null;
-    if (item(doc, sp.assetId)) problem = ['TIMELINE_ID_NOT_ALLOWED', `Expected asset ID (e.g., 'video_1') but received timeline ID '${sp.assetId}'.`];
+    const el = cat[n]?.element;
+    if (cat[n]?.problem) problem = cat[n]!.problem!;
+    else if (item(doc, sp.assetId)) problem = ['TIMELINE_ID_NOT_ALLOWED', `Expected asset ID (e.g., 'video_1') but received timeline ID '${sp.assetId}'.`];
     else if (raw.bounds && raw.scaleMode !== undefined) problem = ['INVALID_COMBINATION', 'bounds and scaleMode cannot be combined'];
-    else problem = specProblem({ ...sp, duration: raw.duration === undefined ? undefined : toMs(raw.duration), trimStart: raw.trimStart === undefined ? undefined : toMs(raw.trimStart), trimEnd: raw.trimEnd === undefined ? undefined : toMs(raw.trimEnd) }, assets[n], start0);
+    else if (el && assets[n]) {
+      try { placement(el, doc.size, { bounds: raw.bounds, timelineStart: start0, duration: raw.duration === undefined ? undefined : toMs(raw.duration) }); } catch (e) {
+        if (!(e instanceof CommandError)) throw e;
+        problem = [e.code, e.error];
+      }
+    } else problem = specProblem({ ...sp, duration: raw.duration === undefined ? undefined : toMs(raw.duration), trimStart: raw.trimStart === undefined ? undefined : toMs(raw.trimStart), trimEnd: raw.trimEnd === undefined ? undefined : toMs(raw.trimEnd) }, assets[n], start0);
     if (problem && problem[0] === 'MEDIA_NOT_FOUND' && /^(video|image|audio)_\d+$/.test(sp.assetId)) problem[1] += ` '${sp.assetId}' is not in this project; the user may have removed it.`;
     if (problem) failures.push({ assetId: sp.assetId, code: problem[0], error: problem[1] });
   });
   if (failures.length) fail('VALIDATION_FAILED', `${failures.length} item(s) failed validation`, { message: failures.map(f => `${f.assetId}: ${f.error}`).join('; '), data: { failures } });
   const ms = (v: unknown) => v === undefined ? undefined : toMs(v as number);
-  const records = specs.map((sp, n) => mediaItem(doc, { assetId: sp.assetId, asset: assets[n]!, duration: ms((sp as RecordData).duration), trimStart: ms(sp.trimStart), trimEnd: ms(sp.trimEnd), bounds: sp.bounds }, '', 0, TOOL_IMAGE_MS));
+  const records = specs.map((sp, n) => cat[n]?.element ? placeElement(cat[n]!.element!, doc.size, { bounds: sp.bounds as PlaceOptions['bounds'], duration: ms((sp as RecordData).duration), trackId: '', assetId: assets[n]!.id })
+    : mediaItem(doc, { assetId: sp.assetId, asset: assets[n]!, duration: ms((sp as RecordData).duration), trimStart: ms(sp.trimStart), trimEnd: ms(sp.trimEnd), bounds: sp.bounds }, '', 0, TOOL_IMAGE_MS));
   if (ref !== undefined) insertAfter(doc, ref, records);
   else {
-    const t = track(doc, args.trackId), want = types.includes('audio') ? 'audio' : 'video';
+    const t = track(doc, args.trackId), want = types.includes('audio') ? 'audio' : types.some(x => kindOf(x) === 'overlay') ? 'overlay' : 'video';
     if (!t || t.kind !== want) {
       const ok = stack(doc).filter(id => track(doc, id)!.kind === want && !trackLocked(doc, id));
       fail('INVALID_TRACK', `Cannot place ${types.join('/')} items on track '${args.trackId}'`, { message: ok.length ? `Compatible unlocked ${want} tracks: ${ok.join(', ')}.` : `There is no unlocked ${want} track; create one with manageTrack.` });
@@ -98,8 +132,15 @@ const addMedia: Handler = (ctx, args) => run(ctx, args.insertAfterItemId !== und
     }
     doc.items.push(...records);
   }
+  if (ctx.dryRun) fail('DRY_RUN_OK', 'Dry run');
   const results = records.map((r, n) => {
     const out: RecordData = { assetId: specs[n].assetId, success: true, itemId: r.id };
+    const el = cat[n]?.element;
+    if (el) {
+      Object.assign(out, { type: r.type, element: elementResult(el) });
+      if (specs[n].bounds) out.resolvedBounds = placement(el, doc.size, { bounds: specs[n].bounds as PlaceOptions['bounds'] }).rect;
+      return out;
+    }
     if (r.trim) out.resolvedTrim = { start: s3(r.trim.from), end: s3(r.trim.to), duration: s3(r.trim.to - r.trim.from) };
     const v = (k: string) => prop(r, k)?.defaultValue as number;
     if (specs[n].bounds && v('width')) out.resolvedBounds = { x: v('positionX'), y: v('positionY'), width: v('width') * v('scale'), height: v('height') * v('scale') };
@@ -182,7 +223,7 @@ const transformItem: Handler = (ctx, args) => run(ctx, 'Edit items', doc => {
 const editPropertiesTool: Handler = (ctx, args) => run(ctx, 'Edit items', (doc, tx) => {
   // A speed-only edit gets the UI speed control's label (UI/tool parity; provisional for the tool).
   if (args.properties && Object.keys(args.properties).join() === 'playbackRate') tx.label = 'Change speed';
-  return editProperties(doc, args);
+  return editProperties(doc, args, ctx.asset);
 });
 const writeKeyframesTool: Handler = (ctx, args) => run(ctx, 'Edit items', doc => writeKeyframes(doc, args));
 const setTimeRemapTool: Handler = (ctx, args) => run(ctx, 'Edit items', doc => setTimeRemap(doc, args));

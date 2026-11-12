@@ -11,6 +11,7 @@ import { installRuntime } from './timeline/runtime';
 import { migrateRemovals } from './masks/jobs';
 import { installMasks } from './masks/smart-tools';
 import { addStockToProject } from './media/stock';
+import { ensureCatalogueAsset } from './catalogue/assets';
 import { readMode } from './versions/checkpoints';
 import { openVersions } from './versions/editor';
 import type { Checkpoints } from './versions/checkpoints';
@@ -42,7 +43,7 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
         render(n => n + 1);
       }); unbind = local.bindLifecycle();
       unmask = installMasks(projectStore.media, id);
-      uninstall = installRuntime(local, projectStore, id, { maskMarker: mode === 'parity' ? 'both' : 'enter', addStock: async item => (await addStockToProject(projectStore, id, item)).asset, onAssets: tools => migrateRemovals({ ...tools, origin: 'user' }), ...(mode === 'parity' ? { noOp: 'reference', sliderEntries: 'step' } as const : {}) });
+      uninstall = installRuntime(local, projectStore, id, { maskMarker: mode === 'parity' ? 'both' : 'enter', addStock: async item => (await addStockToProject(projectStore, id, item)).asset, addCatalogue: cid => ensureCatalogueAsset(projectStore, id, cid), onAssets: tools => migrateRemovals({ ...tools, origin: 'user' }), ...(mode === 'parity' ? { noOp: 'reference', sliderEntries: 'step' } as const : {}) });
       setSession(local); setRecord(result.record); setLoad('ready');
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
