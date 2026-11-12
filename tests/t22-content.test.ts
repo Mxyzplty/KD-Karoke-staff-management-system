@@ -102,7 +102,22 @@ describe('A1: SR-17 content counts (catalogues, presets and project templates)',
       }
     }
   });
-  it.todo('A1: all nine existing caption template ids resolve (template/font integration steps)');
+  const CAPTION_IDS = ['default', 'cinema', 'editorial', 'handwritten', 'karaoke-pop', 'punch', 'subtitle', 'tiktok', '8-bit'];
+  it('A1: the caption templates are exactly the nine existing ids', async () => {
+    const { TEMPLATES } = await import('../apps/web/src/captions/templates');
+    expect(TEMPLATES.map(t => t.id).sort()).toEqual([...CAPTION_IDS].sort());
+  });
+  it.each(CAPTION_IDS)('A1: caption template %s exists and has a non-empty font list of registry families', async id => {
+    const { TEMPLATES } = await import('../apps/web/src/captions/templates'), { FONT_LISTS } = await import('../apps/web/src/catalogue/fonts'), { FONT_REGISTRY } = await import('../apps/web/src/text/font-registry');
+    expect(TEMPLATES.filter(t => t.id === id), id).toHaveLength(1); expect(findCaptionTemplate(id)?.id).toBe(id);
+    expect(Object.hasOwn(FONT_LISTS, id), id).toBe(true); expect(Array.isArray(FONT_LISTS[id])).toBe(true); expect(FONT_LISTS[id].length, id).toBeGreaterThan(0);
+    for (const pick of FONT_LISTS[id]) expect(FONT_REGISTRY.some(font => font.family === pick.family), `${id}: ${pick.family}`).toBe(true);
+  });
+  it('A1: the built-in default template\'s captionsFont resolves to a registry face', async () => {
+    const { FONT_REGISTRY } = await import('../apps/web/src/text/font-registry'), name = DEFAULT_TEMPLATE.defaults.captionsFont, found = findFont(name);
+    expect(found, name).not.toBeNull(); expect(FONT_REGISTRY, name).toContain(found!.entry);
+    expect(found!.variant?.face, `${name} names one face of ${found!.entry.family}`).toBe(name); expect(found!.entry.variants).toContain(found!.variant);
+  });
 });
 
 describe('A3/A7/A2: our default project template files, content identity and binding', () => {
@@ -206,5 +221,5 @@ describe('A13 C-gt: settled from code, RC 6.1, no stored output — pieces drawi
       expect(viewBox, element.id).toHaveLength(4); expect(viewBox?.slice(2), element.id).toEqual([element.width, element.height]);
     }
   });
-  it.todo('Later UI: each catalogue sound decodes in the browser and its durationMs equals the decoded length');
+  // Each catalogue sound's browser decode and decoded length are covered in a real browser by tests/ui/t22-content.spec.ts.
 });
