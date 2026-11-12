@@ -7,6 +7,9 @@ import { notify, reportError } from './ui';
 import { addStockToProject, readKeys, saveKey, searchPhotos, searchSounds, searchVideos, soundDuration } from './media/stock';
 import type { Provider, StockItem, StockKeys, StockPage } from './media/stock';
 import { formatDuration, placeOnTimeline } from './media-ui';
+import { ensureCatalogueAsset } from './catalogue/assets';
+import { SOUNDS } from './catalogue/sounds';
+import type { CatalogueSound } from './catalogue/sounds';
 
 const NAMES: Record<Provider, string> = { pexels: 'Pexels', unsplash: 'Unsplash', freesound: 'Freesound' };
 /** The cost/limit line (review F14): shown at every point of use, before and after a key is saved. */
@@ -81,6 +84,20 @@ export function VideosPanel({ projectId }: { projectId: string }) {
     {paged.more && <button disabled={paged.busy} onClick={() => void paged.run(query, paged.page + 1)}>Load More</button>}
   </section>;
 }
+/** The bundled catalogue (T22): needs no key and no network. A title click adds the sound as a stock sound is added. */
+function BuiltInSounds({ projectId }: { projectId: string }) {
+  async function addBuiltIn(sound: CatalogueSound) {
+    try {
+      const asset = await ensureCatalogueAsset(projectStore, projectId, `sound:${sound.slug}`);
+      notify('Sound added to the project footage.'); placeOnTimeline(asset.name, [asset.id]);
+    } catch (e) { reportError(e); }
+  }
+  return <><h4>Built-in</h4>
+    <ul className="sound-list" aria-label="Built-in sounds">{SOUNDS.map(sound => <li key={sound.slug}>
+      <button className="link" aria-label={`Add sound ${sound.name}`} onClick={() => void addBuiltIn(sound)}>{sound.name}</button>
+      <span>{soundDuration(sound.durationMs)}</span>
+    </li>)}</ul></>;
+}
 export function SoundsPanel({ projectId }: { projectId: string }) {
   const [keys, setKeys] = useKeys(), [query, setQuery] = useState(''), [playing, setPlaying] = useState<string>(), audio = useRef<HTMLAudioElement | null>(null);
   const paged = usePaged((q, p) => searchSounds(keys!, q, p));
@@ -93,8 +110,9 @@ export function SoundsPanel({ projectId }: { projectId: string }) {
     audio.current = a; setPlaying(item.provider_id); void a.play().catch(() => setPlaying(undefined));
   }
   if (!keys) return <p>Loading…</p>;
-  if (!keys.freesound) return <section aria-label="Sounds"><h3>Sound effects</h3><KeyState providers={['freesound']} keys={keys} saved={setKeys} /></section>;
+  if (!keys.freesound) return <section aria-label="Sounds"><h3>Sound effects</h3><BuiltInSounds projectId={projectId} /><KeyState providers={['freesound']} keys={keys} saved={setKeys} /></section>;
   return <section aria-label="Sounds"><h3>Sound effects</h3>
+    <BuiltInSounds projectId={projectId} />
     <div className="toolbar"><input aria-label="Search sounds" placeholder="Search sounds" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && query.trim()) void paged.run(query, 1); }} />
       {query && <button onClick={() => { setQuery(''); paged.clear(); audio.current?.pause(); setPlaying(undefined); }}>Clear</button>}</div>
     <ActiveKeys providers={['freesound']} keys={keys} saved={setKeys} />

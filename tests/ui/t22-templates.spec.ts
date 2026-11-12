@@ -4,6 +4,9 @@
 // Expectations are the written contract and Daylight's authored data, not template/default helper results.
 // No browser run by the test author. Real store, native controls and bundled files; no skipped cases or network fixtures.
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { SOUNDS } from '../../apps/web/src/catalogue/sounds';
+import { STYLE_PRESETS } from '../../apps/web/src/presets/content';
+import { BUILT_IN_MG_PRESETS } from '../../apps/web/src/presets/mg-content';
 import { addAsset, createProject, guard, linkClip, notices, openEditor, setViewState, skipTour, stored } from './t02-support';
 import { prop } from './t04-support';
 import { runCanvas, shown } from './t15-support';
@@ -456,4 +459,43 @@ test('D99: lesson-created own template is hidden, shares Learn with No template,
   const listed = (await ownFor(page, id))!; expect(listed).toMatchObject({ id: hidden.id, name: 'Lesson project template', learning: true, preferences: 'Keep this first lesson.' }); expect(listed).not.toHaveProperty('neverSaved'); expect(listed).not.toHaveProperty('saved'); expect(await state(page, id)).toEqual(before);
   await closeDialog(d, 'Current template'); await expect(page.getByRole('button', { name: 'Template: No template', exact: true })).toBeVisible(); await menu(page, 'Change template');
   const row = await choose(p, hidden.name, 'My templates'); await expect(row).toBeVisible(); await expect(p.getByText('Saved in My templates', { exact: true })).toBeVisible(); expect((await templatesRow(page))!.templates.filter((t: Rec) => t.fromProject === id)).toHaveLength(1);
+});
+
+// A12 (plan line 82): one offline flow through the UI. Expected lists are the data modules. Elements are out: no panel lists them (lane A).
+test('A12: offline, the catalogues list, Daylight binds, a style preset applies and a built-in sound is added from the Sounds panel', async ({ page }) => {
+  const local = (href: string) => { const u = new URL(href); return ['localhost', '127.0.0.1'].includes(u.hostname) || ['blob:', 'data:', 'about:'].includes(u.protocol); };
+  const asked: string[] = []; page.on('request', r => { if (!local(r.url())) asked.push(r.url()); });
+  await page.route('**/fonts.googleapis.com/**', route => route.abort());
+  const id = await openEditor(page, document(), 'A12 offline flow'), side = page.getByRole('complementary', { name: 'Inspector and tools' });
+  const open = (name: string) => page.getByRole('navigation', { name: 'Tools' }).getByRole('tab', { name, exact: true }).click();
+  // 1. The catalogues list: style presets, the MG preset library, the caption template gallery, the built-in sounds.
+  await open('Style presets'); const grid = side.getByRole('group', { name: 'Presets', exact: true }); await expect(grid.getByRole('button')).toHaveCount(STYLE_PRESETS.length);
+  for (const p of STYLE_PRESETS) await expect(grid.getByRole('button', { name: p.name, exact: true }), p.id).toHaveCount(1);
+  await open('Motion graphics'); const library = side.getByRole('region', { name: 'Motion graphics' }).getByRole('group', { name: `Built-in presets (${BUILT_IN_MG_PRESETS.length})` });
+  await expect(library.getByRole('button')).toHaveCount(BUILT_IN_MG_PRESETS.length); for (const p of BUILT_IN_MG_PRESETS) await expect(library.getByRole('button', { name: p.name, exact: true }), p.id).toHaveCount(1);
+  const captionNames: string[] = await page.evaluate(async () => { const p = '/src/captions/templates.ts'; return (await import(p)).TEMPLATES.map((t: Rec) => t.name); }); expect(captionNames.length).toBeGreaterThan(0);
+  await open('Captions'); await page.getByRole('region', { name: 'Captions', exact: true }).getByRole('button', { name: 'Change template' }).click();
+  const gallery = page.getByRole('dialog', { name: 'Caption templates' }); await expect(gallery.getByRole('option')).toHaveCount(captionNames.length);
+  for (const name of captionNames) await expect(gallery, name).toContainText(name);
+  await gallery.getByRole('button', { name: 'Close' }).click(); await expect(gallery).toBeHidden();
+  await open('Sounds'); const builtIn = page.getByRole('region', { name: 'Sounds', exact: true }).getByRole('list', { name: 'Built-in sounds', exact: true });
+  await expect(builtIn.getByRole('listitem')).toHaveCount(SOUNDS.length); await expect(builtIn.getByRole('button')).toHaveText(SOUNDS.map(s => s.name));
+  expect((await state(page, id)).document.items, 'listing adds nothing').toEqual([]);
+  // 2. The default template binds.
+  await bindDaylight(page); let now = await state(page, id); expect(now.record).toMatchObject({ template_id: 'daylight', template_epoch: 1 }); expect(now.document.templateDefaults).toEqual(DEFAULTS);
+  // 3. A style preset applies from its panel: the first direct-item preset of the library.
+  const preset = STYLE_PRESETS.find(p => Array.isArray((p as Rec).items)) as Rec; expect(preset, 'a direct-item style preset').toBeTruthy();
+  await open('Style presets'); await grid.getByRole('button', { name: preset.name, exact: true }).click(); await expect(notices(page)).toContainText(`Applied "${preset.name}" — ${preset.items.length} item(s)`);
+  await expect.poll(async () => (await state(page, id)).document.items.length, { message: 'the preset items reach the stored project', timeout: 20_000 }).toBe(preset.items.length);
+  now = await state(page, id); expect(now.document.items.map((i: Rec) => i.display)).toEqual(preset.items.map((i: Rec) => ({ from: i.relativeStart, to: i.relativeStart + i.duration })));
+  // 4. A built-in sound is added by its title in the Sounds panel (the user's path, not addMedia): 0 s, an audio track, its catalogue length ±34 ms (one frame at 30 fps).
+  const sound = SOUNDS[0]; await open('Sounds'); await builtIn.getByRole('button', { name: `Add sound ${sound.name}`, exact: true }).click(); await expect(notices(page)).toContainText('Sound added to the project footage');
+  await expect.poll(async () => (await state(page, id)).document.items.filter((i: Rec) => i.type === 'audio').length, { message: 'the audio item reaches the stored project', timeout: 20_000 }).toBe(1);
+  now = await state(page, id); const audio = now.document.items.find((i: Rec) => i.type === 'audio'), lane = now.document.tracks.find((t: Rec) => t.id === audio.trackId);
+  expect(now.document.items).toHaveLength(preset.items.length + 1); expect(lane?.kind).toBe('audio'); expect(audio.display.from).toBe(0); expect(Math.abs(audio.display.to - sound.durationMs)).toBeLessThanOrEqual(34);
+  const sources = await page.evaluate(async id => { const p = '/src/store/database.ts', { projectStore } = await import(p), all = (await projectStore.library()).assets; return (await projectStore.projectAssets(id)).map((l: Rec) => all.find((a: Rec) => a.id === l.assetId).source); }, id);
+  expect(sources).toEqual([expect.objectContaining({ kind: 'stock', provider: 'cutframe', providerId: `sound:${sound.slug}` })]);
+  expect(now.record).toMatchObject({ template_id: 'daylight', template_epoch: 1 }); expect(now.document.templateDefaults).toEqual(DEFAULTS); await expect(page.getByRole('button', { name: 'Template: Daylight', exact: true })).toBeVisible();
+  // 5. Nothing left this machine during the whole flow.
+  expect(asked, 'A12: no off-localhost request, even a failed one').toEqual([]);
 });
