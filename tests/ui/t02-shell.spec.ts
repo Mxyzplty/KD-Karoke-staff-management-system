@@ -44,10 +44,9 @@ test('B1 wide layout: left Footage (Uploads / Reference) and AI, preview, timeli
   // T06 (C8 assertion-only edit): the Shapes panel is built too; its Draw button is checked below.
   // T05 (assertion edit): the Text panel is real now (Add text; see ui/t05-text.spec.ts:43). T07 (C8): the Layouts panel is built (11 cards checked below). Neither is a stub.
   // T09 (C8 assertion-only edit): the Captions panel is built now (see ui/t09-captions.spec.ts) — positive check replaces the stub.
-  for (const [tool, owner] of [['Style presets', 'T22']]) {
-    await rail.getByRole('tab', { name: tool, exact: true }).click(); await expect(rail.getByRole('tab', { name: tool, exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(panel.getByRole('heading', { name: tool, exact: true })).toBeVisible(); await expect(panel).toContainText(`The ${tool} panel is not yet implemented (${owner}).`);
-  }
+  // T22 (C8 assertion-only edit): the Style presets panel is built now (see ui/t22-presets.spec.ts); its All chip replaces the stub line. No rail panel is a stub any more.
+  await rail.getByRole('tab', { name: 'Style presets', exact: true }).click(); await expect(rail.getByRole('tab', { name: 'Style presets', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByRole('heading', { name: 'Style presets', exact: true })).toBeVisible(); await expect(panel.getByRole('button', { name: 'All', exact: true })).toBeVisible(); await expect(panel).not.toContainText('not yet implemented (T22)');
   await rail.getByRole('tab', { name: 'Captions', exact: true }).click(); await expect(rail.getByRole('tab', { name: 'Captions', exact: true })).toHaveAttribute('aria-selected', 'true'); // T09 (C8 assertion-only edit)
   await expect(panel.getByRole('heading', { name: 'Captions', exact: true })).toBeVisible(); await expect(panel.getByRole('radiogroup', { name: 'Caption source' })).toBeVisible(); await expect(panel).not.toContainText('not yet implemented (T09)');
   // T13: the Voice-over tool opens the working Voice Over panel (was: "The Voice-over panel is not yet implemented (T13).").

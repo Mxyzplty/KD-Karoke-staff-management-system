@@ -109,6 +109,14 @@ describe('A21: real supported add tools against all eight reference types', () =
   // Inspected captions/tools.ts addCaptionsIn: it targets trackId/speakerTrackIds and has no insertAfterItemId path.
   // Do not manufacture a caption insertion API. The caption row remains fully covered in the pure 64-pair table above.
   // The addCaptions contract has no insertAfterItemId input, so there is no real-tool row to run.
+  // C-8: addCaptions has no insert-after path; this pins today's behaviour.
+  it('C-8: addCaptions has no insert-after path; this pins today\'s behaviour', () => {
+    const w = world('caption'), before = JSON.stringify(w.doc);
+    const result = callTool(w.ctx, 'addCaptions', { insertAfterItemId: 'ref' });
+    expect(result).toEqual({ success: false, code: 'MISSING_TRACK_ID', error: 'trackId is required',
+      message: 'addCaptions needs a target caption trackId (or splitBySpeaker with speakerTrackIds). Create one with manageTrack.' });
+    expectUnchanged(w, before, result);
+  });
 });
 
 describe('T22: catalogue ids use their placed item type, not the source asset image type', () => {

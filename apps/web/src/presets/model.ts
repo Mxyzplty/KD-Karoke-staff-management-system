@@ -3,7 +3,9 @@
 // boxes on a canvas_size, default 1080 × 1920) or one motion graphic (T08's GraphicPreset fields). The id is
 // `<category>/<slug>`; the category is the id's prefix. The data shape is §31's; every preset shipped is Cutframe's own.
 // Cutframe readings (§31 gives no units and no keyframe shape): relativeStart, duration and keyframe times are in ms;
-// `properties` holds keyframe lists only, a static style value goes in `details`.
+// `properties` holds keyframe lists only, a static style value goes in `details`. A shape may carry its own path instead of a
+// preset type: `details.points` (anchors and handle offsets as fractions of the item box) and `closed`. A saved preset (GFX-10)
+// also carries `version` and `savedAt`.
 import type { RecordData } from '../store/model';
 import type { Easing } from '../timeline/properties';
 import { validEasing } from '../timeline/properties';
@@ -30,10 +32,16 @@ export type PresetItem = { type: typeof DIRECT_TYPES[number]; relativeStart: num
 type Listed = { id: string; name: string; description: string };
 export type DirectPreset = Listed & { items: PresetItem[]; canvas_size?: { width: number; height: number } };
 export type GraphicStylePreset = Listed & GraphicPreset;
+/** A motion graphic saved from an item (GFX-10): T08's preset plus the item's field values and its exact box on the canvas
+ *  it was saved on (used on a canvas of that size; any other canvas places `spatial` by §31). */
+export type SavedGraphic = GraphicPreset & { field_values?: RecordData; saved?: { canvas: { width: number; height: number }; box: { x: number; y: number; width: number; height: number } }; version?: number; savedAt?: string };
 export type StylePreset = DirectPreset | GraphicStylePreset;
-export const isDirect = (p: StylePreset): p is DirectPreset => Array.isArray((p as DirectPreset).items);
+export const isDirect = (p: StylePreset | GraphicPreset): p is DirectPreset => Array.isArray((p as DirectPreset).items);
 /** browsePresets' `type` (results, browsePresets): "text" places direct items, "motion-graphic" one graphic. */
 export const presetType = (p: StylePreset) => isDirect(p) ? 'text' : 'motion-graphic';
+/** The chat message of the customise dialog (§31: it names the added graphic and asks to customise it with the user's text;
+ *  the wording is Cutframe's own, plan Q8). */
+export const customiseMessage = (name: string, text: string) => `Customise the "${name}" preset: ${text.trim()}`;
 
 const text = (v: unknown) => typeof v === 'string' && v.trim() !== '';
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -47,7 +55,9 @@ function itemProblem(r: unknown): string | null {
   if (!finite(d.left) || !finite(d.top)) return 'details.left and details.top must be numbers';
   if (!(finite(d.width) && d.width > 0) || !(finite(d.height) && d.height > 0)) return 'details.width and details.height must be positive';
   if (i.type === 'text' && (typeof d.text !== 'string' || !(finite(d.fontSize) && d.fontSize > 0))) return 'a text item needs details.text and a positive details.fontSize';
-  if (i.type === 'shape' && !SHAPE_TYPES.includes(d.shapeType)) return `details.shapeType must be one of ${SHAPE_TYPES.join(', ')}`;
+  if (i.type === 'shape' && d.points !== undefined) {
+    if (!Array.isArray(d.points) || d.points.length < 2 || d.points.some((p: RecordData) => !p || !finite(p.anchor?.x) || !finite(p.anchor?.y))) return 'details.points is not a path';
+  } else if (i.type === 'shape' && !SHAPE_TYPES.includes(d.shapeType)) return `details.shapeType must be one of ${SHAPE_TYPES.join(', ')}`;
   if (i.properties !== undefined) {
     if (!i.properties || typeof i.properties !== 'object' || Array.isArray(i.properties)) return 'properties is not an object';
     for (const [key, list] of Object.entries(i.properties))

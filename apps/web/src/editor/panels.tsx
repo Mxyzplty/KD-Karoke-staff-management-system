@@ -8,6 +8,7 @@ import { FootagePanel, ReferencePanel } from '../media-panel';
 import { PhotosPanel, SoundsPanel, VideosPanel } from '../stock-ui';
 import { GraphicFields } from '../mg/fields';
 import { MotionGraphicsPanel } from '../mg/panel';
+import { savePresetAction, StylePresetsPanel } from '../presets/panel';
 import { AnimationBody, FontShadowBody, FontStrokeBody, PresetBody, TextBasicBody, TextBody, TextPanel, TextTransformBody } from '../text/ui';
 import { dispatch } from './commands';
 import { EffectsRail, EffectsTab } from './effects-ui';
@@ -56,6 +57,7 @@ export function ToolPanel({ tool, projectId }: { tool: Tool; projectId: string }
   if (tool === 'effects') return <EffectsRail />;
   if (tool === 'voiceover') return <VoiceoverPanel projectId={projectId} />;
   if (tool === 'captions') return <CaptionsPanel projectId={projectId} />;
+  if (tool === 'presets') return <StylePresetsPanel />;
   return <section aria-label={info.label} className="tool-panel"><h3>{info.label}</h3>
     <Unavailable what={`The ${info.label} panel`} owner={info.owner} />
   </section>;
@@ -111,7 +113,7 @@ function SectionShell({ doc, item, section, open }: { doc: ProjectDocument; item
   return <details className="inspector-section" open={open}><summary onClick={() => section.onHeader?.(doc, item)}>{section.heading?.(item) ?? section.title}</summary>{section.body?.(doc, item)}{!section.done && <Unavailable what={`The ${section.title} section`} owner={section.owner} />}</details>;
 }
 export function Inspector({ doc }: { doc: ProjectDocument }) {
-  const v = useView(), item = doc.items.find(i => i.id === v.selection[0]);
+  const v = useView(), item = doc.items.find(i => i.id === v.selection[0]), savePreset = savePresetAction(doc, v.selection);
   if (!item) return <section className="inspector" aria-label="Inspector"><p>Select an item on the timeline, or choose a tool.</p></section>;
   return <section className="inspector" aria-label="Inspector">
     <div role="tablist" aria-label="Inspector">
@@ -119,7 +121,7 @@ export function Inspector({ doc }: { doc: ProjectDocument }) {
       <button role="tab" aria-selected={v.inspectorTab === 'effects'} onClick={() => setView({ inspectorTab: 'effects' })}>Effects</button>
     </div>
     {v.selection.length > 1 && <p>{v.selection.length} items selected; showing the first.</p>}
-    {v.inspectorTab === 'properties' ? <><ItemHeader item={item} />{item.type === 'motionGraphic' && <GraphicFields key={item.id} item={item} />}{(SECTIONS[item.type] ?? []).map(s => <SectionShell key={sectionKey(s, item)} doc={doc} item={item} section={s} />)}{!SECTIONS[item.type] && <Unavailable what="The Properties sheet for this item type" owner={owners[item.type] ?? 'T04'} />}</>
+    {v.inspectorTab === 'properties' ? <><ItemHeader item={item} />{savePreset && <button type="button" onClick={savePreset}>Save as preset</button>}{item.type === 'motionGraphic' && <GraphicFields key={item.id} item={item} />}{(SECTIONS[item.type] ?? []).map(s => <SectionShell key={sectionKey(s, item)} doc={doc} item={item} section={s} />)}{!SECTIONS[item.type] && <Unavailable what="The Properties sheet for this item type" owner={owners[item.type] ?? 'T04'} />}</>
       : <EffectsTab doc={doc} item={item} itemIds={v.selection} />}
   </section>;
 }

@@ -5,13 +5,13 @@
 // time + its relativeStart, on its own new overlay track. A motion-graphic preset goes through T08's applyGraphicPreset.
 // Cutframe reading: every scaled value is rounded to 0.01 (§31 says so for keyframe values only).
 import type { ProjectDocument, RecordData } from '../store/model';
-import { applyGraphicPreset } from '../mg/presets';
+import { applyGraphicPreset, type GraphicPreset } from '../mg/presets';
 import { projectSize } from '../render/model';
 import { ADD_TEXT, fontDetails, textRecord } from '../text/tools';
 import { fail, fmt, insertTrack, newId, newTrack } from '../timeline/model';
-import { ensureProp, keyframeId } from '../timeline/properties';
-import { presetPoints, r2, shapeRecord, type ShapeType } from '../timeline/shapes';
-import { DEFAULT_CANVAS, isDirect, type DirectPreset, type PresetKeyframe, type StylePreset } from './model';
+import { ensureProp, keyframeId, setStatic } from '../timeline/properties';
+import { mapPoints, presetPoints, r2, shapeRecord, shifted, type ShapeType } from '../timeline/shapes';
+import { DEFAULT_CANVAS, isDirect, type DirectPreset, type PresetKeyframe, type SavedGraphic, type StylePreset } from './model';
 
 export const PRESET_SOURCE = 'cutframe-preset';
 export type ScaledItem = { type: 'text' | 'shape'; display: { from: number; to: number }; details: RecordData; properties: Record<string, PresetKeyframe[]> };
@@ -30,7 +30,7 @@ export function scaleDirectPreset(p: DirectPreset, canvas: { width: number; heig
   }));
 }
 
-const NOT_STYLE = new Set(['left', 'top', 'width', 'height', 'text', 'fontFamily', 'shapeType', 'roundness', 'innerRatio']);
+const NOT_STYLE = new Set(['left', 'top', 'width', 'height', 'text', 'fontFamily', 'shapeType', 'roundness', 'innerRatio', 'points', 'closed']);
 /** The stored item of one scaled preset item: the box, font size and every other detail as stored properties (a text keeps
  *  its text and font in details, a shape its path), keyframes on top. */
 function record(i: ScaledItem, trackId: string, presetId: string): RecordData {
@@ -38,7 +38,8 @@ function record(i: ScaledItem, trackId: string, presetId: string): RecordData {
   const box = { positionX: d.left, positionY: d.top, width: d.width, height: d.height };
   const r = i.type === 'text'
     ? textRecord({ text: d.text, trackId, display: i.display, details: fontDetails(d.fontFamily ?? ADD_TEXT.family, d.fontWeight, d.fontStyle), properties: { ...box, ...style } })
-    : shapeRecord({ id: newId('item'), trackId, display: i.display, shapeType: d.shapeType, points: presetPoints(d.shapeType as ShapeType, d.width, d.height, d.roundness, d.innerRatio), closed: true,
+    : shapeRecord({ id: newId('item'), trackId, display: i.display, shapeType: d.shapeType ?? 'custom', closed: d.closed !== false,
+      points: Array.isArray(d.points) ? shifted(mapPoints([d.width, 0, 0, d.height, 0, 0], d.points), 0, 0) : presetPoints(d.shapeType as ShapeType, d.width, d.height, d.roundness, d.innerRatio),
       x: d.left, y: d.top, width: d.width, height: d.height, style });
   r.details.source = PRESET_SOURCE;
   r.metadata = { ...r.metadata, presetId };
@@ -48,11 +49,15 @@ function record(i: ScaledItem, trackId: string, presetId: string): RecordData {
 }
 
 /** Places a preset (inside a bus command): the new items, each on a new overlay track. The panel applies at 0 (§31). */
-export function applyStylePreset(doc: ProjectDocument, p: StylePreset, startMs = 0): RecordData[] {
+export function applyStylePreset(doc: ProjectDocument, p: StylePreset | GraphicPreset, startMs = 0): RecordData[] {
   if (!(startMs >= 0)) fail('INVALID_TIMELINE_START', `timelineStart must be >= 0. Received: ${fmt(startMs)}s.`);
   if (!isDirect(p)) {
     if (typeof p.mg_code !== 'string' || !p.mg_code.trim()) fail('PRESET_EMPTY', `Preset '${p.id}' has neither items nor motion graphic code.`);
-    return [applyGraphicPreset(doc, p, startMs)];
+    const r = applyGraphicPreset(doc, p, startMs), { field_values, saved } = p as SavedGraphic, size = projectSize(doc);
+    if (field_values) r.details.fieldValues = structuredClone(field_values);
+    if (saved && saved.canvas.width === size.width && saved.canvas.height === size.height)
+      for (const [key, v] of [['positionX', saved.box.x], ['positionY', saved.box.y], ['width', saved.box.width], ['height', saved.box.height]] as const) setStatic(r, key, v);
+    return [r];
   }
   if (!p.items.length) fail('PRESET_EMPTY', `Preset '${p.id}' has neither items nor motion graphic code.`);
   return scaleDirectPreset(p, projectSize(doc), startMs).map(i => {

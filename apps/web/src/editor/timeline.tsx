@@ -20,6 +20,7 @@ import { effectStack, paramProp } from '../timeline/effects';
 import { usePlayback } from '../render/playback';
 import { cutsByTrack, TransitionMarks } from './transition-ui';
 import { Waveform } from './waveform';
+import { savePresetAction } from '../presets/panel';
 
 export const HEADER_PX = 200;
 type Ctx = { doc: ProjectDocument; assets: Map<string, Asset> };
@@ -104,6 +105,9 @@ export function Timeline({ doc, assets }: Ctx) {
       { label: 'Copy', disabled: !state.copy, onSelect: () => copySelection(doc) },
       { label: 'Paste at playhead', disabled: !state.paste, onSelect: () => dispatch({ type: 'pasteItems', items: view().clipboard, atMs: view().playheadMs }) },
       { label: 'Delete', danger: true, disabled: !state.delete, onSelect: () => dispatch({ type: 'deleteItems', itemIds: ids, ripple: view().toolMode === 'ripple' }) });
+    // T22 (GFX-10): only when the selection can be saved (one motion graphic, or text and shape items only).
+    const savePreset = savePresetAction(doc, ids);
+    if (savePreset) items.push({ label: 'Save as preset', onSelect: savePreset });
     setMenu({ x: e.clientX, y: e.clientY, label: 'Clip actions', items });
   };
   const openTrackMenu = (e: React.MouseEvent, track: RecordData) => {

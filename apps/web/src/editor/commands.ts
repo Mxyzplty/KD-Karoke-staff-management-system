@@ -6,6 +6,7 @@
 import type { RecordData } from '../store/model';
 import type { KeyframePatch, KeyframeRef } from '../timeline/properties';
 import type { GraphicPreset } from '../mg/presets';
+import type { StylePreset } from '../presets/model';
 import type { PathPoint, ShapePath } from '../timeline/shapes';
 import type { LayoutOp, LayoutType } from '../timeline/layouts';
 import type { MaskOp } from '../masks/tools';
@@ -67,6 +68,8 @@ export type Intent =
   | { type: 'addBlankMotionGraphic'; startMs: number; endMs: number }
   /** T08: a My Presets entry (mg/presets.ts), placed at 0 s. */
   | { type: 'addGraphicPreset'; preset: GraphicPreset }
+  /** T22: a style preset or a built-in motion-graphic preset (presets/apply.ts), placed at 0 s. */
+  | { type: 'applyStylePreset'; preset: StylePreset | GraphicPreset }
   /** T08: Fix automatically saves the repaired code (mg/repair.ts). */
   | { type: 'repairMotionGraphic'; itemId: string; code: string }
   /** T08: the inspector's Fields section sets one editable field (details.fieldValues[name], mg/fields.tsx). */
@@ -131,6 +134,7 @@ export const INTENTS: Record<Exclude<Intent['type'], 'editProperty' | 'feature' 
   saveCheckpoint: { owner: 'T17', label: 'Saving a checkpoint' }, restoreCheckpoint: { owner: 'T17', label: 'Restoring a checkpoint' },
   deleteCheckpoint: { owner: 'T17', label: 'Deleting a checkpoint' }, renameCheckpoint: { owner: 'T17', label: 'Renaming a checkpoint' },
   addBlankMotionGraphic: { owner: 'T08', label: 'Add Blank Motion Graphic' }, addGraphicPreset: { owner: 'T08', label: 'Adding a motion-graphic preset' },
+  applyStylePreset: { owner: 'T22', label: 'Applying a preset' },
   repairMotionGraphic: { owner: 'T08', label: 'Repairing a motion graphic' }, editGraphicField: { owner: 'T08', label: 'Editing a motion-graphic field' },
   drawShape: { owner: 'T06', label: 'Drawing a shape' }, editShapePath: { owner: 'T06', label: 'Editing a shape path' },
   removeShapePoint: { owner: 'T06', label: 'Removing a shape point' }, addPathKeyframe: { owner: 'T06', label: 'Adding a path keyframe' },

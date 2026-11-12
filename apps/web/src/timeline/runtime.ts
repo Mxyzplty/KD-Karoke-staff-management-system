@@ -31,7 +31,9 @@ import type { ToolContext, ToolResult } from './tools';
 import { addCaptionsPanel, NO_CAPTION_DATA } from '../captions/tools';
 import { editCaptionTransform } from '../captions/properties';
 import { graphicAssets } from '../mg/frames';
-import { addBlankGraphic, applyGraphicPreset } from '../mg/presets';
+import { addBlankGraphic } from '../mg/presets';
+import { applyStylePreset } from '../presets/apply';
+import { missingFor } from '../presets/user';
 import { addTextPreset } from '../text/tools';
 
 type Op = (doc: ProjectDocument, tx: Tx) => unknown;
@@ -215,7 +217,12 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
       case 'addTextPreset': return run('Add items', doc => { addTextPreset(doc); });
       case 'editTextProperties': return run('Edit items', doc => { editProperties(doc, { itemIds: intent.itemIds, properties: intent.properties }); });
       case 'addBlankMotionGraphic': return run('Add items', doc => { addBlankGraphic(doc, intent.startMs, intent.endMs); });
-      case 'addGraphicPreset': return run('Add items', doc => { applyGraphicPreset(doc, intent.preset); });
+      // T22: My Presets (T08's intent) and the preset library share one path; a saved preset's missing fonts and assets are named.
+      case 'addGraphicPreset': case 'applyStylePreset': {
+        const outcome = run('Add items', doc => { applyStylePreset(doc, intent.preset); });
+        if (outcome.ok) for (const m of missingFor(intent.preset, live.map(l => l.agentId))) notify(m);
+        return outcome;
+      }
       case 'repairMotionGraphic': return run('Edit items', doc => {
         const i = item(doc, intent.itemId);
         if (!i || i.type !== 'motionGraphic') fail('ITEM_NOT_FOUND', 'Item not found');
