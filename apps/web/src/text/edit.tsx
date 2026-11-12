@@ -53,7 +53,7 @@ function Editor({ doc, target, done }: { doc: ProjectDocument; target: Target; d
   const finish = () => {
     if (ended.current) return;
     ended.current = true; done();
-    if (latest.current !== original) dispatch({ type: 'editTextProperties', itemIds: [item.id], properties: { text: latest.current } });
+    if (latest.current !== original) dispatch({ type: 'editTextProperties', itemIds: [item.id], properties: { text: latest.current }, refit: true });
   };
   useEffect(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, []);
   // A click anywhere outside the editor ends it (blur alone misses a press on a non-focusable area).

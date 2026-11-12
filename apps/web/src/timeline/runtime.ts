@@ -215,7 +215,7 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
         });
       // T05: the Text panel's Add text (W3-ED-22: one "Add items"); several text keys in one "Edit items" (preset tiles, gradient).
       case 'addTextPreset': return run('Add items', doc => { addTextPreset(doc); });
-      case 'editTextProperties': return run('Edit items', doc => { editProperties(doc, { itemIds: intent.itemIds, properties: intent.properties }); });
+      case 'editTextProperties': return run('Edit items', doc => { editProperties(doc, { itemIds: intent.itemIds, properties: intent.properties }, undefined, intent.refit === true); });
       case 'addBlankMotionGraphic': return run('Add items', doc => { addBlankGraphic(doc, intent.startMs, intent.endMs); });
       // T22: My Presets (T08's intent) and the preset library share one path; a saved preset's missing fonts and assets are named.
       case 'addGraphicPreset': case 'applyStylePreset': {

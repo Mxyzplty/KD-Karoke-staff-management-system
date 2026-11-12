@@ -18,7 +18,7 @@ import { MASK_KEYS, MASK_RANGE } from '../masks/model';
 import type { MaskKey } from '../masks/model';
 import { isMaskKey, maskProp, maskTarget } from '../masks/keyframes';
 import { editCaptionProperties } from '../captions/properties';
-import { editElements, elementKeys } from '../catalogue/edit';
+import { editElements, elementKeys, refitElements } from '../catalogue/edit';
 import type { Asset } from '../store/model';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -337,7 +337,9 @@ function captionEditResult(r: { results: { itemId: string; changed: string[]; ap
     data: { itemIds: r.results.map(x => x.itemId), changedFields: Object.fromEntries(r.results.map(x => [x.itemId, x.changed])), ...(extra ? { appliedToCount: extra } : {}) } };
 }
 
-export function editProperties(doc: ProjectDocument, args: RecordData, asset: (id: string) => Asset | undefined = () => undefined): RecordData {
+/** `refit`: the caller is the agent's tool or the inline text editor's commit, the two paths after which a text-slot
+ *  element's text is refitted (T22, catalogue/edit.ts). The inspector and the dry runs pass nothing. */
+export function editProperties(doc: ProjectDocument, args: RecordData, asset: (id: string) => Asset | undefined = () => undefined, refit = false): RecordData {
   const props = args.properties, ids: string[] | null = Array.isArray(args.itemIds) ? args.itemIds : args.itemId !== undefined ? [args.itemId] : null;
   if (!props || typeof props !== 'object' || Array.isArray(props) || !Object.keys(props).length) fail('MISSING_PARAM', 'properties is required');
   if (!ids?.length) fail('MISSING_PARAM', 'Provide itemId (single) or itemIds (batch)');
@@ -367,6 +369,7 @@ export function editProperties(doc: ProjectDocument, args: RecordData, asset: (i
   }
   const before = new Map(items.map(i => [i.id, structuredClone(i)])), notes: string[] = [];
   const elements = items.some(i => elementKeys(i, keys).length) ? editElements(items, props, asset) : null;
+  const results: RecordData[] = elements?.results ?? [];
   if (elements) notes.push(...elements.notes);
   for (const i of items) for (const k of keys) {
     if (elementKeys(i, keys).includes(k)) continue;
@@ -374,9 +377,10 @@ export function editProperties(doc: ProjectDocument, args: RecordData, asset: (i
     else if (k !== 'playbackRate') writeProperty(i, k, props[k]);
     else if (props[k] !== rateOf(i)) notes.push(speedNote(changeSpeed(doc, i.id, props[k], false)));
   }
+  if (refit) notes.push(...refitElements(items, props, results));
   const n = items.length;
   return { success: true, message: `Updated ${n} item${n === 1 ? '' : 's'} atomically${notes.length ? `. ${notes.join(' ')}` : ''}`,
-    data: { itemIds: ids, changedFields: Object.fromEntries(items.map(i => [i.id, changedFields(before.get(i.id)!, i)])), ...(elements ? { results: elements.results } : {}) } };
+    data: { itemIds: ids, changedFields: Object.fromEntries(items.map(i => [i.id, changedFields(before.get(i.id)!, i)])), ...(results.length ? { results } : {}) } };
 }
 
 // ---- T15 Use Proxy (findings §2): `details.useProxy` of a video item picks proxy or original for the preview (export always

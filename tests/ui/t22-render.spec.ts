@@ -5,11 +5,12 @@
 // Underline extents are independently derived from its authored cubic extrema and 11px round stroke, not its empty margins.
 // J: <=16 code values per RGB channel, the T10a recolour tolerance (f32 GPU gamut bisection versus f64 oracle §49.19).
 // Slot geometry: C-gt: settled from code, RC 6.1, no stored output; whole item box, vertically centred local text slot.
+// Step 9c / RC 6.3: only a changed inline-text commit refits; one undo restores text and size together.
 import { test, expect, type Page } from '@playwright/test';
 import { findElement } from '../../apps/web/src/catalogue/elements';
 import { recolor as oracleRecolor } from '../../parity/oracle/colour';
 import type { RGB } from '../../parity/oracle/math';
-import { createProject, guard, skipTour } from './t02-support';
+import { createProject, guard, intents, skipTour, stored, watchIntents } from './t02-support';
 import { prop } from './t04-support';
 import { canvasSizeOf, runCanvas, shown } from './t15-support';
 
@@ -163,6 +164,7 @@ async function openSeed(page: Page, item: Rec, colour: number[], catalogueId?: s
     const current = await store.read(projectId); current.document.items = [item]; await store.save(projectId, current.document, current.document.rev);
   }, { projectId, item, colour, catalogueId });
   await page.goto(`/project/${projectId}`); await expect(page.getByRole('status')).toHaveText('Saved locally'); await expect(runCanvas(page)).toBeVisible();
+  return projectId;
 }
 function flatItem(element: Rec): Rec {
   return { id: 'flat', type: 'image', trackId: 'V1', display: { from: 0, to: 4000 }, details: { element }, metadata: { assetId: 'replace' },
@@ -291,4 +293,42 @@ test('L: playing into unseen slot elements shows both pictures and both contents
     if (await pause.isVisible()) await pause.click();
   }
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+});
+
+const inlineSlot = (page: Page): Promise<Rec> => page.evaluate(async () => {
+  const p = '/src/timeline/runtime.ts'; return JSON.parse(JSON.stringify((await import(p)).activeRuntime.bus.doc.items.find((i: Rec) => i.id === 'slot')));
+});
+const inlineLabels = (page: Page) => page.evaluate(async () => { const p = '/src/timeline/runtime.ts'; return (await import(p)).activeRuntime.bus.labels() as string[]; });
+async function editableSlot(page: Page) {
+  const item = slotItem('label-tag'); item.properties.fontSize = prop(16);
+  const projectId = await openSeed(page, item, [255, 0, 255], 'label-tag'); await watchIntents(page);
+  await expect(page.getByTitle('Double-click to edit the text', { exact: true })).toHaveCount(1);
+  return projectId;
+}
+test('RC 6.3: changed inline text commits text and refit as one Edit items; one Undo restores both', async ({ page }) => {
+  await editableSlot(page); const before = await inlineSlot(page), text = 'A long inline sentence that must wrap. '.repeat(100);
+  // The slot's authored fractions give W=320*(600/720), H=(320/3)*(160/240). Even size 8 is too tall.
+  const heightAtEight = await page.evaluate(async text => {
+    const p = '/src/timeline/runtime.ts', m = '/src/text/tools.ts', item = structuredClone((await import(p)).activeRuntime.bus.doc.items.find((i: Rec) => i.id === 'slot'));
+    item.details.text = text; item.properties.fontSize.defaultValue = 8;
+    return (await import(m)).measureText(item, item.properties.width.defaultValue * (600 / 720)).height as number;
+  }, text);
+  expect(heightAtEight).toBeGreaterThan((320 / 3) * (160 / 240));
+  await page.getByTitle('Double-click to edit the text', { exact: true }).dblclick(); const editor = page.getByRole('textbox', { name: 'Edit text', exact: true });
+  await expect(editor).toBeFocused(); await editor.fill(text); await editor.press('Escape'); await expect(editor).toHaveCount(0);
+  await expect.poll(async () => (await inlineSlot(page)).properties.fontSize.defaultValue).toBe(8); expect((await inlineSlot(page)).details.text).toBe(text);
+  const edits = (await intents(page)).filter(e => e.intent.type === 'editTextProperties'); expect(edits).toHaveLength(1);
+  expect(edits[0]).toMatchObject({ intent: { type: 'editTextProperties', itemIds: ['slot'], properties: { text }, refit: true }, outcome: { ok: true } });
+  expect(await inlineLabels(page)).toEqual(['Edit items']);
+  await page.getByRole('button', { name: 'Undo', exact: true }).first().click(); await expect.poll(async () => (await inlineSlot(page)).details.text).toBe('HI');
+  expect(await inlineSlot(page)).toEqual(before); expect(await inlineLabels(page)).toEqual([]); await expect(page.getByRole('button', { name: 'Undo', exact: true }).first()).toBeDisabled();
+});
+for (const typeBack of [false, true]) test(`RC 6.3: inline commit with the same text writes nothing (${typeBack ? 'typed away and back' : 'unchanged Escape'})`, async ({ page }) => {
+  const projectId = await editableSlot(page), before = await stored(page, projectId), item = await inlineSlot(page);
+  await page.getByTitle('Double-click to edit the text', { exact: true }).dblclick(); const editor = page.getByRole('textbox', { name: 'Edit text', exact: true }); await expect(editor).toBeFocused();
+  if (typeBack) { await editor.fill('Temporary replacement'); await editor.fill('HI'); }
+  await editor.press('Escape'); await expect(editor).toHaveCount(0);
+  expect((await intents(page)).filter(e => e.intent.type === 'editTextProperties')).toEqual([]); expect(await inlineLabels(page)).toEqual([]); expect(await inlineSlot(page)).toEqual(item);
+  const after = await stored(page, projectId); expect(after.json).toBe(before.json); expect(after.rev).toBe(before.rev); expect(after.updated).toBe(before.updated);
+  expect(await page.evaluate(async () => { const p = '/src/editor.tsx'; return (await import(p)).activeSession.state; })).toBe('saved');
 });

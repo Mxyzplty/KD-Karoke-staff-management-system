@@ -82,7 +82,7 @@ export type Intent =
   | { type: 'addPathKeyframe'; itemId: string; playheadMs: number }
   /** T05: the Text panel's Add text preset (findings part 2 §40; W3-ED-22); several text keys as one edit (a preset tile). */
   | { type: 'addTextPreset' }
-  | { type: 'editTextProperties'; itemIds: string[]; properties: RecordData }
+  | { type: 'editTextProperties'; itemIds: string[]; properties: RecordData; refit?: true }
   /** T09: the Captions panel's Generate / Regenerate. The resolved transcript map travels with the intent (the handler
    *  cannot await); the handler builds the sources and auto-creates the caption track(s) (generate()'s pickTrack / speakerTrack). */
   | { type: 'generateCaptions'; button: SourceButton; sourceItems?: string[]; range: { startMs: number; endMs: number } | null; split: boolean; templateId?: string; maxWords?: number; maxCharacters?: number; fontSize?: number; borderWidth?: number; fontFamily?: string; fontWeight?: string; fontStyle?: string; color?: string; backgroundColor?: string; textDecoration?: string; borderColor?: string; boxShadow?: RecordData; breakOnPunctuation: boolean; breakOnConjunctions: boolean; reset: boolean; data: Record<string, SourceData> }

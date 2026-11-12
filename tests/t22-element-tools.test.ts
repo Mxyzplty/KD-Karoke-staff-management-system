@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 step 3: addMedia and editProperties through callTool, with our own ToolContext and asset lookup.
-// Geometry oracle: C-gt: settled from code, RC 6.1, no stored output; T22 Step 3 interfaces and plan S3 for envelopes,
+// Geometry/refit oracle: C-gt: settled from code, RC 6.1/6.3, no stored output; T22 Step 3 interfaces and plan S3 for envelopes,
 // error rows 101/102/105/143/144 and tool results addMedia / editProperties normal path. The newer notes retain
 // per-item failure codes (unlike the older captured envelope). Expected geometry is local arithmetic, not place.ts/edit.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -8,8 +8,11 @@ import type { Asset, RecordData } from '../apps/web/src/store/model';
 import { CommandBus } from '../apps/web/src/timeline/bus';
 import { callTool } from '../apps/web/src/timeline/tools';
 import type { ToolContext, ToolResult } from '../apps/web/src/timeline/tools';
-import { findElement } from '../apps/web/src/catalogue/elements';
+import { ELEMENTS, findElement } from '../apps/web/src/catalogue/elements';
+import type { CatalogueElement } from '../apps/web/src/catalogue/elements';
+import { placeElement } from '../apps/web/src/catalogue/place';
 import { findSound } from '../apps/web/src/catalogue/sounds';
+import { measureText } from '../apps/web/src/text/tools';
 import { assets, build, itemOf, mkItem, mkTrack, resetIds, useIds, video } from './t03-fixtures';
 
 beforeEach(() => useIds());
@@ -71,6 +74,21 @@ function expectElementNote(result: ToolResult, id: string, meaning: RegExp) {
   expect(result.message).toMatch(meaning);
   expect([e.id, e.name, 'target'].some(name => result.message.includes(name))).toBe(true);
 }
+// RC 6.1/6.3: the only shared oracle is T05's height measurement. Try candidate integers in ascending order on a
+// separate fixture; slot dimensions, limits and maximum are local, never read from the refit or tool's result.
+function expectedRefit(item: RecordData, slotWidth: number, slotHeight: number): number {
+  const candidate = structuredClone(item), upper = Math.min(400, Math.floor(slotHeight)); let largest = 8;
+  for (let size = 8; size <= upper; size++) {
+    candidate.properties.fontSize.defaultValue = size;
+    if (measureText(candidate, slotWidth).height <= slotHeight) largest = size;
+  }
+  return largest;
+}
+const SELF_SIZED = 'the text sizes itself to its bubble; resize the bubble to change it';
+const PROPORTIONS = 'keeps its proportions: height follows width';
+const fitSentence = (id: string, size: number) => `${id}'s text fits its bubble at fontSize ${size}.`;
+const sizeSentence = (id: string, size: number, asked: number) => `${id}'s text sizes itself to its bubble: fontSize ${size}, not ${asked}. Resize the bubble to change it.`;
+function boxOf(item: RecordData) { return Object.fromEntries(['positionX', 'positionY', 'width', 'height'].map(key => [key, structuredClone(item.properties[key])])); }
 
 describe('addMedia catalogue elements: result, track, bounds and one atomic undo', () => {
   for (const spec of ELEMENT_CASES) for (const bounded of [false, true]) it(`${spec.id}, ${bounded ? 'with' : 'without'} bounds`, () => {
@@ -216,17 +234,18 @@ describe('editProperties element media: openings, clearing, keep and validation'
   });
 });
 
-describe('A13 C-gt: settled from code, RC 6.1, no stored output — resize stores whole dimensions at the same corner', () => {
-  it.each([{ width: 200 }, { height: 200 }, { width: 200, height: 400 }])('non-stretch star %j stays square, width wins (our note, open with lane R)', properties => {
+describe('A13 C-gt: settled from code, RC 6.1/6.3, no stored output — resize stores whole dimensions at the same corner', () => {
+  it.each([{ width: 200 }, { height: 200 }, { width: 200, height: 400 }])('non-stretch star %j stays square, width wins; an ignored height is data only', properties => {
     const w = withItems(elementItem('sticker-star')), r = edit(w, properties);
     expect(r.success, json(r)).toBe(true); expect(drawnSize(itemOf(w.doc, 'target'))).toEqual({ width: 200, height: 200 });
     expect(itemOf(w.doc, 'target').properties.positionX).toEqual(prop(37)); expect(itemOf(w.doc, 'target').properties.positionY).toEqual(prop(83));
-    // This prose is our note, open with lane R; the width-priority geometry itself is settled in RC 6.1.
-    if ('width' in properties && 'height' in properties) expectElementNote(r, 'sticker-star', /proportion|aspect/i);
+    expect(r.message).toBe('Updated 1 item atomically');
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 200, height: 200 }, ...('width' in properties && 'height' in properties ? { ignored: { height: PROPORTIONS } } : {}) }]);
   });
   it('stretch sets both dimensions independently', () => {
     const w = withItems(elementItem('underline-scribble')), r = edit(w, { width: 300, height: 75 });
     expect(r.success, json(r)).toBe(true); expect(drawnSize(itemOf(w.doc, 'target'))).toEqual({ width: 300, height: 75 });
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 300, height: 75 } }]); expect(r.message).toBe('Updated 1 item atomically');
   });
   it.each(['width', 'height'])('text-slot %s resize keeps element origin (37,83), not the old text-slot origin', key => {
     const w = withItems(elementItem('label-tag')), r = edit(w, { [key]: key === 'width' ? 360 : 120 });
@@ -247,9 +266,11 @@ describe('A13 C-gt: settled from code, RC 6.1, no stored output — resize store
     const w = withItems(elementItem('underline-scribble')), r = edit(w, dimensions); expect(r.success, json(r)).toBe(true);
     expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ width: dimensions.width ?? 800, height: dimensions.height ?? 120, positionX: 37, positionY: 83 }));
   });
-  for (const key of ['width', 'height']) it.each([0, -1, NaN, Infinity, -Infinity])(`${key} %s refuses INVALID_PROPERTY_VALUE without changes`, value => {
-    const w = withItems(elementItem('sticker-star')), before = json(w.doc), r = edit(w, { [key]: value });
-    refused(w, before, r, 'INVALID_PROPERTY_VALUE');
+  for (const key of ['width', 'height']) it.each([0, -1, NaN, Infinity, -Infinity, '200', null, undefined])(`${key} %s refuses INVALID_PROPERTY_VALUE without changes for all three element kinds`, value => {
+    for (const { id } of ELEMENT_CASES) {
+      const w = withItems(elementItem(id)), before = json(w.doc), r = edit(w, { [key]: value });
+      refused(w, before, r, 'INVALID_PROPERTY_VALUE'); expect(r.error).toBe("An element's width and height must be positive.");
+    }
   });
   it('ordinary width is still the old property path, also inside a mixed element/non-element batch', () => {
     const ordinary = mkItem('ordinary', 'V2', 0, 3000, { type: 'image', properties: stored({ width: 500, height: 100, scale: 1 }) });
@@ -262,11 +283,165 @@ describe('A13 C-gt: settled from code, RC 6.1, no stored output — resize store
   });
 });
 
-describe('text-slot refit integration checkpoint', () => {
-  it('refit not wired yet, open with lane R', () => {
-    const w = withItems(elementItem('label-tag')), before = itemOf(w.doc, 'target').properties.fontSize;
-    const r = edit(w, { text: 'A long line that will need to wrap. '.repeat(30) });
-    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(before);
+describe('RC 6.3: fixed-element resize follows the current box ratio, with data-only height refusals', () => {
+  for (const id of ['sticker-star', 'label-tag', 'phone-frame']) it.each([
+    { label: '600/400 uses 600/300 and ignores height', asked: { width: 600, height: 400 }, used: { width: 600, height: 300 }, ignored: true },
+    { label: '600/300.4 uses 600/300 with no ignored height', asked: { width: 600, height: 300.4 }, used: { width: 600, height: 300 }, ignored: false },
+    { label: 'height alone divides by current ratio, without rounding', asked: { height: 100.25 }, used: { width: 200.5, height: 100.25 }, ignored: false },
+    { label: 'width alone multiplies by current ratio, without rounding', asked: { width: 600.25 }, used: { width: 600.25, height: 300.125 }, ignored: false },
+  ])(`${id}: $label`, ({ asked, used, ignored }) => {
+    const item = elementItem(id); Object.assign(item.properties, stored({ width: 400, height: 200 }));
+    const w = withItems(item), r = edit(w, asked); expect(r.success, json(r)).toBe(true);
+    expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ ...used, positionX: 37, positionY: 83, scale: 1 }));
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: used, ...(ignored ? { ignored: { height: PROPORTIONS } } : {}) }]);
+    expect(r.message).toBe('Updated 1 item atomically');
+  });
+  it.each([{ height: 299.5, ignored: false }, { height: 300.5, ignored: false }, { height: 299.4999, ignored: true }, { height: 300.5001, ignored: true }])(
+    'asked height $height: the absolute discrepancy must be more than 0.5 to be ignored', ({ height, ignored }) => {
+      const item = elementItem('sticker-star'); Object.assign(item.properties, stored({ width: 400, height: 200 }));
+      const w = withItems(item), r = edit(w, { width: 600, height }); expect(r.success, json(r)).toBe(true);
+      expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 600, height: 300 }, ...(ignored ? { ignored: { height: PROPORTIONS } } : {}) }]); expect(r.message).toBe('Updated 1 item atomically');
+    });
+  it.each([
+    { width: 0, height: 200, asked: { width: 600 }, used: { width: 600, height: 600 * (240 / 720) } },
+    { width: 400, height: 0, asked: { width: 600 }, used: { width: 600, height: 600 * (240 / 720) } },
+    { width: 0, height: 0, asked: { height: 60 }, used: { width: 60 / (240 / 720), height: 60 } },
+  ])('empty box $width × $height uses label-tag natural ratio 240/720 only as a fallback', ({ width, height, asked, used }) => {
+    const item = elementItem('label-tag'); Object.assign(item.properties, stored({ width, height })); const w = withItems(item), r = edit(w, asked);
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ ...used, positionX: 37, positionY: 83 }));
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: used }]); expect(r.message).toBe('Updated 1 item atomically');
+  });
+});
+
+describe('RC 6.1/6.3: the real agent editProperties handler refits non-blank text-slot elements', () => {
+  it('setting text through the tool refits and reports the applied size even without an element field', () => {
+    const item = elementItem('label-tag'), text = 'A long line that will need to wrap. '.repeat(30), expected = structuredClone(item); expected.details.text = text;
+    const fitted = expectedRefit(expected, 720 * (600 / 720), 240 * (160 / 240)), w = withItems(item), r = edit(w, { text });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(prop(fitted)); expect(fitted).not.toBe(48);
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { fontSize: fitted } }]); expect(r.message).toBe(`Updated 1 item atomically. ${fitSentence('target', fitted)}`);
+    expect(r.data.changedFields.target).toContain('properties.fontSize'); expect(r.timelineChanges.items.updated.find((i: RecordData) => i.itemId === 'target').changedFields).toContain('properties.fontSize');
+  });
+  it('one width + text call resizes 300 × 150 to 600 × 300 before fitting the new text in its 480 × 150 slot', () => {
+    // Approved test-only catalogue data: no production helper or catalogue value supplies the .8 × .5 oracle.
+    const synthetic: CatalogueElement = { id: 't22-test-refit-bubble', name: 'Test refit bubble', group: 'bubble', file: 'test-only-refit.svg', width: 400, height: 200, palette: [],
+      slot: { kind: 'text', box: { x: 0.1, y: 0.25, width: 0.8, height: 0.5 }, fontFamily: 'Roboto', fontWeight: 400 } };
+    const catalogue = ELEMENTS as CatalogueElement[]; catalogue.push(synthetic);
+    try {
+      const item = placeElement(synthetic, SIZE, { trackId: 'O1', assetId: 'test-picture', bounds: { x: 37, y: 83, width: 300, height: 150 } }); item.id = 'target'; item.details.text = 'Before';
+      const text = 'The new text must wrap within the resized bubble. '.repeat(4), expected = structuredClone(item); Object.assign(expected.properties, stored({ width: 600, height: 300 })); expected.details.text = text;
+      const fitted = expectedRefit(expected, 600 * 0.8, 300 * 0.5), w = withItems(item), r = edit(w, { width: 600, text });
+      expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ width: 600, height: 300, positionX: 37, positionY: 83, fontSize: fitted })); expect(itemOf(w.doc, 'target').details.text).toBe(text);
+      expect([600 * 0.8, 300 * 0.5, 8, Math.min(400, Math.floor(300 * 0.5))]).toEqual([480, 150, 8, 150]);
+      expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 600, height: 300, fontSize: fitted } }]); expect(r.message).toBe(`Updated 1 item atomically. ${fitSentence('target', fitted)}`);
+    } finally { const at = catalogue.indexOf(synthetic); if (at >= 0) catalogue.splice(at, 1); }
+  });
+  it('the same combined resize/text edit uses the real label-tag fractions on its new box', () => {
+    const item = elementItem('label-tag'); Object.assign(item.properties, stored({ width: 300, height: 150 })); item.details.text = 'Before';
+    const text = 'The new text must wrap within the resized bubble. '.repeat(4), expected = structuredClone(item); Object.assign(expected.properties, stored({ width: 600, height: 300 })); expected.details.text = text;
+    const slotW = 600 * (600 / 720), slotH = 300 * (160 / 240), fitted = expectedRefit(expected, slotW, slotH), w = withItems(item), r = edit(w, { width: 600, text });
+    expect([slotW, slotH]).toEqual([500, 200]); expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ width: 600, height: 300, fontSize: fitted })); expect(itemOf(w.doc, 'target').details.text).toBe(text);
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 600, height: 300, fontSize: fitted } }]);
+  });
+  it('a height-only agent resize refits existing text inside the new proportional whole box', () => {
+    const item = elementItem('label-tag'); item.details.text = 'H'; const expected = structuredClone(item); Object.assign(expected.properties, stored({ width: 360, height: 120 }));
+    const fitted = expectedRefit(expected, 360 * (600 / 720), 120 * (160 / 240)), w = withItems(item), r = edit(w, { height: 120 });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ width: 360, height: 120, fontSize: fitted, positionX: 37, positionY: 83 }));
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 360, height: 120, fontSize: fitted } }]); expect(r.message).toBe(`Updated 1 item atomically. ${fitSentence('target', fitted)}`);
+  });
+  it.each([
+    { key: 'text', value: 'New wrapped text' }, { key: 'fontFamily', value: 'Roboto-Regular' }, { key: 'fontWeight', value: 400 }, { key: 'fontStyle', value: 'italic' },
+    { key: 'fontSize', value: 1000 }, { key: 'letterSpacing', value: 2 }, { key: 'lineHeight', value: 1.5 }, { key: 'wordSpacing', value: 3 },
+    { key: 'textTransform', value: 'uppercase' }, { key: 'look', value: null }, { key: 'width', value: 720 }, { key: 'height', value: 240 },
+  ])('agent trigger $key refits, including when the requested field was already equal', ({ key, value }) => {
+    const item = elementItem('label-tag'); item.details.text = 'Mixed case words'; item.properties.fontSize = prop(1);
+    const expected = structuredClone(item);
+    if (key === 'text') expected.details.text = value;
+    else if (key === 'fontFamily') { expected.details.fontFamily = 'Roboto-Regular'; expected.details.fontFamilyDisplay = 'Roboto'; Object.assign(expected.properties, stored({ fontWeight: 400, fontStyle: 'normal' })); }
+    else if (key !== 'look') expected.properties[key] = prop(value);
+    const fitted = expectedRefit(expected, 720 * (600 / 720), 240 * (160 / 240)), beforeBox = boxOf(item), w = withItems(item), r = edit(w, { [key]: value }), after = itemOf(w.doc, 'target');
+    expect(r.success, json(r)).toBe(true); expect(after.properties.fontSize).toEqual(prop(fitted)); expect(boxOf(after)).toEqual(beforeBox);
+    if (key === 'text') expect(after.details.text).toBe(value);
+    else if (key === 'fontFamily') expect(after.details.fontFamily).toBe('Roboto-Regular');
+    else if (key !== 'look' && key !== 'fontSize') expect(after.properties[key]).toEqual(prop(value));
+    const applied = { ...(['width', 'height'].includes(key) ? { width: 720, height: 240 } : {}), fontSize: fitted };
+    expect(r.data.results).toEqual([{ itemId: 'target', applied, ...(key === 'fontSize' ? { ignored: { fontSize: SELF_SIZED } } : {}) }]);
+    expect(r.message).toBe(`Updated 1 item atomically. ${key === 'fontSize' ? sizeSentence('target', fitted, 1000) : fitSentence('target', fitted)}`);
+  });
+  it.each([false, true])('asked fontSize equals fitted size = %s: exact applied/ignored entry and sentence', same => {
+    const item = elementItem('label-tag'); item.details.text = 'H'; const fitted = expectedRefit(item, 600, 160), asked = same ? fitted : 1000, w = withItems(item), r = edit(w, { fontSize: asked });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(prop(fitted));
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { fontSize: fitted }, ...(!same ? { ignored: { fontSize: SELF_SIZED } } : {}) }]);
+    expect(r.message).toBe(`Updated 1 item atomically. ${same ? fitSentence('target', fitted) : sizeSentence('target', fitted, asked)}`);
+  });
+  it('the agent fontSize write and refit replace only the base value, keeping every font-size keyframe', () => {
+    const item = elementItem('label-tag'), text = 'too many words '.repeat(100), keyframes = [{ id: 'size-a', time: 1000, value: 20, easing: 'linear' }, { id: 'size-b', time: 2000, value: 24 }];
+    Object.assign(item.properties, stored({ width: 36, height: 30 })); item.details.text = text; item.properties.fontSize = { defaultValue: 48, keyframes: structuredClone(keyframes) };
+    // Even unanimated size 8 cannot fit the locally computed 30 × 20 slot, so the fallback is unambiguously 8.
+    const smallest = structuredClone(item); smallest.properties.fontSize = prop(8); expect(measureText(smallest, 36 * (600 / 720)).height).toBeGreaterThan(30 * (160 / 240));
+    const w = withItems(item), r = edit(w, { fontSize: 1000 }); expect(r.success, json(r)).toBe(true);
+    expect(itemOf(w.doc, 'target').properties.fontSize).toEqual({ defaultValue: 8, keyframes });
+    expect(r.data.results).toEqual([{ itemId: 'target', applied: { fontSize: 8 }, ignored: { fontSize: SELF_SIZED } }]); expect(r.message).toBe(`Updated 1 item atomically. ${sizeSentence('target', 8, 1000)}`);
+  });
+  it.each([false, true])('refit changes the stored size = %s: fontSize appears in both changedFields views only then', changed => {
+    const item = elementItem('label-tag'), text = 'After', expected = structuredClone(item); item.details.text = 'Before'; expected.details.text = text;
+    const fitted = expectedRefit(expected, 600, 160); item.properties.fontSize = prop(changed ? 1 : fitted);
+    const w = withItems(item), r = edit(w, { text, fontSize: 1000 }); expect(r.success, json(r)).toBe(true); expect(r.data.results[0].applied.fontSize).toBe(fitted);
+    const toolFields = r.data.changedFields.target, timelineFields = r.timelineChanges.items.updated.find((i: RecordData) => i.itemId === 'target').changedFields;
+    for (const fields of [toolFields, timelineFields]) { expect(fields).toContain('details.text'); expect(fields.includes('properties.fontSize')).toBe(changed); }
+    expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(prop(fitted));
+  });
+  it.each(['', ' \t\n '])('blank text %j is written but never refitted or reported as a refit', text => {
+    const item = elementItem('label-tag'); item.details.text = 'Before'; const w = withItems(item), r = edit(w, { text });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').details.text).toBe(text); expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(prop(48));
+    expect(r.data).not.toHaveProperty('results'); expect(r.message).toBe('Updated 1 item atomically'); expect(r.data.changedFields.target).not.toContain('properties.fontSize');
+  });
+  it('opacity has no trigger: non-blank, badly fitting slot text keeps its fontSize and has no result sentence', () => {
+    const item = elementItem('label-tag'); item.details.text = 'Too many words to fit at 48. '.repeat(100); const w = withItems(item), r = edit(w, { opacity: 0.5 });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ fontSize: 48, opacity: 0.5 }));
+    expect(r.data).not.toHaveProperty('results'); expect(r.message).toBe('Updated 1 item atomically'); expect(r.data.changedFields.target).not.toContain('properties.fontSize');
+  });
+  it('a mixed slot/ordinary-text batch refits and reports only the slot item', () => {
+    const slot = elementItem('label-tag'), plain = mkItem('plain', 'O1', 0, 3000, { type: 'text', details: { text: 'Before', fontFamily: 'Roboto-Regular', fontFamilyDisplay: 'Roboto' }, properties: stored({ width: 720, height: 240, fontSize: 125 }) });
+    slot.details.text = 'Before'; const text = 'New words in both text items', expected = structuredClone(slot); expected.details.text = text;
+    const fitted = expectedRefit(expected, 600, 160), w = withItems(slot, plain), r = edit(w, { text }, ['target', 'plain']);
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(prop(fitted)); expect(itemOf(w.doc, 'plain').properties.fontSize).toEqual(prop(125));
+    expect(itemOf(w.doc, 'plain').details.text).toBe(text); expect(r.data.results).toEqual([{ itemId: 'target', applied: { fontSize: fitted } }]); expect(r.message).toBe(`Updated 2 items atomically. ${fitSentence('target', fitted)}`); expect(r.data.changedFields.plain).not.toContain('properties.fontSize');
+  });
+  it('element notes precede one fit sentence per refitted item, in target order', () => {
+    const first = elementItem('label-tag'), second = elementItem('label-tag', 'second'), text = 'After';
+    const expected = structuredClone(first); expected.details.text = text; const fitted = expectedRefit(expected, 600, 160), w = withItems(first, second), r = edit(w, { colors: ['#123456'], text }, ['target', 'second']);
+    expect(r.success, json(r)).toBe(true);
+    expect(r.message).toBe(`Updated 2 items atomically. Label tag: set Fill to #123456. Label tag: set Fill to #123456. ${fitSentence('target', fitted)} ${fitSentence('second', fitted)}`);
+    expect(r.data.results).toEqual(['target', 'second'].map(itemId => ({ itemId, applied: { colors: { Fill: '#123456' }, fontSize: fitted } })));
+  });
+  it('an ignored proportional height and an ignored requested font size coexist; only the refit has a sentence', () => {
+    const item = elementItem('label-tag'); item.details.text = 'Before'; Object.assign(item.properties, stored({ width: 400, height: 200 }));
+    const text = 'After', expected = structuredClone(item); Object.assign(expected.properties, stored({ width: 600, height: 300 })); expected.details.text = text;
+    const fitted = expectedRefit(expected, 600 * (600 / 720), 300 * (160 / 240)), w = withItems(item), r = edit(w, { width: 600, height: 400, text, fontSize: 1000 });
+    expect(r.success, json(r)).toBe(true); expect(r.data.results).toEqual([{ itemId: 'target', applied: { width: 600, height: 300, fontSize: fitted }, ignored: { height: PROPORTIONS, fontSize: SELF_SIZED } }]);
+    expect(r.message).toBe(`Updated 1 item atomically. ${sizeSentence('target', fitted, 1000)}`);
+  });
+});
+
+describe('RC 6.3 / lane A: refused edits are atomic at the public agent-tool/bus boundary', () => {
+  function check(items: RecordData[], properties: RecordData, ids: string[], code: string, error?: string) {
+    const doc = base(); doc.rev = 17; doc.items.push(...items); const w = world(doc);
+    // Keep real existing history on both sides, so a refusal must preserve it rather than merely leave empty stacks.
+    expect(edit(w, { zIndex: 3 }, ids[0]).success).toBe(true); expect(edit(w, { blendMode: 'multiply' }, ids[0]).success).toBe(true); w.bus.undo();
+    expect(w.bus.undoStack).toHaveLength(1); expect(w.bus.redoStack).toHaveLength(1);
+    const before = structuredClone({ doc: w.doc, undo: w.bus.undoStack, redo: w.bus.redoStack, journal: w.journal }), result = edit(w, properties, ids);
+    expect(result).toMatchObject({ success: false, code, ...(error ? { error } : {}) }); expect(result.timelineChanges).toBeUndefined();
+    expect(w.doc).toEqual(before.doc); expect(w.doc.rev).toBe(17); expect(w.bus.undoStack).toEqual(before.undo); expect(w.bus.redoStack).toEqual(before.redo); expect(w.journal).toEqual(before.journal);
+  }
+  it('valid image-element colours plus bad width leave document, revision and both history stacks unchanged', () => {
+    check([elementItem('sticker-star')], { colors: ['#123456'], width: 0 }, ['target'], 'INVALID_PROPERTY_VALUE', "An element's width and height must be positive.");
+  });
+  it('a later refused batch target rolls back the earlier target, including its valid colours and media', () => {
+    check([elementItem('phone-frame', 'first'), elementItem('split-frame', 'second')], { colors: ['#123456'], media: ['asset-img1', 'missing'] }, ['first', 'second'], 'MEDIA_NOT_FOUND', 'Media asset not found');
+  });
+  it('a refused trigger-key call on the agent refit path leaves text, box, font size, revision and history unchanged', () => {
+    const item = elementItem('label-tag'); item.details.text = 'Before';
+    check([item], { colors: ['#123456'], width: 600, text: 'After', fontFamily: 'No Such Refit Font' }, ['target'], 'FONT_NOT_FOUND');
   });
 });
 

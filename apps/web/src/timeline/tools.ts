@@ -223,7 +223,7 @@ const transformItem: Handler = (ctx, args) => run(ctx, 'Edit items', doc => {
 const editPropertiesTool: Handler = (ctx, args) => run(ctx, 'Edit items', (doc, tx) => {
   // A speed-only edit gets the UI speed control's label (UI/tool parity; provisional for the tool).
   if (args.properties && Object.keys(args.properties).join() === 'playbackRate') tx.label = 'Change speed';
-  return editProperties(doc, args, ctx.asset);
+  return editProperties(doc, args, ctx.asset, true);
 });
 const writeKeyframesTool: Handler = (ctx, args) => run(ctx, 'Edit items', doc => writeKeyframes(doc, args));
 const setTimeRemapTool: Handler = (ctx, args) => run(ctx, 'Edit items', doc => setTimeRemap(doc, args));

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// A13 C-gt: settled from code, RC 6.1, no stored output — slot text drawing and the standalone refit search.
+// A13 C-gt: settled from code, RC 6.1/6.3, no stored output — slot drawing, refit search and the two approved refit paths.
 // Drawer oracle: literal fixture metrics (10px/character, 20px line height), local slot arithmetic and vertical centring.
 // Refit oracle: defining height/maximality properties measured by T05's measureText, not a magic approximate Node font size.
 import { afterEach, describe, expect, it } from 'vitest';
@@ -12,8 +12,10 @@ import type { Ctx } from '../apps/web/src/text/measure';
 import { measureText } from '../apps/web/src/text/tools';
 import { REFIT, refitSlotText } from '../apps/web/src/catalogue/edit';
 import { findElement } from '../apps/web/src/catalogue/elements';
+import { editProperties } from '../apps/web/src/timeline/edits';
+import { createEditor } from '../apps/web/src/timeline/harness';
 import type { RecordData } from '../apps/web/src/store/model';
-import { mkItem } from './t03-fixtures';
+import { build, itemOf, mkItem, mkTrack } from './t03-fixtures';
 
 afterEach(() => clearLayouts());
 const prop = (defaultValue: unknown) => ({ defaultValue, keyframes: [] });
@@ -81,13 +83,60 @@ describe('RC 6.1 standalone text-slot refit: whole integer maximum and minimum f
     const item = slotItem('too many words '.repeat(100), 'label-tag', 36, 30), width = 36 * (600 / 720), height = 30 * (160 / 240);
     expect(refitSlotText(item)).toBe(8); expect(measureText(item, width).height).toBeGreaterThan(height); expect(item.properties.fontSize).toEqual(prop(8));
   });
-  it.each(['ordinary text', 'plain image', 'media layout', 'empty text', 'unknown slot'])('%s returns null and changes nothing', kind => {
+  it.each(['ordinary text', 'plain image', 'media layout', 'empty text', 'whitespace text', 'unknown slot'])('%s returns null and changes nothing', kind => {
     const item = slotItem();
     if (kind === 'ordinary text') delete item.details.element;
     if (kind === 'plain image') { item.type = 'image'; item.details.element = { id: 'sticker-star' }; }
     if (kind === 'media layout') { item.type = 'layout'; item.details.element = { id: 'phone-frame', slot: 'media' }; item.details.layoutType = 'element'; item.details.cells = []; }
     if (kind === 'empty text') item.details.text = '';
+    if (kind === 'whitespace text') item.details.text = ' \t\n ';
     if (kind === 'unknown slot') item.details.element.id = 'missing';
     const before = structuredClone(item); expect(refitSlotText(item)).toBeNull(); expect(item).toEqual(before);
+  });
+  it('standalone refit changes the base size and retains font-size keyframes on the minimum fallback', () => {
+    const item = slotItem('too many words '.repeat(100), 'label-tag', 36, 30), keyframes = [{ id: 'size-a', time: 1000, value: 20, easing: 'linear' }, { id: 'size-b', time: 2000, value: 24 }];
+    item.properties.fontSize = { defaultValue: 48, keyframes: structuredClone(keyframes) };
+    expect(refitSlotText(item)).toBe(8); expect(item.properties.fontSize).toEqual({ defaultValue: 8, keyframes });
+  });
+});
+
+const project = (item: RecordData) => build({ tracks: [mkTrack('O1', 'overlay')], items: [item], extra: { size: { width: 1080, height: 1920 } } });
+const box = (item: RecordData) => Object.fromEntries(['width', 'height', 'positionX', 'positionY'].map(key => [key, structuredClone(item.properties[key])]));
+describe('RC 6.3 / D77: only the agent and explicitly flagged inline commit refit; inspector font edits never resize the box', () => {
+  it.each(['omitted', 'false'])('editProperties fourth argument %s does not refit a non-blank slot', flag => {
+    const doc = project(slotItem()), args = { itemId: 'slot', properties: { fontSize: 125 } };
+    const result = flag === 'omitted' ? editProperties(doc, args) : editProperties(doc, args, undefined, false);
+    expect(result.success).toBe(true); expect(itemOf(doc, 'slot').properties.fontSize).toEqual(prop(125)); expect(result.data).not.toHaveProperty('results'); expect(result.message).toBe('Updated 1 item atomically');
+  });
+  for (const refit of [false, true]) it.each(['ordinary text', 'media layout'])('%s never refits with flag ' + refit, kind => {
+    const item = slotItem(); let properties: RecordData;
+    if (kind === 'ordinary text') { delete item.details.element; properties = { text: 'New ordinary text', fontSize: 125 }; }
+    else {
+      item.type = 'layout'; item.details = { element: { id: 'phone-frame', slot: 'media' }, layoutType: 'element', gap: 0, borderRadius: 0, cells: [] };
+      Object.assign(item.properties, props({ width: 540, height: 1080 })); properties = { width: 270 };
+    }
+    const doc = project(item), result = editProperties(doc, { itemId: 'slot', properties }, undefined, refit);
+    expect(result.success).toBe(true); expect(result.message).toBe('Updated 1 item atomically');
+    if (kind === 'ordinary text') { expect(itemOf(doc, 'slot').properties.fontSize).toEqual(prop(125)); expect(result.data).not.toHaveProperty('results'); }
+    else { expect(itemOf(doc, 'slot').properties.fontSize).toEqual(prop(48)); expect(result.data.results).toEqual([{ itemId: 'slot', applied: { width: 270, height: 540 } }]); }
+  });
+  for (const path of ['editProperty', 'editTextProperties'] as const) it.each([
+    { key: 'fontSize', value: 125 }, { key: 'fontFamily', value: 'Roboto-Bold' },
+  ])(`D77 ${path} without refit: $key changes no width, height or position property`, ({ key, value }) => {
+    const item = slotItem(), beforeBox = box(item), editor = createEditor(project(item));
+    const result = path === 'editProperty' ? editor.intent({ type: path, itemIds: ['slot'], owner: 'T05', label: 'Font', key, value })
+      : editor.intent({ type: path, itemIds: ['slot'], properties: { [key]: value } });
+    expect(result).toEqual({ ok: true }); const after = itemOf(editor.doc, 'slot'); expect(box(after)).toEqual(beforeBox);
+    if (key === 'fontSize') expect(after.properties.fontSize).toEqual(prop(125));
+    else { expect(after.details.fontFamily).toBe('Roboto-Bold'); expect(after.properties.fontSize).toEqual(prop(48)); }
+    expect(editor.labels()).toEqual(['Edit items']);
+  });
+  it('the explicitly flagged inline-commit intent refits and one Undo restores both text and size', () => {
+    const item = slotItem('Before', 'label-tag', 36, 30), editor = createEditor(project(item)), before = structuredClone(editor.doc), text = 'too many words '.repeat(100);
+    const smallest = structuredClone(item); smallest.details.text = text; smallest.properties.fontSize = prop(8); expect(measureText(smallest, 36 * (600 / 720)).height).toBeGreaterThan(30 * (160 / 240));
+    expect(editor.intent({ type: 'editTextProperties', itemIds: ['slot'], properties: { text }, refit: true })).toEqual({ ok: true });
+    expect(itemOf(editor.doc, 'slot').details.text).toBe(text); expect(itemOf(editor.doc, 'slot').properties.fontSize).toEqual(prop(8)); expect(box(itemOf(editor.doc, 'slot'))).toEqual(box(item));
+    expect(editor.labels()).toEqual(['Edit items']); expect(editor.bus.undoStack).toHaveLength(1); expect(editor.bus.undoStack[0].source).toBe('user');
+    expect(editor.intent({ type: 'undo' })).toEqual({ ok: true }); expect(editor.doc).toEqual(before); expect(editor.labels()).toEqual([]);
   });
 });
