@@ -14,7 +14,7 @@ import type { ToolContext, ToolResult } from '../timeline/tools';
 import { findElement } from './elements';
 import { findSound } from './sounds';
 
-const bundled = import.meta.glob('../../../../vendor/t22/{elements,sounds}/*', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const bundled = import.meta.glob('../../../../vendor/t22/{elements,sounds,fonts}/*', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const MIME: Record<string, string> = { png: 'image/png', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg' };
 /** The stored picture of an element: `scale` × its catalogue size, the long side at most `maxSide` px. Placed larger than
  *  that, the picture is upscaled. */
@@ -35,8 +35,8 @@ async function rasterise(svg: Blob, size: { width: number; height: number }): Pr
     return await canvas.convertToBlob({ type: 'image/png' });
   } finally { URL.revokeObjectURL(url); }
 }
-/** The bundled file of a catalogue entry (`vendor/t22/…`), fetched from beside the app. */
-async function bundledFile(file: string): Promise<Blob> {
+/** A bundled file of `vendor/t22/…` (a catalogue entry, a default-template font), fetched from beside the app. */
+export async function bundledFile(file: string): Promise<Blob> {
   const url = bundled[`../../../../${file}`];
   if (!url) throw new Error(`${file} is not bundled`);
   const response = await fetch(url);

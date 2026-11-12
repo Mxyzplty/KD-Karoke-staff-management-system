@@ -16,6 +16,8 @@ export type ProjectRecord = {
   created_at: string; updated_at: string; last_accessed_at: string;
   /** T19 auto title (Q5): only a 'default' title is ever replaced; a rename makes it 'user' for good. Absent = written before DB v3. */
   title_source?: 'default' | 'user' | 'generated';
+  /** T22 template binding (findings §22): the epoch guards against a stale selection, the request key makes a retry idempotent. Absent = unbound, epoch 0. */
+  template_epoch?: number; template_request?: string;
 };
 export type Asset = {
   id: string; name: string; type: 'video' | 'image' | 'audio'; sizeBytes: number;

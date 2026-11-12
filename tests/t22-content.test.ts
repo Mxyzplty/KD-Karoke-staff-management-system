@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T22 catalogue/preset content: counts, manifest coverage, bundled licences and own authored style/MG presets.
+// T22 catalogue/preset/template content: counts, manifest coverage, bundled licences and authored libraries.
 // Oracle: plan §3 A1/A2/A3/A7, §31 and the pinned step-5 content contract; Step 1's four WOFF2 files/three OFL families/eleven CC0 sounds,
 // and vendor/manifest.json. Byte counts and SHA-256 are computed from the real files with node:crypto,
-// not copied from catalogue code or inferred from manifest metadata. Project-template counts remain deferred below.
+// not copied from catalogue code or inferred from manifest metadata. Caption integration/browser sound decode remain later checks.
+import 'fake-indexeddb/auto';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ELEMENTS } from '../apps/web/src/catalogue/elements';
 import { SOUNDS } from '../apps/web/src/catalogue/sounds';
+import { DEFAULT_TEMPLATE, DEFAULT_FILES } from '../apps/web/src/templates/default';
+import { BUILT_IN_TEMPLATES } from '../apps/web/src/templates/library';
+import { templateProblem } from '../apps/web/src/templates/model';
+import { bindTemplate } from '../apps/web/src/templates/binding';
+import { findTemplate as findCaptionTemplate } from '../apps/web/src/captions/templates';
+import { findFont } from '../apps/web/src/text/font-registry';
+import { ProjectStore } from '../apps/web/src/store/database';
+import type { MediaStore } from '../apps/web/src/store/media';
 import { STYLE_PRESETS } from '../apps/web/src/presets/content';
 import { BUILT_IN_MG_PRESETS } from '../apps/web/src/presets/mg-content';
 import { stylePresetProblem } from '../apps/web/src/presets/model';
@@ -31,6 +40,8 @@ const FONT_FILES = [
   'vendor/t22/fonts/InstrumentSerif-Italic-latin.woff2',
 ] as const;
 const CONTENT_FILES = [...ELEMENTS.map(e => e.file), ...SOUNDS.map(s => s.file), ...FONT_FILES];
+const templateStores: ProjectStore[] = [];
+afterEach(async () => { for (const store of templateStores.splice(0)) await store.close(); });
 
 describe('A3 (steps 1/2): every referenced element, sound and bundled font is byte-pinned in the vendor manifest', () => {
   it.each(CONTENT_FILES)('%s: exact path, real byte count and real SHA-256', file => {
@@ -66,7 +77,7 @@ describe('A7 (step 1): the bundled font components are OFL-1.1 and sound compone
   });
 });
 
-describe('A1: SR-17 content counts (catalogues and presets; templates later)', () => {
+describe('A1: SR-17 content counts (catalogues, presets and project templates)', () => {
   it('ships at least 10 authored elements', () => expect(ELEMENTS.length).toBeGreaterThanOrEqual(10));
   it('A1: at least 14 style presets over the six required categories, with unique ids', () => {
     expect(STYLE_PRESETS.length).toBeGreaterThanOrEqual(14); expect(new Set(STYLE_PRESETS.map(p => p.id)).size).toBe(STYLE_PRESETS.length);
@@ -75,8 +86,63 @@ describe('A1: SR-17 content counts (catalogues and presets; templates later)', (
   it('A1: at least 10 built-in motion-graphic presets, with unique ids', () => {
     expect(BUILT_IN_MG_PRESETS.length).toBeGreaterThanOrEqual(10); expect(new Set(BUILT_IN_MG_PRESETS.map(p => p.id)).size).toBe(BUILT_IN_MG_PRESETS.length);
   });
-  it.todo('A1: at least one default project template (step 8)');
+  it('A1: at least one valid built-in project template, with resolvable preset/caption/catalogue/font references', () => {
+    expect(BUILT_IN_TEMPLATES.length).toBeGreaterThanOrEqual(1); expect(BUILT_IN_TEMPLATES).toContainEqual(DEFAULT_TEMPLATE);
+    const presetIds = new Set(STYLE_PRESETS.map(p => p.id));
+    for (const t of BUILT_IN_TEMPLATES) {
+      expect(templateProblem(t), t.id).toBeNull(); expect(findCaptionTemplate(t.captionTemplateId ?? ''), t.id).toBeDefined();
+      for (const id of t.presetIds) expect(presetIds.has(id), `${t.id}: ${id}`).toBe(true);
+      for (const name of Object.values(t.defaults)) expect(findFont(name), `${t.id}: ${name}`).not.toBeNull();
+      for (const { ref } of [...t.examples, ...t.assets.fonts, ...t.assets.audio, ...t.assets.images]) {
+        const colon = ref.indexOf(':'), kind = ref.slice(0, colon), id = ref.slice(colon + 1);
+        if (kind === 'preset') expect(presetIds.has(id), ref).toBe(true);
+        if (kind === 'element') expect(ELEMENTS.some(e => e.id === id), ref).toBe(true);
+        if (kind === 'sound') expect(SOUNDS.some(sound => sound.slug === id), ref).toBe(true);
+        if (kind === 'font') expect(findFont(id), ref).not.toBeNull();
+      }
+    }
+  });
   it.todo('A1: all nine existing caption template ids resolve (template/font integration steps)');
+});
+
+describe('A3/A7/A2: our default project template files, content identity and binding', () => {
+  it('uses our name/fonts/palette/sound collection, not the reference default content', () => {
+    expect(DEFAULT_TEMPLATE.name).not.toBe('Xapp Default'); expect(DEFAULT_TEMPLATE.name).not.toMatch(/xapp/i);
+    for (const name of Object.values(DEFAULT_TEMPLATE.defaults)) {
+      const found = findFont(name); expect(found, name).not.toBeNull(); expect(['Inter', 'Montserrat', 'DM Serif Display']).not.toContain(found!.entry.family);
+    }
+    for (const swatch of DEFAULT_TEMPLATE.palette) {
+      expect(['white', 'paper', 'sky']).not.toContain(swatch.name.toLowerCase()); expect(['#FFFFFF', '#F7F6F2', '#8BBCDF']).not.toContain(swatch.hex.toUpperCase());
+    }
+    expect(DEFAULT_TEMPLATE.assets.audio.length).not.toBe(25);
+  });
+  it('every default font/sound file has the required manifest licence', () => {
+    for (const file of DEFAULT_FILES) if (file.path.startsWith('vendor/t22/fonts/') || file.path.startsWith('vendor/t22/sounds/')) {
+      const owners = manifest.components.filter(component => component.files.some(entry => entry.path === file.path)); expect(owners, file.path).toHaveLength(1);
+      expect(owners[0].license, file.path).toBe(file.path.startsWith('vendor/t22/fonts/') ? 'OFL-1.1' : 'CC0-1.0');
+    }
+  });
+  it.each(DEFAULT_FILES)('$path: default path/hash equal the manifest and the real SHA-256', file => {
+    const entries = manifest.components.flatMap(component => component.files.filter(entry => entry.path === file.path)); expect(entries, file.path).toHaveLength(1);
+    expect(entries[0].sha256).toBe(file.sha256); expect(createHash('sha256').update(readFileSync(repoFile(file.path))).digest('hex')).toBe(file.sha256);
+  });
+  it('DEFAULT_FILES covers every sound/element ref and at least one independently identified file per font family', () => {
+    const paths = new Set(DEFAULT_FILES.map(file => file.path)); expect(paths.size).toBe(DEFAULT_FILES.length);
+    // Step 1's documented file/family association, not a font-loader implementation lookup.
+    const fontPaths: Record<string, string[]> = { Manrope: ['vendor/t22/fonts/Manrope-latin.woff2'], Sora: ['vendor/t22/fonts/Sora-latin.woff2'],
+      'Instrument Serif': ['vendor/t22/fonts/InstrumentSerif-Regular-latin.woff2', 'vendor/t22/fonts/InstrumentSerif-Italic-latin.woff2'] };
+    for (const { ref } of [...DEFAULT_TEMPLATE.examples, ...DEFAULT_TEMPLATE.assets.fonts, ...DEFAULT_TEMPLATE.assets.audio, ...DEFAULT_TEMPLATE.assets.images]) {
+      const colon = ref.indexOf(':'), kind = ref.slice(0, colon), id = ref.slice(colon + 1);
+      if (kind === 'sound') expect(paths.has(SOUNDS.find(sound => sound.slug === id)!.file), ref).toBe(true);
+      if (kind === 'element') expect(paths.has(ELEMENTS.find(element => element.id === id)!.file), ref).toBe(true);
+      if (kind === 'font') { const family = findFont(id)!.entry.family; expect(fontPaths[family], family).toBeDefined(); expect(fontPaths[family].some(path => paths.has(path)), family).toBe(true); }
+    }
+  });
+  it('A2: the default template binds to a fresh project', async () => {
+    const bytes = new Map<string, Blob>(), media: MediaStore = { write: vi.fn(async (id, blob) => { bytes.set(id, blob); }), read: vi.fn(async id => bytes.get(id)!), remove: vi.fn(async () => {}) };
+    const store = new ProjectStore(crypto.randomUUID(), () => Date.now(), media); templateStores.push(store); const project = await store.create('Default binding');
+    expect(await bindTemplate(store, project.id, { templateId: DEFAULT_TEMPLATE.id, expectedEpoch: 0, requestKey: 'default-content' })).toEqual({ epoch: 1, templateId: DEFAULT_TEMPLATE.id });
+  });
 });
 
 describe('A1/A2: every authored style and built-in MG preset is valid and usable', () => {
