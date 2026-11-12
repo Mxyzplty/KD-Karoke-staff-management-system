@@ -299,9 +299,9 @@ describe('T07 editLayout (agent tool)', () => {
 describe('T07 gating and registration', () => {
   // T12 (C8 assertion-only edit): + createMask, editMaskProperties, removeMask, writeMaskPoints (30 -> 34), then viewMaskFrame, previewSmartMask, trackSmartMask, removeBackground (34 -> 38).
   // T21: + getHelpSection and searchHelpDocs = 40. T09 (C8 assertion-only edit): + addCaptions, editAllCaptionStyles, listCaptionTemplates = 43.
-  it('24. addLayout is in TIMELINE_GATED, editLayout is not; both are served (43 tools); both are in the tool table', () => {
+  it('24. addLayout is in TIMELINE_GATED, editLayout is not; both are served (46 tools); both are in the tool table', () => {
     expect(TIMELINE_GATED.has('addLayout')).toBe(true); expect(TIMELINE_GATED.has('editLayout')).toBe(false);
-    expect(SERVED_TOOLS).toHaveLength(43); expect(SERVED_TOOLS).toContain('addLayout'); expect(SERVED_TOOLS).toContain('editLayout'); // T05 (C8): + addText; T21: + getHelpSection, searchHelpDocs; T09 (C8 assertion-only edit): + addCaptions, editAllCaptionStyles, listCaptionTemplates
+    expect(SERVED_TOOLS).toHaveLength(46); expect(SERVED_TOOLS).toContain('addLayout'); expect(SERVED_TOOLS).toContain('editLayout'); // T05 (C8): + addText; T21: + getHelpSection, searchHelpDocs; T09 (C8 assertion-only edit): + addCaptions, editAllCaptionStyles, listCaptionTemplates; T22 (C8 assertion-only edit): + applyPreset, browsePresets, fonts
     expect(Object.keys(TOOLS)).toEqual(expect.arrayContaining(['addLayout', 'editLayout']));
   });
 

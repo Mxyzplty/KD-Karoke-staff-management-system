@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T22 step 12 / A14 and the fonts tool: findings part 2 §33 and lane A's 12 Nov rulings.
+// T22 steps 12–13 / A14 and the fonts tool: findings part 2 §33 and lane A's 12 Nov validation rulings.
 // Oracle: the declared lists/registry data and the written priority, role, result-shape and purity rules, not tool output.
 // Native upload registry on fake-indexeddb with in-memory name-table fonts; no DOM loader, skipped cases or author runs.
 import 'fake-indexeddb/auto';
@@ -15,6 +15,8 @@ type ToolPick = FontPick & { category: FontFamilyEntry['category']; styles: stri
 type PicksData = { picks: ToolPick[]; total: number; hint: string };
 type FamilyData = Pick<FontFamilyEntry, 'family' | 'category'> & { variants: Pick<FontVariant, 'weight' | 'italic' | 'label'>[] };
 type Role = 'titles' | 'captions';
+type InputError = { path: string; code: string; message: string };
+const ENUM_MESSAGE = 'must be equal to one of the allowed values';
 // The current implementation's upper bound, confirmed in the handoff; never an exact count or a spec number.
 const CURRENT_PICK_CAP = 12;
 let initialFonts = new Set<string>();
@@ -66,11 +68,17 @@ function familyData(entry: FontFamilyEntry, familyName = entry.family): FamilyDa
   expect(data).toEqual({ family: entry.family, category: entry.category, variants: entry.variants.map(v => ({ weight: v.weight, italic: v.italic, label: v.label })) });
   for (const variant of data.variants) expect(Object.keys(variant).sort()).toEqual(['italic', 'label', 'weight']); return data;
 }
-function failure(familyName: unknown) {
+function failure(familyName: string) {
   const before = snapshot(), args = { familyName }, input = structuredClone(args), result = fonts(args);
   expect(result.success).toBe(false); expect(result).not.toHaveProperty('code'); expect(Object.keys(result).sort()).toEqual(['error', 'success']);
   if (result.success) throw new Error('Expected a code-less fonts failure.'); expect(typeof result.error).toBe('string'); expect(result.error.trim().length).toBeGreaterThan(0);
   expect(args).toEqual(input); expect(snapshot()).toEqual(before); return result.error;
+}
+function refused(args: Args, errors: InputError[]) {
+  const before = snapshot(), input = structuredClone(args);
+  expect(fonts(args)).toEqual({ success: false, code: 'INVALID_TOOL_INPUT', error: 'Invalid input for fonts',
+    message: errors.map(e => `${e.path}: ${e.message}`).join('; '), details: { errors } });
+  expect(args).toEqual(input); expect(snapshot()).toEqual(before);
 }
 function objects(value: unknown, found = new Set<object>()): Set<object> {
   if (value !== null && typeof value === 'object' && !found.has(value)) { found.add(value); for (const child of Object.values(value)) objects(child, found); }
@@ -130,15 +138,38 @@ describe('fonts without familyName: bounded, ranked recommendations and metadata
       const data = listing({ videoStyle: id, role }, id, role); for (const pick of data.picks) expect(matches(pick, role)).toBe(true);
     }
   });
-  it('every other role value is ignored, including inherited object-property names and non-text values', () => {
-    const expected = listing({ videoStyle: 'Handwritten' }, 'handwritten');
-    for (const role of [undefined, '', 'caption', 'text', 'both', 'Titles', 'CAPTIONS', 'unknown-role', '__proto__', 'constructor', 'toString', null, 42, true, [], ['titles'], {}]) {
-      expect(listing({ videoStyle: 'Handwritten', role }, 'handwritten')).toEqual(expected);
+  it('every role other than titles, captions or undefined is refused with the exact ENUM envelope, including inherited names and non-text values', () => {
+    for (const role of ['', 'caption', 'text', 'both', 'Titles', 'CAPTIONS', 'unknown-role', '__proto__', 'constructor', 'toString', null, 42, true, [], ['titles'], {}, { toString: null }]) {
+      refused({ videoStyle: 'Handwritten', role }, [{ path: '$.role', code: 'ENUM', message: ENUM_MESSAGE }]);
     }
   });
-  it('unknown or non-text videoStyle is ignored and gives exactly the general recommendations', () => {
+  it('unknown text videoStyle is ignored and gives exactly the general recommendations', () => {
     const expected = listing();
-    for (const videoStyle of [undefined, '', 'not-a-template', 'general', '__proto__', 'constructor', 'toString', null, 42, true, [], ['cinema'], {}, { toString: null }]) expect(listing({ videoStyle })).toEqual(expected);
+    for (const videoStyle of ['', 'not-a-template', 'general', '__proto__', 'constructor', 'toString']) expect(listing({ videoStyle })).toEqual(expected);
+  });
+  it.each<{ label: string; value: unknown }>([
+    { label: 'null', value: null }, { label: 'number', value: 42 }, { label: 'boolean', value: true }, { label: 'empty array', value: [] },
+    { label: 'array naming Cinema', value: ['cinema'] }, { label: 'object', value: {} }, { label: 'non-callable toString object', value: { toString: null } },
+  ])('non-text videoStyle ($label) is refused with the exact TYPE envelope', ({ value }) => {
+    refused({ videoStyle: value }, [{ path: '$.videoStyle', code: 'TYPE', message: 'must be string' }]);
+  });
+  it('undefined role and videoStyle are absent in both recommendation and family-detail modes', () => {
+    expect(listing({ role: undefined, videoStyle: undefined })).toEqual(listing());
+    const entry = FONT_REGISTRY.find(font => font.family === 'Roboto')!;
+    expect(success<FamilyData>(fonts({ familyName: 'Roboto', role: undefined, videoStyle: undefined }))).toEqual(familyData(entry));
+  });
+  it('bad role and videoStyle report both errors, role first, even when input key order is reversed', () => {
+    refused({ videoStyle: 42, role: 'body' }, [{ path: '$.role', code: 'ENUM', message: ENUM_MESSAGE }, { path: '$.videoStyle', code: 'TYPE', message: 'must be string' }]);
+  });
+  it('three invalid fields report familyName, role, videoStyle in that order with the exact joined message', () => {
+    refused({ videoStyle: [], role: 'body', familyName: { toString: null } }, [
+      { path: '$.familyName', code: 'TYPE', message: 'must be string' }, { path: '$.role', code: 'ENUM', message: ENUM_MESSAGE }, { path: '$.videoStyle', code: 'TYPE', message: 'must be string' },
+    ]);
+  });
+  it.each(['Roboto', 'No such T22 font family'])('familyName=%j cannot bypass role or videoStyle validation', familyName => {
+    refused({ familyName, role: 'body' }, [{ path: '$.role', code: 'ENUM', message: ENUM_MESSAGE }]);
+    refused({ familyName, videoStyle: 42 }, [{ path: '$.videoStyle', code: 'TYPE', message: 'must be string' }]);
+    refused({ familyName, videoStyle: 42, role: 'body' }, [{ path: '$.role', code: 'ENUM', message: ENUM_MESSAGE }, { path: '$.videoStyle', code: 'TYPE', message: 'must be string' }]);
   });
   it('total counts uploaded families too, and families beyond the bounded picks remain queryable by name', async () => {
     const before = fontFamilies().length; await uploadTwo(); const data = listing({ videoStyle: 'Cinema', role: 'captions' }, 'cinema', 'captions');
@@ -148,7 +179,7 @@ describe('fonts without familyName: bounded, ranked recommendations and metadata
   });
 });
 
-describe('fonts with familyName: full detail or a code-less failure, with no writes', () => {
+describe('fonts with familyName: detail, code-less unknown text, or schema refusal; no writes', () => {
   it('every registry family exposes all its variants and only weight, italic and label per variant, regardless of listing modifiers', () => {
     for (const entry of FONT_REGISTRY) familyData(entry);
   });
@@ -170,7 +201,9 @@ describe('fonts with familyName: full detail or a code-less failure, with no wri
   it.each<{ label: string; value: unknown }>([
     { label: 'a number', value: 42 }, { label: 'null', value: null }, { label: 'a boolean', value: true }, { label: 'an array naming a real font', value: ['Roboto'] },
     { label: 'an object', value: { family: 'Roboto' } }, { label: 'an object with non-callable toString', value: { toString: null } },
-  ])('$label is a non-text familyName: return non-empty error text, never a throw or code', ({ value }) => { failure(value); });
+  ])('$label is a non-text familyName: return the exact INVALID_TOOL_INPUT TYPE refusal', ({ value }) => {
+    refused({ familyName: value }, [{ path: '$.familyName', code: 'TYPE', message: 'must be string' }]);
+  });
 });
 
 describe('fonts is pure: deterministic calls and caller-owned results', () => {

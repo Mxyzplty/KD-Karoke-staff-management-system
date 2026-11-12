@@ -39,16 +39,24 @@ export function fontPickerOrder(templateId?: string): FontFamilyEntry[] {
   return [...listed, ...all.filter(f => !listed.includes(f))];
 }
 
-type Result = { success: true; data: Record<string, unknown> } | { success: false; error: string };
+type InputError = { path: string; code: string; message: string };
+type Result = { success: true; data: Record<string, unknown> } | { success: false; error: string; code?: string; message?: string; details?: { errors: InputError[] } };
 const MAX_PICKS = 12;
 const ROLES: Record<string, FontRole> = { titles: 'text', captions: 'caption' };
 /** The agent's `fonts` tool (contracts "fonts"; read-only). With `familyName`: that family's faces, or a failure without a
  *  code (results document, code-less failures). Without: the ranked picks, the `videoStyle` caption template's list (its
  *  id or name, any case; an unknown value is ignored) before the general list, narrowed by `role` (titles: text or both;
- *  captions: caption or both). `total` counts every family that can be asked for by name. */
+ *  captions: caption or both). `total` counts every family that can be asked for by name. A `role` outside the two values
+ *  and a `familyName` or `videoStyle` that is not text are refused in the helper's INVALID_TOOL_INPUT shape (as presets/tools.ts). */
 export function fonts(args: { familyName?: unknown; role?: unknown; videoStyle?: unknown } = {}): Result {
-  if (args.familyName !== undefined) {
-    if (typeof args.familyName !== 'string') return { success: false, error: 'familyName must be the name of a font family.' };
+  const text = (key: 'familyName' | 'videoStyle'): InputError[] => args[key] === undefined || typeof args[key] === 'string' ? [] : [{ path: `$.${key}`, code: 'TYPE', message: 'must be string' }];
+  const errors: InputError[] = [
+    ...text('familyName'),
+    ...(args.role === undefined || typeof args.role === 'string' && Object.hasOwn(ROLES, args.role) ? [] : [{ path: '$.role', code: 'ENUM', message: 'must be equal to one of the allowed values' }]),
+    ...text('videoStyle'),
+  ];
+  if (errors.length) return { success: false, code: 'INVALID_TOOL_INPUT', error: 'Invalid input for fonts', message: errors.map(e => `${e.path}: ${e.message}`).join('; '), details: { errors } };
+  if (typeof args.familyName === 'string') {
     const entry = findFont(args.familyName)?.entry;
     if (!entry) return { success: false, error: `Font '${args.familyName}' was not found. Call fonts without familyName for the fonts you can use.` };
     return { success: true, data: { family: entry.family, category: entry.category, variants: entry.variants.map(v => ({ weight: v.weight, italic: v.italic, label: v.label })) } };

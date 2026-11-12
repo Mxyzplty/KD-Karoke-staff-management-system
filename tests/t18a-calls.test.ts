@@ -108,8 +108,11 @@ describe('t18a schemas (row 6)', () => {
     ['addShape', { shape: 'hexagon', bounds: { width: 10, height: 10 } }, [{ path: '$.shape', code: 'ENUM', message: ENUM_MSG }]],
     // T05 (assertion-only edit): addText is served; a number for textContent and a missing duration are schema refusals.
     ['addText', { textContent: 5 }, [{ path: '$.duration', code: 'REQUIRED', message: REQUIRED('duration') }, { path: '$.textContent', code: 'TYPE', message: 'must be string' }]],
+    // T22 (C8 assertion-only edit): applyPreset, browsePresets and fonts are served; their rows are schema refusals like the others, in SERVED_TOOLS order.
+    ['applyPreset', { timelineStart: -1 }, [{ path: '$.presetId', code: 'REQUIRED', message: REQUIRED('presetId') }, { path: '$.timelineStart', code: 'MINIMUM', message: 'must be >= 0' }]],
     // T11 (C8 assertion-only edit): applyTransition is served; its row is a schema refusal like the others.
     ['applyTransition', { action: 'add', betweenItems: ['a', 'b'], kind: 'zoom' }, [{ path: '$.kind', code: 'ENUM', message: ENUM_MSG }]],
+    ['browsePresets', { category: 'stickers' }, [{ path: '$.category', code: 'ENUM', message: ENUM_MSG }]], // T22 (C8)
     ['changeTrack', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }, { path: '$.trackId', code: 'REQUIRED', message: REQUIRED('trackId') }]],
     ['cloneItem', { itemId: 'v1' }, [{ path: '$.trackId', code: 'REQUIRED', message: REQUIRED('trackId') }]],
     ['consolidateTracks', { trackIds: [] }, [{ path: '$.trackIds', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
@@ -122,6 +125,7 @@ describe('t18a schemas (row 6)', () => {
     ['editMaskProperties', { itemId: 'v1', maskIndex: 0 }, [{ path: '$.properties', code: 'REQUIRED', message: REQUIRED('properties') }]],
     ['editMotionGraphic', {}, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
     ['editProperties', { itemId: 'v1', properties: { opacity: '1' } }, [{ path: '$.properties.opacity', code: 'TYPE', message: 'must be number' }]],
+    ['fonts', { role: 'body' }, [{ path: '$.role', code: 'ENUM', message: ENUM_MSG }]], // T22 (C8): read-only
     // T21 help tools (contracts getHelpSection, searchHelpDocs): served, so each gets a schema-refusal row like the others.
     ['getHelpSection', { section_id: 5 }, [{ path: '$.section_id', code: 'TYPE', message: 'must be string' }]],
     ['listCaptionTemplates', { bogus: 1 }, [{ path: '$.bogus', code: 'ADDITIONALPROPERTIES', message: 'must NOT have additional properties' }]], // T09 (C8 assertion-only edit): read-only, empty closed object
@@ -152,7 +156,7 @@ describe('t18a schemas (row 6)', () => {
     ['removeBackground', { name: 'x' }, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
   ];
 
-  it('row 6: the table covers exactly the 43 served tools', () => { // T09 (C8 assertion-only edit): 40 → 43
+  it('row 6: the table covers exactly the 46 served tools', () => { // T09 (C8 assertion-only edit): 40 → 43; T22 (C8): 43 → 46
     expect(TABLE.map(r => r[0])).toEqual([...SERVED_TOOLS]);
   });
 
@@ -233,18 +237,20 @@ describe('t18a schemas (row 6)', () => {
     expect(await helper.call('addMedia', { assetId: 'a', trackId: 't', timelineStart: 1 }, undefined)).toEqual(open);
   });
 
-  it('row 6: valid minimal input for all 43 tools passes the schema (and only then meets the tab)', async () => { // T09 (C8 assertion-only edit): 40 → 43
+  it('row 6: valid minimal input for all 46 tools passes the schema (and only then meets the tab)', async () => { // T09 (C8 assertion-only edit): 40 → 43; T22 (C8): 43 → 46
     const { helper } = await start();
     const valid: Record<string, unknown> = {
       addCaptions: { trackId: 'C1' } /* T09 (C8) */, addLayout: { layoutType: 'grid-2x2' } /* T07 (C8) */, addMedia: { assetId: 'video_1' }, addMotionGraphic: { code: 'export const G = () => null;', summary: 'A graphic.', width: 100, height: 100, x: 0, y: 0, trackId: 't' },
       addShape: { shape: 'star', bounds: { width: 100, height: 100 }, trackId: 't' }, // T06 (C8)
       addText: { textContent: 'Hi', duration: 3 }, // T05
+      applyPreset: { presetId: 'title-card-1' }, // T22 (C8)
       applyTransition: { action: 'remove', atSeconds: 2 }, // T11 (C8)
+      browsePresets: {}, // T22 (C8)
       changeTrack: { itemId: 'v1', trackId: 't' }, cloneItem: { itemId: 'v1', trackId: 't' }, consolidateTracks: {}, context: {},
       createMask: { itemId: 'v1', shape: 'rectangle', bounds: { width: 10, height: 10 } }, // T12 (C8)
       deleteItems: { itemIds: ['v1'] }, editAllCaptionStyles: { trackId: 'C1' } /* T09 (C8) */, editLayout: { itemId: 'l1' } /* T07 (C8) */,
       editMaskProperties: { itemId: 'v1', maskIndex: 0, properties: { opacity: 50 } }, // T12 (C8)
-      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, getHelpSection: { section_id: 'getting-started' } /* T21 */, listCaptionTemplates: {} /* T09 (C8) */, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
+      editMotionGraphic: { itemId: 'mg1' }, editProperties: { itemId: 'v1', properties: { opacity: 0.5 } }, fonts: {} /* T22 (C8) */, getHelpSection: { section_id: 'getting-started' } /* T21 */, listCaptionTemplates: {} /* T09 (C8) */, manageMarkers: { actions: [{ action: 'clear' }] }, manageTrack: { action: 'create' },
       manageTrackGroup: { action: 'ungroup', groupId: 'g' }, moveItem: { itemId: 'v1', by: 1 },
       removeMask: { itemId: 'v1', maskIndex: 0 }, // T12 (C8)
       reorderItems: { itemIds: ['v1'], afterItemId: 'v2' }, resizeCanvas: { aspectRatio: '9:16' }, searchHelpDocs: { query: 'how do I export' } /* T21 */,
@@ -316,7 +322,7 @@ describe('t18a schemas (row 6)', () => {
 
   it('row 6: UNKNOWN_TOOL for names the helper does not serve (including T18 tools), before any schema check', async () => {
     const { helper } = await start();
-    for (const name of ['fonts', 'searchProjectAssets', 'searchUserLibrary', 'captureFrame', 'bogus', '', 'MoveItem']) { // T09 (C8 assertion-only edit): addCaptions is now served, dropped from the unserved list
+    for (const name of ['searchProjectAssets', 'searchUserLibrary', 'captureFrame', 'bogus', '', 'MoveItem']) { // T09 (C8 assertion-only edit): addCaptions is now served, dropped from the unserved list; T22 (C8): fonts is served now
       expect(await helper.call(name, { anything: true }, undefined), name).toEqual({ success: false, error: `Unknown tool '${name}'`, code: 'UNKNOWN_TOOL' });
     }
   });
@@ -337,8 +343,8 @@ describe('t18a schemas (row 6)', () => {
     const { client } = await mcpClient(helper);
     const bad = await client.callTool({ name: 'splitItem', arguments: { itemId: 'v1' } });
     expect(bad).toEqual({ content: [{ type: 'text', text: JSON.stringify(invalid('splitItem', [{ path: '$.timestampS', code: 'REQUIRED', message: REQUIRED('timestampS') }])) }], isError: true });
-    const unknown = await client.callTool({ name: 'fonts', arguments: {} }); // T09 (C8 assertion-only edit): addCaptions is served now; `fonts` is still unserved
-    expect(unknown).toEqual({ content: [{ type: 'text', text: JSON.stringify({ success: false, error: "Unknown tool 'fonts'", code: 'UNKNOWN_TOOL' }) }], isError: true });
+    const unknown = await client.callTool({ name: 'searchProjectAssets', arguments: {} }); // T22 (C8 assertion-only edit): fonts is served now; searchProjectAssets is still unserved
+    expect(unknown).toEqual({ content: [{ type: 'text', text: JSON.stringify({ success: false, error: "Unknown tool 'searchProjectAssets'", code: 'UNKNOWN_TOOL' }) }], isError: true });
   });
 
   it('row 6: a successful MCP result has no isError key', async () => {

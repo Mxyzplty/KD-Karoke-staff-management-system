@@ -25,6 +25,8 @@ import type { CatalogueElement } from '../catalogue/elements';
 import { elementItemType, placeElement, placement } from '../catalogue/place';
 import type { PlaceOptions } from '../catalogue/place';
 import { findSound } from '../catalogue/sounds';
+import { fonts } from '../catalogue/fonts';
+import { applyPreset, browsePresets } from '../presets/tools';
 
 export type ToolContext = {
   bus: CommandBus;
@@ -259,7 +261,7 @@ const manageMarkersTool: Handler = (ctx, args) => run(ctx, 'Edit markers', doc =
 });
 
 export const TOOLS: Record<string, Handler> = {
-  addLayout, addMedia, addMotionGraphic, addShape, addText, applyTransition, changeTrack, cloneItem, consolidateTracks, createMask, deleteItems, editLayout, editMaskProperties, editMotionGraphic, editProperties: editPropertiesTool, manageMarkers: manageMarkersTool, manageTrack: manageTrackTool,
+  addLayout, addMedia, addMotionGraphic, addShape, addText, applyPreset, applyTransition, browsePresets, changeTrack, cloneItem, consolidateTracks, createMask, deleteItems, editLayout, editMaskProperties, editMotionGraphic, editProperties: editPropertiesTool, fonts: (_ctx, args) => fonts(args), manageMarkers: manageMarkersTool, manageTrack: manageTrackTool,
   manageTrackGroup: manageTrackGroupTool, moveItem, removeMask, reorderItems, resizeCanvas: resizeCanvasTool, setTimeRemap: setTimeRemapTool, setUseProxy: setUseProxyTool, slipItem, splitItem, transformItem, trimItem,
   writeEffects: writeEffectsTool, writeKeyframes: writeKeyframesTool, writeMaskPoints, writeShapePoints, ...CAPTION_TOOLS,
 };

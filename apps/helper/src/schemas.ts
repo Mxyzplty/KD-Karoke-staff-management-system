@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The helper's own JSON Schemas for the 43 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks, T09 captions; agent tool results §4 rule 1). Every call is
+// The helper's own JSON Schemas for the 46 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks, T09 captions, T22 applyPreset / browsePresets / fonts; agent tool results §4 rule 1). Every call is
 // checked here before the tab sees it; a violation answers Xapp's server shape:
 // {success:false, code:"INVALID_TOOL_INPUT", error:"Invalid input for <tool>", message:"<path>: <reason>", details:{errors:[{path, code, message}]}}.
 // Paths use Xapp's stored form ("$.items.0.trackId"); detail codes are the upper-cased JSON Schema keyword (MAXIMUM, MINITEMS,
@@ -21,7 +21,7 @@ const secs = (description: string) => ({ type: 'number', description });
 const ids = (description: string) => ({ type: 'array', items: str, minItems: 1, description });
 const obj = (properties: Record<string, unknown>, required: string[] = []): Schema => ({ type: 'object', properties, ...(required.length ? { required } : {}), additionalProperties: false });
 const media = {
-  assetId: { type: 'string', description: 'Project asset id, e.g. video_1' },
+  assetId: { type: 'string', description: 'Project asset id, e.g. video_1; or a built-in element (element:<id>) or sound effect (sound:<slug>)' },
   duration: secs('Length override in seconds'), trimStart: secs('Source in-point in seconds'), trimEnd: secs('Source out-point in seconds'),
   bounds: { type: 'object', description: 'Placement box for visuals; aspect ratio is kept, media is never cropped' },
   transcriptRange: obj({ text: str, startText: str, endText: str }), scaleMode: str,
@@ -47,6 +47,8 @@ const properties = obj({
   look: {}, textAnimation: {}, colors: {}, media: {},
 });
 
+// T22 style preset categories (presets/model CATEGORIES; the helper's schemas cannot import that module).
+const PRESET_CATEGORY_NAMES = ['text', 'title-cards', 'lower-thirds', 'info-cards', 'slide-in-panels', 'misc', 'overlays', 'collages'];
 // T07 layout presets (timeline/layouts LAYOUT_TYPES; the helper's schemas cannot import that module) and one cell fill.
 const LAYOUT_TYPE_NAMES = ['split-horizontal', 'split-vertical', 'three-horizontal', 'three-vertical', 'grid-2x2', 'pip-top-right', 'pip-top-left', 'pip-bottom-right',
   'pip-bottom-left', 'feature-left', 'feature-right'];
@@ -108,6 +110,9 @@ const TOOL_LIST: Tool[] = [
   // T11 (contracts #27; results §11 G-08: both or neither address, durationSeconds 0, an unknown kind or direction are schema
   // refusals). The betweenItems count stays with the handler ("got <n>", error codes §7); params values are stored as given
   // (part 5 §55.6), so only their keys are checked here.
+  // T22 (plan §10). The preset id is looked up by the handler (PRESET_NOT_FOUND).
+  { name: 'applyPreset', description: 'Place a style preset from browsePresets on new overlay tracks, scaled to the canvas. Times in seconds.',
+    inputSchema: obj({ presetId: { type: 'string', description: 'A preset id from browsePresets' }, timelineStart: { type: 'number', minimum: 0, description: 'Start in seconds (default 0)' } }, ['presetId']) },
   { name: 'applyTransition', description: 'Add, update or remove the transition on the cut between two neighbouring video / image clips of one track: betweenItems (either order) or atSeconds (nearest cut within 0.5 s on any track). add on a cut that has one replaces it. The length is clamped to 0.1 s … the shorter clip (at most 3 s) and the applied length is reported.',
     inputSchema: { ...obj({ action: { enum: ['add', 'update', 'remove'] }, betweenItems: { type: 'array', items: str, description: 'The two clip ids either side of the cut' }, atSeconds: secs('Pick the nearest cut within 0.5 s of this timeline time'),
       kind: { enum: ['fade', 'dissolve', 'additiveDissolve', 'dipToColorDissolve', 'slide', 'wipe'], description: 'Default fade (dips through black)' },
@@ -115,6 +120,8 @@ const TOOL_LIST: Tool[] = [
       direction: { enum: ['from-left', 'from-right', 'from-top', 'from-bottom'], description: 'slide and wipe: the side the incoming clip enters from (default from-left)' },
       params: { ...obj({ color: { description: 'dipToColorDissolve: [r, g, b], each 0–1 (default black)' }, softness: { description: 'wipe: edge feather 0–100 (% of the frame)' } }), description: 'Agent-only parameters' } }, ['action']),
     anyOf: [{ required: ['betweenItems'] }, { required: ['atSeconds'] }] } },
+  { name: 'browsePresets', description: 'List the style presets (id, name, category, description, type), optionally by category or by words in the name or description. Read-only.',
+    inputSchema: obj({ category: { enum: PRESET_CATEGORY_NAMES }, query: { type: 'string', description: 'Matched in name and description, any case' } }) },
   { name: 'changeTrack', description: 'Move one item to another existing compatible track, optionally to a new start (seconds).',
     inputSchema: obj({ itemId: str, trackId: str, from: secs('New start in seconds') }, ['itemId', 'trackId']) },
   { name: 'cloneItem', description: 'Duplicate an item onto a compatible track, keeping all of its state. Default start: the source item\'s end.',
@@ -142,7 +149,10 @@ const TOOL_LIST: Tool[] = [
     inputSchema: obj({ itemId: str, action: { type: 'string', description: 'view | patchCode | updateCode' }, patches: { type: 'array', items: obj({ old_string: str, new_string: str }, ['old_string', 'new_string']) },
       code: str, summary: { type: 'string', description: 'At most 400 characters; update it when the visual meaning changes' } }, ['itemId']) },
   { name: 'editProperties', description: 'Change visual, media or shape properties of one item (itemId) or a batch (itemIds), atomically. A keyframed property changes only its default value. Timing: moveItem / trimItem; position and fitting: transformItem.',
-    inputSchema: obj({ itemId: str, itemIds: ids('All-or-nothing batch'), properties, applyToAll: { type: 'boolean', description: 'For captions, apply changed style fields to the other captions on the same track' } }, ['properties']) },
+    inputSchema: obj({ itemId: str, itemIds: ids('All-or-nothing batch'), properties: { ...properties, description: 'On a built-in element also: colors (array of #rrggbb per palette slot, null keeps a slot) and media (array of asset ids per opening, null empties one)' }, applyToAll: { type: 'boolean', description: 'For captions, apply changed style fields to the other captions on the same track' } }, ['properties']) },
+  // T22 (contract fonts). An unknown familyName is the handler's failure.
+  { name: 'fonts', description: 'Font picks for titles or captions (role), the fonts of a caption template first (videoStyle); or, with familyName, the styles of one family. Read-only.',
+    inputSchema: obj({ familyName: { type: 'string', description: 'A font family name' }, role: { enum: ['titles', 'captions'] }, videoStyle: { type: 'string', description: 'A caption template id or name from listCaptionTemplates' } }) },
   // T21 (contract getHelpSection).
   { name: 'getHelpSection', description: 'Read one help section by the section_id searchHelpDocs returned.',
     inputSchema: obj({ section_id: { type: 'string', description: 'Section id' } }, ['section_id']) },

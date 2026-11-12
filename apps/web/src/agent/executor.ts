@@ -16,6 +16,7 @@ import { callSmartTool, SMART_TOOLS } from '../masks/smart-tools';
 import { callMotionGraphicTool, MOTION_GRAPHIC_TOOLS } from '../mg/tools';
 import type { DryRun } from '../mg/tools';
 import { callTextTool, needsFontLoad } from '../text/agent';
+import { loadUserFonts } from '../text/fonts';
 import { callCatalogueTool, usesCatalogue } from '../catalogue/assets';
 import { callCaptionStyleTool, callCaptionTool, needsCaptionFontLoad, needsCaptionPrep } from '../captions/agent';
 import { effectsBlock, paramProp, resolveAgentId } from '../timeline/effects';
@@ -213,6 +214,8 @@ export class Executor {
     if (usesCatalogue(tool, input))
       return callCatalogueTool(runtime.tools, input, { ensure: id => runtime.addCatalogue(id), run: () => this.watcher.sync() !== runtime ? this.handle(tool, input, session)
         : this.gated(runtime, tool, input, session) ?? this.watcher.asAgent(() => runtime.call(tool, input)) }).catch(unavailable);
+    // T22: `fonts` first loads this browser's uploaded fonts (async), so they count and can be asked for by name.
+    if (tool === 'fonts') return loadUserFonts().then(() => this.watcher.sync() !== runtime ? this.handle(tool, input, session) : this.watcher.asAgent(() => runtime.call(tool, input))).catch(unavailable);
     // T09: addCaptions reads the sources' transcripts (async) and loads the caption faces before the synchronous add.
     if (needsCaptionPrep(tool)) return this.captions(runtime, tool, input, session);
     let result: ToolResult;
