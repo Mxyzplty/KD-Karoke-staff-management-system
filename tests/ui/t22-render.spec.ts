@@ -6,6 +6,7 @@
 // J: <=16 code values per RGB channel, the T10a recolour tolerance (f32 GPU gamut bisection versus f64 oracle §49.19).
 // Slot geometry: C-gt: settled from code, RC 6.1, no stored output; whole item box, vertically centred local text slot.
 // Step 9c / RC 6.3: only a changed inline-text commit refits; one undo restores text and size together.
+// Step 9d / D88: an off-playhead bubble's bundled face is loaded before the agent's text refit returns.
 import { test, expect, type Page } from '@playwright/test';
 import { findElement } from '../../apps/web/src/catalogue/elements';
 import { recolor as oracleRecolor } from '../../parity/oracle/colour';
@@ -35,8 +36,8 @@ async function openEmpty(page: Page) {
   const id = await createProject(page, emptyDoc(), 'T22 element render');
   await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally'); return id;
 }
-async function agentCall(page: Page, toolName: string, input: Rec): Promise<Rec> {
-  return page.evaluate(async ({ toolName, input }) => {
+async function agentCall(page: Page, toolName: string, input: Rec, observeFont?: { family: string; face: string }): Promise<Rec> {
+  return page.evaluate(async ({ toolName, input, observeFont }) => {
     const rp = '/src/timeline/runtime.ts', ep = '/src/agent/executor.ts', rt = (await import(rp)).activeRuntime;
     const win = window as any;
     if (!win.__t22Agent) {
@@ -45,8 +46,15 @@ async function agentCall(page: Page, toolName: string, input: Rec): Promise<Rec>
     }
     const state = win.__t22Agent;
     const call = (name: string, args: Rec) => state.executor.execute({ type: 'call', callId: `t22-${++state.seq}`, executionKey: `t22-${state.seq}`, session: 't22', toolName: name, input: args });
-    await call('context', {}); return call(toolName, input);
-  }, { toolName, input });
+    await call('context', {}); const result = await call(toolName, input);
+    if (!observeFont) return result;
+    // Native DOM observation, synchronously after the Executor returns; no intervening await or font-loading seam.
+    const loadedAtReturn = Array.from(document.fonts).some(face => {
+      const family = face.family.replace(/['"]/g, '');
+      return (family === observeFont.family || family === observeFont.face) && face.status === 'loaded';
+    });
+    return { result, loadedAtReturn };
+  }, { toolName, input, observeFont });
 }
 async function pixel(page: Page, x: number, y: number): Promise<number[]> {
   return page.evaluate(({ x, y }) => {
@@ -331,4 +339,27 @@ for (const typeBack of [false, true]) test(`RC 6.3: inline commit with the same 
   expect((await intents(page)).filter(e => e.intent.type === 'editTextProperties')).toEqual([]); expect(await inlineLabels(page)).toEqual([]); expect(await inlineSlot(page)).toEqual(item);
   const after = await stored(page, projectId); expect(after.json).toBe(before.json); expect(after.rev).toBe(before.rev); expect(after.updated).toBe(before.updated);
   expect(await page.evaluate(async () => { const p = '/src/editor.tsx'; return (await import(p)).activeSession.state; })).toBe('saved');
+});
+
+test('D88: agent text edit loads an unseen bubble face first and stores the refit measured with that face', async ({ page }) => {
+  const item = slotItem('label-tag'), font = { family: 'Sora', face: 'Sora-ExtraBold' };
+  item.display = { from: 2000, to: 4000 }; Object.assign(item.details, { text: 'Not visible yet', fontFamily: font.face, fontFamilyDisplay: font.family }); item.properties.fontWeight = prop(800);
+  const projectId = await openSeed(page, item, [255, 0, 255], 'label-tag'); await shown(page, 0);
+  const before = await page.evaluate(font => ({ loaded: Array.from(document.fonts).some(face => {
+    const family = face.family.replace(/['"]/g, ''); return (family === font.family || family === font.face) && face.status === 'loaded';
+  }) }), font);
+  expect(before.loaded, 'the seeded future item has not caused its Sora face to load').toBe(false);
+  const text = 'Measure this wrapped bubble only after the Sora face has loaded.';
+  const observed = await agentCall(page, 'editProperties', { itemIds: ['slot'], properties: { text } }, font);
+  expect(observed.result.success, JSON.stringify(observed.result)).toBe(true); expect(observed.loadedAtReturn, 'face loaded in the same evaluate immediately after the agent call').toBe(true);
+  await expect(page.getByRole('status')).toHaveText('Saved locally', { timeout: 15000 });
+  const measured = await page.evaluate(async projectId => {
+    const sp = '/src/store/database.ts', ep = '/src/catalogue/edit.ts', mp = '/src/text/tools.ts', vp = '/src/editor/view.ts';
+    const saved = await (await import(sp)).projectStore.read(projectId), refit = await import(ep), measure = await import(mp), view = await import(vp);
+    const item = saved.document.items.find((i: Rec) => i.id === 'slot'), clone = structuredClone(item);
+    const fitted = refit.refitSlotText(clone), layout = measure.measureText(item, item.properties.width.defaultValue * (600 / 720));
+    return { stored: item.properties.fontSize.defaultValue, fitted, lines: layout.lines, text: item.details.text, face: item.details.fontFamily, playhead: view.view().playheadMs };
+  }, projectId);
+  expect(measured.text).toBe(text); expect(measured.face).toBe(font.face); expect(measured.playhead).toBe(0);
+  expect(measured.stored).toBe(measured.fitted); expect(measured.stored).toBeGreaterThan(8); expect(measured.lines, 'the case exercises wrapping, not the minimum-size fallback').toBeGreaterThan(1);
 });

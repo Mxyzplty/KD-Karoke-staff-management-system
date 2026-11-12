@@ -91,6 +91,8 @@ export function editElements(items: RecordData[], props: RecordData, asset: (id:
   return { results, notes };
 }
 
+/** True for an item a refit acts on: a text-slot element of the catalogue whose text is not blank. */
+export const refits = (i: RecordData) => i.type === 'text' && !!textSlot(i, 1, 1) && typeof i.details.text === 'string' && !!i.details.text.trim();
 /** The font-size limits of a text slot's refit; the 48 of the insert does not apply. */
 export const REFIT = { min: 8, max: 400 } as const;
 /** Refits the font size of a text-slot element item to its slot (reference compares part 6 §6.1 point 2): the largest whole
@@ -98,8 +100,8 @@ export const REFIT = { min: 8, max: 400 } as const;
  *  when none fits. Writes it and returns it. null = nothing done: not a text-slot element, or no text yet (the insert's
  *  size holds while the text is empty). */
 export function refitSlotText(i: RecordData): number | null {
-  const slot = i.type === 'text' ? textSlot(i, staticValue(i, 'width') as number, staticValue(i, 'height') as number) : null;
-  if (!slot || typeof i.details?.text !== 'string' || !i.details.text.trim()) return null;
+  const slot = refits(i) ? textSlot(i, staticValue(i, 'width') as number, staticValue(i, 'height') as number) : null;
+  if (!slot) return null;
   let size = Math.min(REFIT.max, Math.floor(slot.H));
   for (; size > REFIT.min; size--) { setStatic(i, 'fontSize', size); if (measureText(i, slot.W).height <= slot.H) return size; }
   setStatic(i, 'fontSize', REFIT.min);
@@ -107,7 +109,7 @@ export function refitSlotText(i: RecordData): number | null {
 }
 
 /** The keys of an edit after which a text-slot element's text is refitted (§6.1 point 2). */
-const REFIT_KEYS = ['text', 'fontFamily', 'fontWeight', 'fontStyle', 'fontSize', 'letterSpacing', 'lineHeight', 'wordSpacing', 'textTransform', 'look', 'width', 'height'];
+export const REFIT_KEYS = ['text', 'fontFamily', 'fontWeight', 'fontStyle', 'fontSize', 'letterSpacing', 'lineHeight', 'wordSpacing', 'textTransform', 'look', 'width', 'height'];
 /** The refit step of an edit (§6.2 question 1): runs after the edit's own writes, on every target that is a text-slot
  *  element with text. The fitted size goes to the item (keyframes kept) and to `applied.fontSize` of its `results` entry,
  *  which is made when the call had no element field. Returns one message sentence per refitted item; a different size the
