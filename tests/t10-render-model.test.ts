@@ -108,7 +108,7 @@ describe('T10 framePlan: enabled entries the effect path does not draw make the 
     (itemOf(e.doc, 'v1').effects as any[]).push({ id: 'effect_9_zzzzzzzzz', effectId, enabled, order: 9, parameters: {} });
   it.each([
     ['bg-removal', 'T12', 'Background removal rendering'],
-    ['recolor', 'T22', 'Recolor rendering'],
+    // T22 (C8 assertion-only edit): the recolor row is gone. Recolour now renders from the item's element data (render/model.ts Draw.element); tests/t22-render.test.ts covers it.
     ['not-an-effect', '?', "Unknown effect 'not-an-effect'"],
   ])('an enabled stored %s entry → pending %s "%s", not drawn; disabled → drawn with the rest', (effectId, owner, what) => {
     const e = make(); fx(e, 'v1', 'sepia'); stored(e, effectId, true);
@@ -145,7 +145,7 @@ describe('T10 framePlan: effects on a motion graphic (T08 frame)', () => {
   });
   it.each([
     ['bg-removal', 'T12', 'Background removal rendering'],
-    ['recolor', 'T22', 'Recolor rendering'],
+    // T22 (C8 assertion-only edit): the recolor row is gone. Recolour now renders from the item's element data (render/model.ts Draw.element); tests/t22-render.test.ts covers it.
     ['not-an-effect', '?', "Unknown effect 'not-an-effect'"],
   ])('an enabled stored %s entry on a graphic → pending %s "%s", not drawn', (effectId, owner, what) => {
     const e = mgDoc(); fx(e, 'g', 'invert');

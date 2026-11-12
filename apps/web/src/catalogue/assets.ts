@@ -3,7 +3,8 @@
 // project. The import is async, addMedia is not, so the agent path first tries the call on a draft with stand-in assets
 // (a refused call imports and links nothing), then imports each file once and runs the real call. The file is uploaded
 // under a name that carries its content hash, so the library's reuse rule (same original name and size, part 2 §25)
-// keeps one copy per file version.
+// keeps one copy per file version. An element is uploaded as a PNG drawn from its SVG: the image path decodes with
+// createImageBitmap, which takes no SVG.
 import { uploadToProject } from '../media/ingest';
 import { sha256Blob } from '../media/sha256';
 import type { ProjectStore } from '../store/database';
@@ -14,7 +15,26 @@ import { findElement } from './elements';
 import { findSound } from './sounds';
 
 const bundled = import.meta.glob('../../../../vendor/t22/{elements,sounds}/*', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
-const MIME: Record<string, string> = { svg: 'image/svg+xml', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg' };
+const MIME: Record<string, string> = { png: 'image/png', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg' };
+/** The stored picture of an element: `scale` × its catalogue size, the long side at most `maxSide` px. Placed larger than
+ *  that, the picture is upscaled. */
+export const RASTER = { scale: 2, maxSide: 2048 };
+export function rasterSize(width: number, height: number): { width: number; height: number } {
+  const s = Math.min(RASTER.scale, RASTER.maxSide / Math.max(width, height));
+  return { width: Math.round(width * s), height: Math.round(height * s) };
+}
+/** An SVG as a PNG of the given size, alpha kept. SVG renders only through an <img> on the main thread (as T14's
+ *  svgThumbnails, media/worker-client.ts); <img> runs no SVG script. */
+async function rasterise(svg: Blob, size: { width: number; height: number }): Promise<Blob> {
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image(); img.src = url;
+    await img.decode();
+    const canvas = new OffscreenCanvas(size.width, size.height);
+    canvas.getContext('2d')!.drawImage(img, 0, 0, size.width, size.height);
+    return await canvas.convertToBlob({ type: 'image/png' });
+  } finally { URL.revokeObjectURL(url); }
+}
 /** The bundled file of a catalogue entry (`vendor/t22/…`), fetched from beside the app. */
 async function bundledFile(file: string): Promise<Blob> {
   const url = bundled[`../../../../${file}`];
@@ -25,10 +45,10 @@ async function bundledFile(file: string): Promise<Blob> {
 }
 
 /** The catalogue entry an agent id names: its file, asset type and, for a sound, its length. */
-function entry(id: unknown): { file: string; type: Asset['type']; licence: string; durationMs?: number } | undefined {
+function entry(id: unknown): { file: string; type: Asset['type']; licence: string; durationMs?: number; size?: { width: number; height: number } } | undefined {
   if (typeof id !== 'string') return undefined;
   const el = id.startsWith('element:') ? findElement(id.slice(8)) : undefined, sound = id.startsWith('sound:') ? findSound(id.slice(6)) : undefined;
-  return el ? { file: el.file, type: 'image', licence: 'AGPL-3.0-only' } : sound ? { file: sound.file, type: 'audio', licence: 'CC0-1.0', durationMs: sound.durationMs } : undefined;
+  return el ? { file: el.file, type: 'image', licence: 'AGPL-3.0-only', size: rasterSize(el.width, el.height) } : sound ? { file: sound.file, type: 'audio', licence: 'CC0-1.0', durationMs: sound.durationMs } : undefined;
 }
 const idsOf = (input: RecordData | undefined): unknown[] => Array.isArray(input?.items) ? input!.items.map((i: RecordData) => i?.assetId) : [input?.assetId];
 const named = (id: unknown) => typeof id === 'string' && (id.startsWith('element:') || id.startsWith('sound:'));
@@ -38,13 +58,13 @@ export const usesCatalogue = (tool: string, input: RecordData | undefined) => to
 export const catalogueIds = (input: RecordData | undefined): string[] => [...new Set(idsOf(input).filter((id): id is string => !!entry(id)))];
 
 /** The project asset of a catalogue id: the library copy when there is one, else a new upload; linked either way. */
-export async function ensureCatalogueAsset(store: ProjectStore, projectId: string, id: string, load: (file: string) => Promise<Blob> = bundledFile): Promise<Asset> {
+export async function ensureCatalogueAsset(store: ProjectStore, projectId: string, id: string, load: (file: string) => Promise<Blob> = bundledFile, raster: typeof rasterise = rasterise): Promise<Asset> {
   const e = entry(id);
   if (!e) throw new Error(`${id} is not in the catalogue`);
-  // Content-addressed (part 2 §33): the name carries the first 8 hex of the bytes' SHA-256, so a changed file of the same
-  // size is a new library copy, never the old one.
-  const ext = e.file.split('.').pop()!, blob = await load(e.file);
-  const file = new File([blob], `cutframe-${id.replace(':', '-')}-${(await sha256Blob(blob)).slice(0, 8)}.${ext}`, { type: MIME[ext] });
+  // Content-addressed (part 2 §33): the name carries the first 8 hex of the SHA-256 of the bundled file's bytes (the SVG
+  // of an element, not its PNG), so a changed file of the same size is a new library copy, never the old one.
+  const blob = await load(e.file), ext = e.size ? 'png' : e.file.split('.').pop()!;
+  const file = new File([e.size ? await raster(blob, e.size) : blob], `cutframe-${id.replace(':', '-')}-${(await sha256Blob(blob)).slice(0, 8)}.${ext}`, { type: MIME[ext] });
   const result = await uploadToProject(store, projectId, [file], { source: { kind: 'stock', provider: 'cutframe', providerId: id, licence: e.licence } });
   if (result.failed.length) throw result.failed[0].error;
   const asset = result.assets[0], durationMs = e.durationMs;

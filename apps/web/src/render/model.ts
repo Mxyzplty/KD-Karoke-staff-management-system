@@ -24,6 +24,8 @@ import type { StoredWord } from '../captions/model';
 import { cellItem, cellsOf, LAYOUT_PARITY } from '../timeline/layouts';
 import { activeAt, KINDS, type Active } from '../timeline/transitions';
 import type { Pair } from './transitions';
+import { recolorActive, type RecolorElement } from '../effects/uniforms';
+import { slotGraphic } from '../catalogue/graphic';
 
 export type Mat = [number, number, number, number, number, number];
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -95,9 +97,10 @@ export function cssChain(item: RecordData, local: number, k = 1): string {
 const enabled = (list: unknown) => Array.isArray(list) ? list.filter(e => e && e.enabled !== false) : [];
 /** CSS effect keys that are px lengths (part 4 §51.5, §51.6), scaled by cssScale. */
 const CSS_LENGTHS: Record<string, string[]> = { 'gaussian-blur': ['radius'], 'drop-shadow': ['x', 'y', 'blur'] };
-/** Enabled stack entries the effect path does not draw, with the owner ticket: bg-removal needs T12's matte, recolor is T22's
- *  element pass, and an id the registry does not know has no renderer. The first one in stack order makes the item pending. */
-const UNRENDERED: Record<string, [string, string]> = { 'bg-removal': ['T12', 'Background removal rendering'], recolor: ['T22', 'Recolor rendering'] };
+/** Enabled stack entries the effect path does not draw, with the owner ticket: bg-removal needs T12's matte, and an id the
+ *  registry does not know has no renderer. The first one in stack order makes the item pending. A stored recolor entry draws
+ *  nothing by itself: the pass runs from the item's element data (T22, Draw.element). */
+const UNRENDERED: Record<string, [string, string]> = { 'bg-removal': ['T12', 'Background removal rendering'] };
 export function unrenderedEffect(item: RecordData): { owner: string; what: string } | null {
   for (const e of effectStack(item)) {
     if (!e || e.enabled === false || isInternal(e)) continue;
@@ -114,7 +117,7 @@ export function itemEffects(item: RecordData, local: number, k = 1): { gpu: Effe
   const gpu: EffectInstance[] = [], css: string[] = [];
   for (const e of effectStack(item)) {
     const def = e && e.enabled !== false && !isInternal(e) ? effectById(e.effectId) : undefined;
-    if (!def) continue;
+    if (!def || def.id === 'recolor') continue;
     const params = effectParamsAt(item, e, local);
     if (def.renderType === 'webgl') { gpu.push({ effectId: def.id, params, enabled: true, order: gpu.length }); continue; }
     const values = resolveParams(def.id, params);
@@ -182,6 +185,9 @@ export type Draw = {
   layout?: LayoutDraw;
   /** T11: one side of a transition pair (framePlan). */
   transition?: TransitionTag;
+  /** T22: the element data of an element picture whose palette is recoloured at this frame; the recolor pass runs first on
+   *  the effect path (part 4 §49.19). Absent when no colour differs from its base. */
+  element?: RecolorElement;
 };
 /** §53.3.3 one layout cell: its rectangle in box px (gap applied), the corner radius of its clip, its alpha factor (cell
  *  opacity / 100; the item's opacity is the draw's alpha) and, when filled, the media as a draw of the cell's media item
@@ -285,17 +291,33 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
   const filter = [cssChain(item, local, k), ...fx.css].filter(Boolean).join(' '), bw = text || caption ? 0 : Number(field(item, 'borderWidth', local, 0)) || 0;
   // T12 (part 5 §54.1): video and image items only.
   const masks = item.type === 'video' || item.type === 'image' ? frameMasks(item, local, fpsOf(doc)) : [];
+  const element = item.type === 'image' && recolorActive(item.details?.element) ? item.details.element as RecolorElement : undefined;
   const d: Draw = {
     item, kind: item.type, local, ...mg ? graphicDraw(doc, item, t) : { sourceMs: item.type === 'video' ? sourceTime(item, local) : propertyTime(item, local) },
     box, matrix, alpha: Math.min(1, alpha), blend: compositeOp(field(item, 'blendMode', local, 'normal')), filter,
     radius: Math.max(0, Number(field(item, 'borderRadius', local, 0)) || 0),
-    border: bw > 0 ? { width: bw, color: String(field(item, 'borderColor', local, '#000000')) } : null, path: filter || fx.gpu.length || masks.length ? 'css' : 'direct',
-    stackedAlpha: isStackedAlpha(item), effects: fx.gpu, ...shape ? { shape: shapeDraw(item, local) } : {}, ...textDraw ? { text: textDraw } : {}, ...captionDraw ? { caption: captionDraw } : {}, ...masks.length ? { masks } : {},
+    border: bw > 0 ? { width: bw, color: String(field(item, 'borderColor', local, '#000000')) } : null, path: filter || fx.gpu.length || masks.length || element ? 'css' : 'direct',
+    stackedAlpha: isStackedAlpha(item), effects: fx.gpu, ...element ? { element } : {}, ...shape ? { shape: shapeDraw(item, local) } : {}, ...textDraw ? { text: textDraw } : {}, ...captionDraw ? { caption: captionDraw } : {}, ...masks.length ? { masks } : {},
   };
   if (layout) d.layout = layoutDraw(item, local, box, d);
   return d;
 }
 export const isPending = (d: Draw | Pending): d is Pending => 'owner' in d;
+/** T22 (catalogue/graphic.ts): the picture of a slot element as one image draw beside its item's own draw `d`. It shares
+ *  d's alpha, blend, filter, effects and transform (keyframes and the text entrance included): its box is the element box,
+ *  placed so that d's box is the slot box inside it. */
+function slotDraw(d: Draw): Draw | Pending | null {
+  const g = slotGraphic(d.item);
+  if (!g) return null;
+  if (!g.box) return { itemId: d.item.id, owner: 'T22', what: `Unknown element '${d.item.details.element.id}'` };
+  const W = d.box.W / g.box.width, H = d.box.H / g.box.height, u = -g.box.x * W, v = -g.box.y * H, [e, f] = apply(d.matrix, u, v);
+  const element = recolorActive(g.item.details.element) ? g.item.details.element as RecolorElement : undefined;
+  return {
+    item: g.item, kind: 'image', local: d.local, sourceMs: d.sourceMs, box: { ...d.box, x: d.box.x + u * d.box.sx, y: d.box.y + v * d.box.sy, W, H },
+    matrix: [d.matrix[0], d.matrix[1], d.matrix[2], d.matrix[3], e, f], alpha: d.alpha, blend: d.blend, filter: d.filter, radius: 0, border: null,
+    path: d.filter || d.effects.length || element ? 'css' : 'direct', stackedAlpha: false, effects: d.effects, ...element ? { element } : {},
+  };
+}
 /** T11: the two draws of a transition pair carry its id, their role and the kind at linear progress p (§55.4). */
 export type TransitionTag = Pair & { id: string; role: 'from' | 'to' };
 /** Every draw of the frame at timeline ms t, bottom first, plus what the frame shows that T15 does not render. trackIds limits
@@ -310,7 +332,14 @@ export function framePlan(doc: ProjectDocument, t: number, out: Size = projectSi
     if ((KINDS as readonly unknown[]).includes(a.record.kind)) pairs.push(a);
     else pending.push({ itemId: String(a.record.id), owner: 'T11', what: `Transition kind '${a.record.kind}'` });
   }
-  const push = (d: Draw | Pending | null, tag?: TransitionTag) => { if (d) { if (isPending(d)) pending.push(d); else draws.push(tag ? { ...d, transition: tag } : d); } };
+  const add = (d: Draw | Pending | null, tag?: TransitionTag) => { if (d) { if (isPending(d)) pending.push(d); else draws.push(tag ? { ...d, transition: tag } : d); } };
+  // T22: a slot element's picture lies under its text and over its cells.
+  const push = (d: Draw | Pending | null, tag?: TransitionTag) => {
+    const g = d && !isPending(d) ? slotDraw(d) : null, under = !!d && !isPending(d) && d.kind === 'text';
+    if (under) add(g, tag);
+    add(d, tag);
+    if (!under) add(g, tag);
+  };
   const done = new Set<Active>();
   for (const id of trackIds) for (const item of trackItems(doc, id)) {
     const pair = pairs.find(a => a.from.id === item.id || a.to.id === item.id);

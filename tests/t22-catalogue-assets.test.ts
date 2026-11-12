@@ -7,7 +7,8 @@ import 'fake-indexeddb/auto';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { catalogueIds, callCatalogueTool, ensureCatalogueAsset, usesCatalogue } from '../apps/web/src/catalogue/assets';
+import { catalogueIds, callCatalogueTool, ensureCatalogueAsset, rasterSize, RASTER, usesCatalogue } from '../apps/web/src/catalogue/assets';
+import { ELEMENTS, findElement } from '../apps/web/src/catalogue/elements';
 import { findSound } from '../apps/web/src/catalogue/sounds';
 import { ProjectStore } from '../apps/web/src/store/database';
 import type { Asset, RecordData } from '../apps/web/src/store/model';
@@ -26,6 +27,8 @@ beforeEach(() => useIds());
 const opened: ProjectStore[] = [];
 afterEach(async () => { resetIds(); vi.restoreAllMocks(); for (const store of opened.splice(0)) await store.close(); });
 const json = (value: unknown) => JSON.stringify(value);
+// A valid 1px PNG test double, not a pin of the browser rasteriser's output (no production PNG hash/bytes are asserted).
+const pngStub = () => new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')], { type: 'image/png' });
 const doc = () => build({ tracks: [mkTrack('V1', 'video'), mkTrack('O1', 'overlay'), mkTrack('A1', 'audio')] });
 function assetFor(id: string): Asset {
   const sound = id.startsWith('sound:') ? findSound(id.slice(6)) : undefined;
@@ -152,17 +155,23 @@ describe('ensureCatalogueAsset F-1: real store, content-addressed upload names a
     const bytes = readFileSync(new URL(`../${spec.file}`, import.meta.url));
     const load = vi.fn(async (file: string) => { expect(file).toBe(spec.file); return new Blob([bytes], { type: spec.type === 'image' ? 'image/svg+xml' : 'audio/wav' }); });
     const network = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('No network allowed in this test'));
-    const first = await ensureCatalogueAsset(store, p.id, spec.id, load);
-    const sha8 = createHash('sha256').update(bytes).digest('hex').slice(0, 8), ext = spec.file.split('.').pop();
+    const png = pngStub(), raster = vi.fn(async (svg: Blob, size: { width: number; height: number }) => {
+      expect(new Uint8Array(await svg.arrayBuffer())).toEqual(new Uint8Array(bytes));
+      const e = findElement(spec.id.slice(8))!, s = Math.min(2, 2048 / Math.max(e.width, e.height));
+      expect(size).toEqual({ width: Math.round(e.width * s), height: Math.round(e.height * s) }); return png;
+    });
+    const first = await ensureCatalogueAsset(store, p.id, spec.id, load, raster);
+    const sha8 = createHash('sha256').update(bytes).digest('hex').slice(0, 8), ext = spec.type === 'image' ? 'png' : spec.file.split('.').pop();
     const name = `cutframe-${spec.id.replace(':', '-')}-${sha8}.${ext}`;
-    expect(first).toMatchObject({ name, type: spec.type, sizeBytes: bytes.byteLength,
+    expect(first).toMatchObject({ name, type: spec.type, mimeType: spec.type === 'image' ? 'image/png' : 'audio/wav', sizeBytes: spec.type === 'image' ? png.size : bytes.byteLength,
       source: { kind: 'stock', provider: 'cutframe', providerId: spec.id, licence: spec.licence } });
     expect((await store.library()).assets).toHaveLength(1); expect((await store.projectAssets(p.id)).map(link => link.assetId)).toEqual([first.id]);
-    const again = await ensureCatalogueAsset(store, p.id, spec.id, load), other = await ensureCatalogueAsset(store, q.id, spec.id, load);
+    const again = await ensureCatalogueAsset(store, p.id, spec.id, load, raster), other = await ensureCatalogueAsset(store, q.id, spec.id, load, raster);
     expect(again.id).toBe(first.id); expect(other.id).toBe(first.id);
     expect((await store.library()).assets).toHaveLength(1); expect((await store.projectAssets(p.id)).map(link => link.assetId)).toEqual([first.id]);
     expect((await store.projectAssets(q.id)).map(link => link.assetId)).toEqual([first.id]); expect(media.write).toHaveBeenCalledTimes(1);
-    expect(new Uint8Array(await (await media.read(first.id)).arrayBuffer())).toEqual(new Uint8Array(bytes));
+    if (spec.type === 'image') { expect(raster).toHaveBeenCalled(); expect((await media.read(first.id)).type).toBe('image/png'); }
+    else { expect(raster).not.toHaveBeenCalled(); expect(new Uint8Array(await (await media.read(first.id)).arrayBuffer())).toEqual(new Uint8Array(bytes)); }
     if (spec.type === 'audio') {
       const expected = findSound('mouse-click')!.durationMs;
       expect(first.durationMs).toBe(expected); expect(again.durationMs).toBe(expected); expect(other.durationMs).toBe(expected);
@@ -186,13 +195,15 @@ describe('ensureCatalogueAsset F-1: real store, content-addressed upload names a
     const originalSha8 = createHash('sha256').update(original).digest('hex').slice(0, 8);
     const changedSha8 = createHash('sha256').update(changed).digest('hex').slice(0, 8);
     expect(changedSha8).not.toBe(originalSha8);
-    const ext = spec.file.split('.').pop(), prefix = `cutframe-${spec.id.replace(':', '-')}`;
-    const first = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([original]));
-    const second = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([changed]));
+    const ext = spec.file.endsWith('.svg') ? 'png' : spec.file.split('.').pop(), prefix = `cutframe-${spec.id.replace(':', '-')}`;
+    // Identical PNG output deliberately proves the element's name keys off SVG input, not encoded PNG bytes.
+    const raster = vi.fn(async () => pngStub());
+    const first = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([original]), raster);
+    const second = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([changed]), raster);
     expect(first.name).toBe(`${prefix}-${originalSha8}.${ext}`); expect(second.name).toBe(`${prefix}-${changedSha8}.${ext}`);
     expect(second.id).not.toBe(first.id); expect((await store.library()).assets).toHaveLength(2);
-    const again = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([changed]));
-    const originalAgain = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([original]));
+    const again = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([changed]), raster);
+    const originalAgain = await ensureCatalogueAsset(store, project.id, spec.id, async () => new Blob([original]), raster);
     expect(again.id).toBe(second.id); expect(originalAgain.id).toBe(first.id);
     expect((await store.library()).assets).toHaveLength(2); expect(media.write).toHaveBeenCalledTimes(2);
     expect((await store.projectAssets(project.id)).map(link => link.assetId)).toEqual([first.id, second.id]);
@@ -217,6 +228,36 @@ describe('ensureCatalogueAsset F-1: real store, content-addressed upload names a
         trim: { from: 0, to: sound.durationMs }, sourceDuration: sound.durationMs });
       expect(w.bus.labels()).toEqual(['Add media']);
     }
+  });
+});
+
+describe('F: bounded 2× PNG raster contract', () => {
+  it.each(ELEMENTS)('$id raster size is 2× or capped at 2048; raster receives its SVG bytes and that size', async e => {
+    expect(RASTER).toEqual({ scale: 2, maxSide: 2048 });
+    const s = Math.min(2, 2048 / Math.max(e.width, e.height)), expected = { width: Math.round(e.width * s), height: Math.round(e.height * s) };
+    const got = rasterSize(e.width, e.height); expect(got).toEqual(expected);
+    expect(Math.max(got.width, got.height)).toBeLessThanOrEqual(2048);
+    expect(Math.abs(got.width - e.width * s)).toBeLessThanOrEqual(1); expect(Math.abs(got.height - e.height * s)).toBeLessThanOrEqual(1);
+    const { store } = storeSetup(), project = await store.create(), bytes = readFileSync(new URL(`../${e.file}`, import.meta.url));
+    const raster = vi.fn(async (svg: Blob, size: { width: number; height: number }) => {
+      expect(new Uint8Array(await svg.arrayBuffer())).toEqual(new Uint8Array(bytes)); expect(size).toEqual(expected); return pngStub();
+    });
+    const asset = await ensureCatalogueAsset(store, project.id, `element:${e.id}`, async () => new Blob([bytes], { type: 'image/svg+xml' }), raster);
+    expect(raster).toHaveBeenCalledTimes(1); expect(asset.mimeType).toBe('image/png');
+  });
+  it('raster rejection becomes UPLOAD_FAILED: no library asset/link and no document or undo/redo mutation', async () => {
+    const { store } = storeSetup(), project = await store.create(), w = context();
+    w.bus.run('Add marker', 'user', d => { d.markers.push({ id: 'one', timeMs: 100 }); });
+    w.bus.run('Add marker', 'user', d => { d.markers.push({ id: 'two', timeMs: 200 }); }); w.bus.undo();
+    const before = json(w.doc), undo = json(w.bus.undoStack), redo = json(w.bus.redoStack);
+    const svg = new Blob([readFileSync(new URL('../vendor/t22/elements/sticker-star.svg', import.meta.url))], { type: 'image/svg+xml' });
+    const raster = vi.fn(async () => { throw new Error('raster failed'); }), run = vi.fn(() => ({ success: true }));
+    const ensure = (id: string) => ensureCatalogueAsset(store, project.id, id, async () => svg, raster);
+    const result = await callCatalogueTool(w.ctx, { assetId: 'element:sticker-star', trackId: 'V1' }, { ensure, run });
+    expect(result).toMatchObject({ success: false, code: 'UPLOAD_FAILED', operationMayHaveRun: false });
+    expect(raster).toHaveBeenCalledTimes(1); expect(run).not.toHaveBeenCalled();
+    expect((await store.library()).assets).toEqual([]); expect(await store.projectAssets(project.id)).toEqual([]);
+    expect(json(w.doc)).toBe(before); expect(json(w.bus.undoStack)).toBe(undo); expect(json(w.bus.redoStack)).toBe(redo);
   });
 });
 

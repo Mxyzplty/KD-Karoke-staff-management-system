@@ -99,12 +99,12 @@ function masked(picture: OffscreenCanvas, d: Draw): OffscreenCanvas {
   return canvas;
 }
 /** §53.4.1 effect path (a CSS chain, GPU effects or masks): the content is drawn into the item canvas first, then the GPU
- *  effects run on it (T10: WebGPU, else WebGL2), then the masks. */
+ *  effects run on it (T10: WebGPU, else WebGL2; T22: an element's recolour first), then the masks. */
 function effectPicture(d: Draw, src: Source): OffscreenCanvas | EffectFailure {
   const ic = itemContext(d.box.W, d.box.H);
   ic.setTransform(1, 0, 0, 1, 0, 0); ic.clearRect(0, 0, ic.canvas.width, ic.canvas.height);
   content(ic, d, src);
-  const picture = d.effects.length ? runEffects(ic.canvas, d.effects, { timeS: d.local / 1000 }) : ic.canvas;
+  const picture = d.effects.length || d.element ? runEffects(ic.canvas, d.effects, { timeS: d.local / 1000, element: d.element }) : ic.canvas;
   return d.masks?.length && typeof picture !== 'string' ? masked(picture, d) : picture;
 }
 /** One item's draw (§53.4.2); blend overrides the item's own (a transition surface neutralises it, §55.4). */

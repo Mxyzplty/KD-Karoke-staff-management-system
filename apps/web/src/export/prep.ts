@@ -8,6 +8,7 @@ import type { Asset, ProjectDocument, RecordData } from '../store/model';
 import { validateDocument } from '../store/model';
 import { stack } from '../timeline/model';
 import { withCellItems } from '../timeline/layouts';
+import { slotGraphic } from '../catalogue/graphic';
 import { exportPlan, projectSize } from '../render/model';
 import type { Plan, Size } from '../render/model';
 import { ExportError } from './errors';
@@ -76,8 +77,10 @@ export function exportedItems(doc: ProjectDocument): RecordData[] {
   const ids = new Set(stack(doc).filter(id => !hidden.has(id) && !groupsHidden.has(id)));
   return doc.items.filter(i => ids.has(i.trackId));
 }
-/** Media items that the export reads, a layout's filled cells included (T07: timeline/layouts cellItem). */
-export const exportedMedia = (doc: ProjectDocument): RecordData[] => withCellItems(exportedItems(doc)).filter(i => MEDIA.has(i.type));
+/** Media items that the export reads, a layout's filled cells included (T07: timeline/layouts cellItem), and the picture of a
+ *  slot element (T22: catalogue/graphic.ts; an image with its text or layout item's id). */
+export const exportedMedia = (doc: ProjectDocument): RecordData[] =>
+  withCellItems(exportedItems(doc)).flatMap(i => { const g = slotGraphic(i); return g ? [i, g.item] : [i]; }).filter(i => MEDIA.has(i.type));
 function hiddenByGroup(doc: ProjectDocument): Set<string> {
   const out = new Set<string>(), walk = (list: { type: string; id: string }[], hidden: boolean) => list.forEach(e => {
     if (e.type === 'group') walk((doc.groups[e.id]?.children ?? []) as { type: string; id: string }[], hidden || !!doc.groups[e.id]?.hidden);
