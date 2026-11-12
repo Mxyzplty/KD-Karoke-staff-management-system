@@ -48,7 +48,9 @@ describe('T22 export drawSource: placed elements are known picture kinds, not CL
     expect(plan.pending).toEqual([]); expect(plan.draws.map(d => d.kind)).toEqual(kinds);
     const bitmap = { width: 64, height: 64, close: vi.fn() } as unknown as ImageBitmap;
     const decode = vi.fn(async () => bitmap); vi.stubGlobal('createImageBitmap', decode);
-    const read = vi.fn(async () => new Blob(['CPU picture fixture'], { type: 'image/png' })), store = { media: { read } } as unknown as ProjectStore;
+    // The picture loader reads the asset's row before it decodes (T25): a PNG row with no stored container takes the native decode.
+    const read = vi.fn(async () => new Blob(['CPU picture fixture'], { type: 'image/png' })), row = vi.fn(async () => ({ id: assetId, name: `${id}.png`, type: 'image', mimeType: 'image/png' }));
+    const store = { media: { read }, row } as unknown as ProjectStore;
     const refOf = vi.fn(), frame = vi.fn(), owned: ImageBitmap[] = [];
     const sources = await Promise.all(plan.draws.map(draw => drawSource(store, draw, refOf as never, { frame } as never, new Set(), undefined, owned)));
     for (const [index, draw] of plan.draws.entries()) {
