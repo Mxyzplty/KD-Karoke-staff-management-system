@@ -340,6 +340,155 @@
         { "path": "vendor/open-sans/OpenSans.ttf.b64", "bytes": 716103, "sha256": "11f82b62241be8eef91ff76250ec25a08a781ec63c853f38b06b2098f905bdb0" },
         { "path": "vendor/open-sans/OFL.txt", "bytes": 4389, "sha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602" }
       ]
+    },
+    {
+      "name": "Sora variable, Latin subset (T22 default project template: titles font, bundled for offline use)",
+      "license": "OFL-1.1",
+      "licenseEvidence": "Official Google Fonts ofl/sora/OFL.txt, unmodified: Copyright 2019 The Sora Project Authors (https://github.com/sora-xor/sora-font); SIL Open Font License 1.1; no Reserved Font Name declared. ofl/sora/METADATA.pb at the same commit: license \"OFL\". The font file is Google Fonts' own Latin-subset WOFF2 of Sora[wght].ttf (weights 100-800), downloaded as served; no conversion or subsetting was done here.",
+      "source": {
+        "repository": "https://github.com/google/fonts",
+        "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8",
+        "stylesheet": { "url": "https://fonts.googleapis.com/css2?family=Sora:wght@100..800&display=block" },
+        "font": { "url": "https://fonts.gstatic.com/s/sora/v17/xMQbuFFYT72XzQUpDg.woff2" },
+        "license": { "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/sora/OFL.txt" }
+      },
+      "files": [
+        { "path": "vendor/t22/fonts/Sora-latin.woff2", "bytes": 33652, "sha256": "fa26406eeda9a3c6ec3d9ea8813c3045d6dc755e30c716d5c094e8ef43be5a7f" },
+        { "path": "vendor/t22/fonts/Sora-OFL.txt", "bytes": 4385, "sha256": "ba0b9729c9428ba79a0459ab8ec575791b51509dbec213e383d0316d37fec299" }
+      ]
+    },
+    {
+      "name": "Manrope variable, Latin subset (T22 default project template: captions font, bundled for offline use)",
+      "license": "OFL-1.1",
+      "licenseEvidence": "Official Google Fonts ofl/manrope/OFL.txt, unmodified: Copyright 2018 The Manrope Project Authors (https://github.com/googlefonts/manrope); SIL Open Font License 1.1; no Reserved Font Name declared. ofl/manrope/METADATA.pb at the same commit: license \"OFL\". The font file is Google Fonts' own Latin-subset WOFF2 of Manrope[wght].ttf (weights 200-800), downloaded as served; no conversion or subsetting was done here.",
+      "source": {
+        "repository": "https://github.com/google/fonts",
+        "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8",
+        "stylesheet": { "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=block" },
+        "font": { "url": "https://fonts.gstatic.com/s/manrope/v23/xn7gYHE41ni1AdIRggexSg.woff2" },
+        "license": { "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/manrope/OFL.txt" }
+      },
+      "files": [
+        { "path": "vendor/t22/fonts/Manrope-latin.woff2", "bytes": 24532, "sha256": "8c2def024c1bf31aacf3624ae3c4d701269b4ec3dc765c04830839f0d36b2d9e" },
+        { "path": "vendor/t22/fonts/Manrope-OFL.txt", "bytes": 4387, "sha256": "58172e0c0fac2cda8a37b348164bb55e44b0e69051e557e92b1d3f6910141f7b" }
+      ]
+    },
+    {
+      "name": "Instrument Serif Regular and Italic, Latin subset (T22 default project template: accent font, bundled for offline use)",
+      "license": "OFL-1.1",
+      "licenseEvidence": "Official Google Fonts ofl/instrumentserif/OFL.txt, unmodified: Copyright 2022 The Instrument Serif Project Authors (https://github.com/Instrument/instrument-serif); SIL Open Font License 1.1; no Reserved Font Name declared. ofl/instrumentserif/METADATA.pb at the same commit: license \"OFL\". The font files are Google Fonts' own Latin-subset WOFF2 of InstrumentSerif-Regular.ttf and InstrumentSerif-Italic.ttf, downloaded as served; no conversion or subsetting was done here.",
+      "source": {
+        "repository": "https://github.com/google/fonts",
+        "commit": "5bb28733cec313b63fbd415b574b5ae35c8aa8b8",
+        "stylesheet": { "url": "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=block" },
+        "regular": { "url": "https://fonts.gstatic.com/s/instrumentserif/v5/jizBRFtNs2ka5fXjeivQ4LroWlx-6zUTjg.woff2" },
+        "italic": { "url": "https://fonts.gstatic.com/s/instrumentserif/v5/jizHRFtNs2ka5fXjeivQ4LroWlx-6zAjjH7M.woff2" },
+        "license": { "url": "https://raw.githubusercontent.com/google/fonts/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/instrumentserif/OFL.txt" }
+      },
+      "files": [
+        { "path": "vendor/t22/fonts/InstrumentSerif-Regular-latin.woff2", "bytes": 21032, "sha256": "5eb09b5ac0e28b67c2f041c8ba6d244604ca0c0980d65912ab2d47fed84ddc31" },
+        { "path": "vendor/t22/fonts/InstrumentSerif-Italic-latin.woff2", "bytes": 22128, "sha256": "5a51946dfffa82972bc98745359c46761515641fda557c25116459a9f83da4a7" },
+        { "path": "vendor/t22/fonts/InstrumentSerif-OFL.txt", "bytes": 4405, "sha256": "129ed7618959716959f2941fdd5b49e0ad6e6c1d78726761786a00253d865521" }
+      ]
+    },
+    {
+      "name": "T22 sound catalogue - mouse-click (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author FlowgerWikiCommons (own work). Unmodified original file; its SHA-1 matched the page's 3156a1b4dd26b1e62a2270a18498d28138f8fbcb. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Computer_Mouse_Click.wav", "download": "https://upload.wikimedia.org/wikipedia/commons/a/ac/Computer_Mouse_Click.wav" },
+      "files": [ { "path": "vendor/t22/sounds/mouse-click.wav", "bytes": 100516, "sha256": "37f45ec5b02166f951bd73a28a4a27486d6cc727a09b8a3c1aac82d6ce0583d9" } ]
+    },
+    {
+      "name": "T22 sound catalogue - typewriter-ding (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author _stubb, credited to https://freesound.org/people/_stubb/sounds/406243/. That Freesound page, read on 11 Nov 2026, states \"Creative Commons 0\" with the link creativecommons.org/publicdomain/zero/1.0/. The Commons page carries no licence-review mark. Unmodified Commons file; its SHA-1 matched the page's 1de2af649f4148588384364d54d5143dfb4b457a. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:406243_stubb_typewriter-ding-near-mono.wav", "download": "https://upload.wikimedia.org/wikipedia/commons/9/9f/406243_stubb_typewriter-ding-near-mono.wav" },
+      "files": [ { "path": "vendor/t22/sounds/typewriter-ding.wav", "bytes": 154464, "sha256": "7e86d269c13cff5d8651718b39da728e612f22e58187780d6b098f9329d713eb" } ]
+    },
+    {
+      "name": "T22 sound catalogue - cabin-chime (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author Sharelk (own work). Unmodified original file; its SHA-1 matched the page's 2d1c24ecf1fe5d6c46b6775d276826bb1c229dc8. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Airplane_Chime_Sound_Effect.ogg", "download": "https://upload.wikimedia.org/wikipedia/commons/c/ce/Airplane_Chime_Sound_Effect.ogg" },
+      "files": [ { "path": "vendor/t22/sounds/cabin-chime.ogg", "bytes": 16225, "sha256": "cce5b73c814b7f8c501d0370ce27995c28fe2e6c2bed06547208cba00f285c2b" } ]
+    },
+    {
+      "name": "T22 sound catalogue - soft-chime (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author Walechon24 (own work). Unmodified original file; its SHA-1 matched the page's d927eece30d1b3af4cc7e41923b65a5e9c30dee0. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Chime.wav", "download": "https://upload.wikimedia.org/wikipedia/commons/b/b6/Chime.wav" },
+      "files": [ { "path": "vendor/t22/sounds/soft-chime.wav", "bytes": 198956, "sha256": "243799f22130bc987bb57b80b3ca89643851077ed8743a3cae644a6a3ee804bf" } ]
+    },
+    {
+      "name": "T22 sound catalogue - short-beep (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author YJJcoolcool (own work). Unmodified original file; its SHA-1 matched the page's 6ebb10eb395583afc6fc0bdee7b27c3ad90bf4da. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Short_Beep.ogg", "download": "https://upload.wikimedia.org/wikipedia/commons/8/87/Short_Beep.ogg" },
+      "files": [ { "path": "vendor/t22/sounds/short-beep.ogg", "bytes": 6501, "sha256": "5ff9635260b97e5ef583ac52ba9510a81285008633db95387f05724310bf33df" } ]
+    },
+    {
+      "name": "T22 sound catalogue - happy-beep (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author waveplaySFX, credited to https://freesound.org/people/waveplaySFX/sounds/518147/. That Freesound page, read on 11 Nov 2026, states \"Creative Commons 0\" with the link creativecommons.org/publicdomain/zero/1.0/. The Commons page carries no licence-review mark. Unmodified Commons file; its SHA-1 matched the page's 59aa573237732cc7556a2a18908bb3e7a081ce55. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Simple_Happy_Beep.ogg", "download": "https://upload.wikimedia.org/wikipedia/commons/0/08/Simple_Happy_Beep.ogg" },
+      "files": [ { "path": "vendor/t22/sounds/happy-beep.ogg", "bytes": 21417, "sha256": "637fed64a1d1ac8fb9ea30fc4fc3d72e20f427da4b50a2ac5a5522be3aebb404" } ]
+    },
+    {
+      "name": "T22 sound catalogue - bicycle-bell (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author marcolo91, credited to http://freesound.org/people/marcolo91/sounds/156064/. That Freesound page, read on 11 Nov 2026, states \"Creative Commons 0\" with the link creativecommons.org/publicdomain/zero/1.0/. The Commons page carries no licence-review mark. Unmodified Commons file; its SHA-1 matched the page's fd71caf995f2d31d8b5987af2c22011e9894c831. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:156064_marcolo91_bicycle-bell.wav", "download": "https://upload.wikimedia.org/wikipedia/commons/9/97/156064_marcolo91_bicycle-bell.wav" },
+      "files": [ { "path": "vendor/t22/sounds/bicycle-bell.wav", "bytes": 97464, "sha256": "c2dae2e6ad69cd7f7b1f120ee90807f8f3b8aa7853d4f1d0f68d8a267e9af600" } ]
+    },
+    {
+      "name": "T22 sound catalogue - camera-focus (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author Lycopene579 (own work). Unmodified original file; its SHA-1 matched the page's 65381802b9eed7eab522db1dd8e615b36b262aad. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Camera_focus.oga", "download": "https://upload.wikimedia.org/wikipedia/commons/0/0c/Camera_focus.oga" },
+      "files": [ { "path": "vendor/t22/sounds/camera-focus.oga", "bytes": 9460, "sha256": "2f63442c58feda821e6e5d1c6f06fa36fdd2bb42be5f457a6b4d2c455e053c0b" } ]
+    },
+    {
+      "name": "T22 sound catalogue - clicker (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author Maddy (own work). Unmodified original file; its SHA-1 matched the page's 7b060f4760dbd6d19de57eb374ca91da1747b8c4. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Clicker_sound.ogg", "download": "https://upload.wikimedia.org/wikipedia/commons/b/bd/Clicker_sound.ogg" },
+      "files": [ { "path": "vendor/t22/sounds/clicker.ogg", "bytes": 54475, "sha256": "109abfa5f24bd0b37c96398baa79956d2f3ed64fa110dc5845151c7ade49fb47" } ]
+    },
+    {
+      "name": "T22 sound catalogue - keyboard-typing (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author Raymangold22 (own work). Unmodified original file; its SHA-1 matched the page's 99004320c87964668f91cbb9e039c3513200289d. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:Typing_-_Model_M_1986.ogg", "download": "https://upload.wikimedia.org/wikipedia/commons/0/0a/Typing_-_Model_M_1986.ogg" },
+      "files": [ { "path": "vendor/t22/sounds/keyboard-typing.ogg", "bytes": 168864, "sha256": "8065238fc01388839204c44dff9f9e1272c4e14fb14fe2cf74744cc4668bc0bf" } ]
+    },
+    {
+      "name": "T22 sound catalogue - latch-click (CC0 source)",
+      "license": "CC0-1.0",
+      "licenseEvidence": "Wikimedia Commons file page states CC0 (LicenseShortName \"CC0\", licence URL http://creativecommons.org/publicdomain/zero/1.0/deed.en); author Rudmer_Rotteveel, credited to https://freesound.org/people/Rudmer_Rotteveel/sounds/457456/. That Freesound page, read on 11 Nov 2026, states \"Creative Commons 0\" with the link creativecommons.org/publicdomain/zero/1.0/. The Commons page carries no licence-review mark. Unmodified Commons file; its SHA-1 matched the page's f091e53699f4c28af4dc4d377c251329f8253203. Licence read on the file's own page on 11 Nov 2026.",
+      "source": { "page": "https://commons.wikimedia.org/wiki/File:457456_rudmer-rotteveel_karabiner-click-02.wav", "download": "https://upload.wikimedia.org/wikipedia/commons/4/44/457456_rudmer-rotteveel_karabiner-click-02.wav" },
+      "files": [ { "path": "vendor/t22/sounds/latch-click.wav", "bytes": 204232, "sha256": "0f80a63afb93490fce6cf7eac0a672123f735fbe227c68a94659145dedbd354a" } ]
+    },
+    {
+      "name": "T22 element catalogue - 14 flat-colour SVG graphics (Cutframe's own work)",
+      "license": "AGPL-3.0-only",
+      "licenseEvidence": "Written by hand for Cutframe on 11 Nov 2026 as plain SVG paths; no source file, trace or model of any third-party asset. Licensed with the project (LICENSE, AGPL-3.0).",
+      "source": { "authored": "Cutframe T22" },
+      "files": [
+        { "path": "vendor/t22/elements/arrow-swoop.svg", "bytes": 333, "sha256": "86e261c9fb05aa3b1c6947f4efad152b8c4455782e4a63dd6e2cb3dad4f32a55" },
+        { "path": "vendor/t22/elements/browser-window.svg", "bytes": 396, "sha256": "03c7845826dd25a2b0af5bfa8068c3c80cb5d76059d5084f184210a380fcf37f" },
+        { "path": "vendor/t22/elements/burst-badge.svg", "bytes": 317, "sha256": "607c72a8fd469ba132e03b1486f2a0a9c750a0e1c92b1915a623b12537d44672" },
+        { "path": "vendor/t22/elements/corner-brackets.svg", "bytes": 239, "sha256": "b3e5db3ba408b89eae0fb8ac62a499283c7119b5867c1781316057e4c32279a7" },
+        { "path": "vendor/t22/elements/label-tag.svg", "bytes": 198, "sha256": "00b209fbc1eba9895a9fd9300aa127d9925162b0e43034586c1aec4462e377dd" },
+        { "path": "vendor/t22/elements/phone-frame.svg", "bytes": 321, "sha256": "504937a8c5c95e21239d0b8f079262dee07a115949b61e2ed94cada0859af0ec" },
+        { "path": "vendor/t22/elements/polaroid-frame.svg", "bytes": 174, "sha256": "1ac4a054c7ff5436de51fc918616f3fe18c1fa8476f37222f3171dfd29f2013f" },
+        { "path": "vendor/t22/elements/ribbon-banner.svg", "bytes": 232, "sha256": "f9a2d0a55b40c0001e41282e0a9c77ee22611f28ce8aae5c30c85b29e3971cd9" },
+        { "path": "vendor/t22/elements/sparkles.svg", "bytes": 366, "sha256": "83a6ea258496d5a93f07e04178d54bac93a49f745f747d4af7f68fd6fa2a5999" },
+        { "path": "vendor/t22/elements/speech-bubble.svg", "bytes": 289, "sha256": "2f6771da6bddcbcdf67e99df4ef5f49623c951397d832504daefda6baf862fe1" },
+        { "path": "vendor/t22/elements/split-frame.svg", "bytes": 196, "sha256": "9705d3916c70a3aed467b9ccb3dd4ab2dad4ffc55c41a68b7c8dc97783ebe4e8" },
+        { "path": "vendor/t22/elements/sticker-heart.svg", "bytes": 306, "sha256": "44986d57bd64998e57fa9c5c7645e715412f627ca83f31729cfd0a48e339c9cd" },
+        { "path": "vendor/t22/elements/sticker-star.svg", "bytes": 252, "sha256": "0ac0b760a4cc0e241a8bc5a5bf58aa7252abf1c6483ae19503b95bc34c3d9f70" },
+        { "path": "vendor/t22/elements/underline-scribble.svg", "bytes": 230, "sha256": "290fa568cf3622b8553894fea6c503d970ba8aaea76b336cb88a04edc9535fba" }
+      ]
     }
   ],
   "effectiveLicenses": {
