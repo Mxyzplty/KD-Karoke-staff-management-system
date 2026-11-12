@@ -4,11 +4,13 @@
 // The control labels are the ones the findings name; every longer line is Cutframe's own wording.
 // Cutframe's own (each in one place, so a ruling changes one thing):
 // - LOADING: the "Current template" loading line shows while the template is read; there is no fixed wait.
-// - NoTemplate: its "Save to My templates" opens Save as template; its Learn switch is on and disabled.
+// - NoTemplate (RC 6.5): its wording under the switch. The button, the switch and the alert are the reference's.
+// - The preview page's notices after Save to / Remove from My templates.
 // - Extras: export (with what the file carries), import, delete, and discarding a built-in's personal copy.
 // - Saving preferences changes the template only: a project already bound keeps its `templateDefaults`.
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { TabBinding } from '../versions/checkpoints';
 import { bundledFile } from '../catalogue/assets';
 import { findElement } from '../catalogue/elements';
 import { findSound } from '../catalogue/sounds';
@@ -21,9 +23,9 @@ import type { Asset, ProjectRecord } from '../store/model';
 import { fontFamilies, loadFont, loadUserFonts, resolveFont } from '../text/fonts';
 import { Dialog, notify, reportError } from '../ui';
 import { Wizard } from '../wizard';
-import { bindProject, writeDefaults } from './binding';
+import { bindProject, projectLearning, setProjectLearning, writeDefaults } from './binding';
 import { templateErrorText } from './errors';
-import { BUILT_IN_TEMPLATES, deleteTemplate, exportTemplate, findTemplate, importTemplate, listTemplates, projectDefaults, saveTemplate, saveToMyTemplates, templateFromProject, updateTemplate } from './library';
+import { BUILT_IN_TEMPLATES, deleteTemplate, exportTemplate, findTemplate, importTemplate, listTemplates, projectDefaults, projectTemplate, removeFromMyTemplates, saveProjectTemplate, saveTemplate, saveToMyTemplates, templateFromProject, updateTemplate } from './library';
 import { refKind, type FontDefaults, type Swatch, type Template, type TemplateRef } from './model';
 
 const isBuiltIn = (id: string) => BUILT_IN_TEMPLATES.some(t => t.id === id);
@@ -106,7 +108,7 @@ function PreferencesForm({ template, changed }: { template: Template; changed: (
   const swatch = (n: number, s: Partial<Swatch>) => setPalette(palette.map((x, i) => i === n ? { ...x, ...s } : x));
   const missing = missingFonts({ ...template, defaults: fonts });
   return <form className="template-form" aria-label="Your preferences" onSubmit={e => { e.preventDefault(); save(t => ({ ...t, defaults: fonts, palette }), 'Fonts and colours saved.'); }}>
-    <label className="row"><input type="checkbox" role="switch" aria-label="Learn and update this template" checked={template.learning} disabled={busy} onChange={e => save(t => ({ ...t, learning: e.target.checked }), e.target.checked ? 'Learning is on for this template.' : 'Learning is off for this template.')} /> Learn and update this template</label>
+    <label className="row"><input type="checkbox" role="switch" aria-label="Learn and update this template" checked={template.learning} disabled={busy} onChange={e => { const on = e.target.checked; save(t => ({ ...t, learning: on }), on ? 'Learning is on for this template.' : 'Learning is off for this template.'); }} /> Learn and update this template</label>
     <p className="hint">What the agent learns from your feedback is written to your own copy of this template. Turn this off to keep feedback inside its project.</p>
     <p className="hint">Projects that already use this template keep their look.</p>
     {template.preferences && <><h4>Learned so far</h4><p className="template-notes">{template.preferences}</p></>}
@@ -157,7 +159,7 @@ export function TemplateDetails({ id, back, action, gone }: { id: string; back?:
     <p className="eyebrow">{template.family.toUpperCase()} TEMPLATE</p><h3>{template.name}</h3><p className="hint">By {template.author}</p>
     <div className="row">
       {action && <button type="button" className="primary" onClick={() => action.run(template)}>{action.label}</button>}
-      <button type="button" disabled={saved} onClick={() => void saveToMyTemplates(projectStore, id).then(() => { notify(`${template.name} is in My templates.`); reload(); }, reportError)}>{saved ? 'In My templates' : 'Save to My templates'}</button>
+      <button type="button" onClick={() => void (saved ? removeFromMyTemplates : saveToMyTemplates)(projectStore, id).then(() => { notify(saved ? `${template.name} is no longer in My templates.` : `${template.name} is in My templates.`); reload(); }, reportError)}>{saved ? 'Remove from My templates' : 'Save to My templates'}</button>
       <ExportTemplate template={template} />
       {!builtIn && <button type="button" className="danger" onClick={remove}>Delete</button>}
       {builtIn && template.basedOn && <button type="button" onClick={remove}>Discard my changes</button>}
@@ -197,6 +199,7 @@ export function TemplateBrowser({ action, previewAction, use, hint }: { action: 
       : <ul className="template-rows" aria-label={tab === 'builtIn' ? 'Built-in templates' : 'My templates'}>{rows.map(t => <li key={t.id}>
         <button type="button" className="template-row" aria-pressed={picked === t.id} onClick={() => setPicked(t.id)}><i style={{ background: t.palette[0]?.hex }} /><span><strong>{t.name}</strong><small>{t.author}</small></span>{picked === t.id && <b aria-hidden="true">✓</b>}</button>
         {picked === t.id && <button type="button" aria-label={`Preview ${t.name}`} onClick={() => setPreview(t.id)}>Preview</button>}
+        {picked === t.id && lists?.mine.some(m => m.id === t.id) && <small>Saved in My templates</small>}
       </li>)}</ul>}
     {tab === 'mine' && <><button type="button" onClick={() => file.current?.click()}>Import template file</button><input ref={file} type="file" hidden accept=".json,application/json" aria-label="Template file" onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }} /></>}
     <div className="template-footer"><p className="hint">{ABOUT}{hint ? ` ${hint}` : ''}</p><button type="button" className="primary" disabled={!chosen} onClick={() => chosen && use(chosen)}>{chosen ? action(chosen) : 'Choose a template'}</button></div>
@@ -248,17 +251,29 @@ export function SaveAsTemplateDialog({ session, title, base, close }: { session:
 }
 
 // ---- The top-bar chip ----
-/** The details of a project without a template (part 3 §46.1). */
-function NoTemplate({ save }: { save: () => void }) {
-  const [tab, setTab] = useState<'assets' | 'preferences'>('assets');
+/** The details of a project without a template (part 3 §46.1, RC 6.5). The button makes the project's own template with
+ *  no dialog and no notice, then reads "Remove from My templates"; the project stays without a template. One busy flag
+ *  holds the button and the switch. A failure is an alert at the top; its "Try again" only reads the details again. */
+function NoTemplate({ session }: { session: AutosaveSession }) {
+  const [tab, setTab] = useState<'assets' | 'preferences'>('assets'), [busy, setBusy] = useState(true), [error, setError] = useState<string>(), [version, setVersion] = useState(0);
+  const [state, setState] = useState<{ own?: Template; learning: boolean }>({ learning: true });
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([projectStore.row<ProjectRecord>('projects', session.projectId), projectTemplate(projectStore, session.projectId)])
+      .then(([record, own]) => { if (alive) { if (record) setState({ own, learning: projectLearning(record, own) }); setBusy(false); } }, e => { if (alive) { setError((e as Error).message); setBusy(false); } });
+    return () => { alive = false; };
+  }, [session.projectId, version]);
+  const listed = !!state.own && state.own.saved !== false;
+  const act = (run: () => Promise<unknown>) => { setBusy(true); setError(undefined); void run().then(() => setVersion(v => v + 1), e => { setError((e as Error).message); setBusy(false); }); };
   return <div className="template-details">
+    {error !== undefined && <div role="alert" className="row spread"><span>{error}</span><button type="button" onClick={() => { setError(undefined); setBusy(true); setVersion(v => v + 1); }}>Try again</button></div>}
     <p className="eyebrow">PERSONAL TEMPLATE</p><h3>No template</h3>
-    <div className="row"><button type="button" onClick={save}>Save to My templates</button></div>
+    <div className="row"><button type="button" disabled={busy} onClick={() => act(() => listed ? removeFromMyTemplates(projectStore, state.own!.id) : saveProjectTemplate(projectStore, session.projectId, session.document))}>{listed ? 'Remove from My templates' : 'Save to My templates'}</button></div>
     <div role="tablist" aria-label="Template contents"><button type="button" role="tab" aria-selected={tab === 'assets'} onClick={() => setTab('assets')}>Included assets</button><button type="button" role="tab" aria-selected={tab === 'preferences'} onClick={() => setTab('preferences')}>Your preferences</button></div>
     {tab === 'assets' ? <div role="tabpanel" aria-label="Included assets"><p>This template holds creative guidance but no media.</p></div>
       : <div role="tabpanel" aria-label="Your preferences">
-        <label className="row"><input type="checkbox" role="switch" aria-label="Learn and update this template" checked disabled readOnly /> Learn and update this template</label>
-        <p className="hint">What the agent learns from your feedback is written to your own copy of a template. This project has no template to write to yet.</p>
+        <label className="row"><input type="checkbox" role="switch" aria-label="Learn and update this template" checked={state.learning} disabled={busy} onChange={e => { const on = e.target.checked; act(() => setProjectLearning(projectStore, session.projectId, on)); }} /> Learn and update this template</label>
+        <p className="hint">When this is on, what the agent learns from your feedback can update this project's own template. Turn it off to keep feedback inside the project.</p>
         <p className="hint" role="note">Font and colour controls are not available for this template.</p>
       </div>}
   </div>;
@@ -266,8 +281,8 @@ function NoTemplate({ save }: { save: () => void }) {
 type Open = 'details' | 'picker' | 'save';
 /** The chip of the editor's top row: the bound template's name, and the menu View details / Change template / Save as
  *  template. A change is refused when the project's binding moved since this editor read it (a stale epoch). */
-export function TemplateChip({ session, record }: { session: AutosaveSession; record: ProjectRecord }) {
-  const [binding, setBinding] = useState({ id: record.template_id, epoch: record.template_epoch ?? 0 }), [template, setTemplate] = useState<Template | null>(), [open, setOpen] = useState<Open>();
+export function TemplateChip({ session, record, binding, onBind }: { session: AutosaveSession; record: ProjectRecord; binding: TabBinding; onBind: (binding: TabBinding) => void }) {
+  const [template, setTemplate] = useState<Template | null>(), [open, setOpen] = useState<Open>();
   useEffect(() => {
     let alive = true;
     if (!binding.id) { setTemplate(undefined); return; }
@@ -279,7 +294,7 @@ export function TemplateChip({ session, record }: { session: AutosaveSession; re
     try {
       const bound = await bindProject(projectStore, session.projectId, t, binding.epoch);
       session.update(writeDefaults(session.document, await findTemplate(projectStore, t.id) ?? t, bound.epoch));
-      setBinding({ id: bound.templateId, epoch: bound.epoch }); setOpen(undefined);
+      onBind({ id: bound.templateId, epoch: bound.epoch }); setOpen(undefined);
       notify(`This project now uses ${t.name}. ${EDITOR_HINT}`);
       const missing = missingFonts(t);
       if (missing.length) notify(missingFontsText(missing));
@@ -288,7 +303,7 @@ export function TemplateChip({ session, record }: { session: AutosaveSession; re
   const item = (label: string, target: Open) => ({ label, onSelect: () => setOpen(target) });
   let details: ReactNode = null;
   if (open === 'details') details = <Dialog title="Current template" close={() => setOpen(undefined)}>
-    {!binding.id ? <NoTemplate save={() => setOpen('save')} />
+    {!binding.id ? <NoTemplate session={session} />
       : template === null ? <><p>{templateErrorText('TEMPLATE_NOT_FOUND')}</p><p className="hint">This project keeps the fonts it got from that template.</p><div className="dialog-actions"><button type="button" onClick={() => setOpen('picker')}>Change template</button></div></>
         : <TemplateDetails id={binding.id} action={{ label: 'Change template', run: () => setOpen('picker') }} gone={() => setOpen(undefined)} />}
   </Dialog>;

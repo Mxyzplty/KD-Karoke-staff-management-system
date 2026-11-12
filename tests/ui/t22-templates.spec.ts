@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 step 10: plan A4/A5/A6/A8/A9/A10/A11/S1; findings §22 and part 3 §46.1.
+// RC 6.5 / D85 / D86 / D92 / D99: saved marks are reversible; hidden lessons and Learn share the project's own template.
 // Expectations are the written contract and Daylight's authored data, not template/default helper results.
 // No browser run by the test author. Real store, native controls and bundled files; no skipped cases or network fixtures.
 import { test, expect, type Locator, type Page } from '@playwright/test';
@@ -105,15 +106,21 @@ test('A5: wizard uses the shared picker; selection enables Use, and the card can
 });
 
 test('A8/A10: the unbound chip opens real details, picker and save dialogs; no-template has both content tabs', async ({ page }) => {
-  await openEditor(page, document(), 'Unbound template UI'); await expect(page.getByRole('button', { name: 'Template: No template', exact: true })).toBeVisible();
+  const id = await openEditor(page, document(), 'Unbound template UI'), before = await state(page, id), beforeNotices = await notices(page).innerText(), confirms: string[] = [];
+  page.on('dialog', async dialog => { confirms.push(dialog.message()); await dialog.dismiss(); });
+  await expect(page.getByRole('button', { name: 'Template: No template', exact: true })).toBeVisible();
   await menu(page, 'View details'); const d = current(page); await expect(d.getByText('PERSONAL TEMPLATE', { exact: true })).toBeVisible(); await expect(d.getByRole('heading', { name: 'No template', exact: true })).toBeVisible();
   await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeVisible(); await expect(d.getByRole('tab', { name: 'Included assets', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(d.getByRole('tabpanel', { name: 'Included assets', exact: true })).toContainText('This template holds creative guidance but no media.');
   await d.getByRole('tab', { name: 'Your preferences', exact: true }).click(); const prefs = d.getByRole('tabpanel', { name: 'Your preferences', exact: true });
-  await expect(prefs.getByRole('switch', { name: 'Learn and update this template' })).toBeChecked(); await expect(prefs.getByRole('switch')).toBeDisabled();
-  await expect(prefs).toContainText('This project has no template to write to yet.'); await expect(prefs).toContainText('Font and colour controls are not available for this template.'); await expect(prefs.getByRole('combobox')).toHaveCount(0);
-  await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(page.getByRole('dialog', { name: 'Save as template', exact: true })).toBeVisible();
-  await closeDialog(page.getByRole('dialog', { name: 'Save as template', exact: true }), 'Save as template');
+  await expect(prefs.getByRole('switch', { name: 'Learn and update this template' })).toBeChecked(); await expect(prefs.getByRole('switch')).toBeEnabled();
+  await expect(prefs).toContainText("When this is on, what the agent learns from your feedback can update this project's own template. Turn it off to keep feedback inside the project."); await expect(prefs).toContainText('Font and colour controls are not available for this template.'); await expect(prefs.getByRole('combobox')).toHaveCount(0);
+  await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
+  await expect(d).toBeVisible(); await expect(d.getByRole('tab', { name: 'Your preferences', exact: true })).toHaveAttribute('aria-selected', 'true'); await expect(page.getByRole('dialog')).toHaveCount(1); await expect(page.getByRole('dialog', { name: 'Save as template', exact: true })).toHaveCount(0);
+  expect(confirms).toEqual([]); expect(await notices(page).innerText()).toBe(beforeNotices); expect(await state(page, id)).toEqual(before);
+  const own = (await templatesRow(page))!.templates.filter((t: Rec) => t.fromProject === id); expect(own).toHaveLength(1); expect(own[0]).toMatchObject({ name: 'Unbound template UI template', fromProject: id, guidance: '', learning: true }); expect(own[0].saved).not.toBe(false);
+  await closeDialog(d, 'Current template'); await expect(page.getByRole('button', { name: 'Template: No template', exact: true })).toBeVisible();
+  await menu(page, 'View details'); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled(); expect((await templatesRow(page))!.templates.filter((t: Rec) => t.fromProject === id)).toHaveLength(1); await closeDialog(d, 'Current template');
   await menu(page, 'Change template'); await pickerContract(picker(page)); await closeDialog(picker(page), 'Choose a Template');
   await menu(page, 'Save as template'); await expect(page.getByRole('dialog', { name: 'Save as template', exact: true }).getByRole('textbox', { name: 'Template name' })).toHaveValue('Unbound template UI template');
 });
@@ -152,7 +159,7 @@ test('A6: Daylight preview has its authored colours, examples, asset lists and r
   await included.getByRole('button', { name: 'Preview Sparkles', exact: true }).click(); const image = included.getByRole('group', { name: 'Sparkles preview', exact: true }).getByRole('img', { name: 'Sparkles', exact: true });
   await expect.poll(async () => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   await included.getByRole('button', { name: 'Preview Sora', exact: true }).click(); await expect(included.getByRole('group', { name: 'Sora preview', exact: true })).toContainText('The quick brown fox 0123');
-  await form(p); await p.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(p.getByRole('button', { name: 'In My templates', exact: true })).toBeDisabled();
+  await form(p); await p.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(p.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
   await p.getByRole('button', { name: '‹ Back', exact: true }).click(); await p.getByRole('tab', { name: 'My templates', exact: true }).click(); await expect(p.getByRole('list', { name: 'My templates', exact: true })).toContainText('Daylight');
 });
 
@@ -180,7 +187,7 @@ test('A4/A5: first preference edit makes a personal copy; both tabs persist it, 
   await expect(p).toContainText('Open a built-in template and choose Save to My templates, or save a project as a template from the template menu in the editor.');
   await expect(p.getByRole('button', { name: 'Import template file', exact: true })).toBeVisible(); await expect(p.getByLabel('Template file', { exact: true })).toHaveAttribute('type', 'file'); expect(await templatesRow(page)).toBeNull();
   await preview(p); await colours(p); await form(p); expect(await templatesRow(page)).toBeNull();
-  await p.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(p.getByRole('button', { name: 'In My templates', exact: true })).toBeDisabled();
+  await p.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(p.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
   expect(await templatesRow(page)).toEqual({ id: 'templates', templates: [], membership: ['daylight'] }); await p.getByRole('button', { name: '‹ Back', exact: true }).click();
   for (const tab of ['Built-in templates', 'My templates']) {
     await preview(p, 'Daylight', tab); await colours(p); await form(p); expect((await templatesRow(page))!.templates).toEqual([]); await p.getByRole('button', { name: '‹ Back', exact: true }).click();
@@ -305,4 +312,148 @@ test('bundled variable Sora: a bound Text-panel title stores ExtraBold and diffe
   const thick = await pixels(); expect(thick.ink).toBeGreaterThan(100);
   await setViewState(page, { playheadMs: 6000 }); await shown(page, 180); const thin = await pixels(); expect(thin.ink).toBeGreaterThan(100);
   expect([thin.width, thin.height]).toEqual([thick.width, thick.height]); expect(thin.hash, 'relative pixels of the two real font weights, never a pinned screenshot hash').not.toBe(thick.hash);
+});
+
+const learn = (scope: Locator) => scope.getByRole('switch', { name: 'Learn and update this template', exact: true });
+async function noTemplatePreferences(page: Page) {
+  await menu(page, 'View details'); const d = current(page); await expect(d.getByRole('heading', { name: 'No template', exact: true })).toBeVisible();
+  await d.getByRole('tab', { name: 'Your preferences', exact: true }).click(); await expect(learn(d)).toBeEnabled(); return d;
+}
+async function previewPreferences(scope: Locator) {
+  await scope.getByRole('tab', { name: 'Your preferences', exact: true }).click(); const f = scope.getByRole('form', { name: 'Your preferences', exact: true }); await expect(learn(f)).toBeEnabled(); return f;
+}
+const ownFor = async (page: Page, id: string): Promise<Rec | undefined> => (await templatesRow(page))?.templates.find((t: Rec) => t.fromProject === id);
+const history = (page: Page) => page.evaluate(async () => {
+  const p = '/src/timeline/runtime.ts', e = '/src/editor.tsx', bus = (await import(p)).activeRuntime.bus;
+  return { undo: JSON.parse(JSON.stringify(bus.undoStack)), redo: JSON.parse(JSON.stringify(bus.redoStack)), state: (await import(e)).activeSession.state };
+});
+
+for (const entry of ['wizard', 'chip', 'library']) test(`RC 6.5: ${entry} picker lists only saved templates and labels a selected saved row beside Preview`, async ({ page }) => {
+  const id = await createProject(page, document(), 'Picker marks'), listed = ownTemplate('listed-template', 'Listed template'), removed = { ...ownTemplate('removed-template', 'Removed template'), saved: false };
+  await storeOwn(page, listed); await storeOwn(page, removed); let p: Locator;
+  if (entry === 'wizard') {
+    await page.getByRole('button', { name: '＋ New Video', exact: true }).click(); await page.getByRole('dialog', { name: 'New Video', exact: true }).getByRole('button', { name: 'Choose template', exact: true }).click(); p = picker(page);
+  } else if (entry === 'chip') { await page.goto(`/project/${id}`); await saved(page); await menu(page, 'Change template'); p = picker(page); }
+  else { await page.goto('/assets'); await page.getByRole('tablist', { name: 'Library', exact: true }).getByRole('tab', { name: 'Templates', exact: true }).click(); p = page.getByRole('tabpanel', { name: 'Templates', exact: true }); }
+  await choose(p); await expect(p.getByRole('button', { name: 'Preview Daylight', exact: true })).toBeVisible(); await expect(p.getByText('Saved in My templates', { exact: true })).toHaveCount(0);
+  const row = await choose(p, listed.name, 'My templates'), list = p.getByRole('list', { name: 'My templates', exact: true }); await expect(list.getByRole('listitem')).toHaveCount(1);
+  await expect(list.getByRole('button', { name: /^Removed template/ })).toHaveCount(0); const selected = list.getByRole('listitem').filter({ has: page.getByRole('button', { name: /^Listed template/ }) });
+  await expect(selected.getByRole('button', { name: 'Preview Listed template', exact: true })).toBeVisible(); await expect(selected.getByText('Saved in My templates', { exact: true })).toBeVisible();
+});
+
+test('D86: built-in preview Save/Remove is reversible in place and never discards the personal copy', async ({ page }) => {
+  await openEditor(page, document(), 'Built-in saved mark');
+  await page.evaluate(async () => { const p = '/src/templates/library.ts', s = '/src/store/database.ts'; await (await import(p)).updateTemplate((await import(s)).projectStore, 'daylight', (t: Rec) => ({ ...t, preferences: 'Keep my personal copy.', learning: false })); });
+  await menu(page, 'Change template'); const p = picker(page); await preview(p); await expect(p.getByRole('button', { name: 'Discard my changes', exact: true })).toBeVisible();
+  await p.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(notices(page)).toContainText('Daylight is in My templates.'); await expect(p.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
+  await expect(p.getByRole('heading', { name: 'Daylight', exact: true })).toBeVisible(); await p.getByRole('button', { name: '‹ Back', exact: true }).click(); await expect(p.getByText('Saved in My templates', { exact: true })).toBeVisible();
+  await p.getByRole('button', { name: 'Preview Daylight', exact: true }).click(); await p.getByRole('button', { name: 'Remove from My templates', exact: true }).click();
+  await expect(notices(page)).toContainText('Daylight is no longer in My templates.'); await expect(p.getByRole('button', { name: 'Save to My templates', exact: true })).toBeEnabled(); await expect(p.getByRole('heading', { name: 'Daylight', exact: true })).toBeVisible();
+  const f = await previewPreferences(p); await expect(learn(f)).not.toBeChecked(); await expect(f).toContainText('Keep my personal copy.');
+  expect((await templatesRow(page))!.templates.find((t: Rec) => t.id === 'daylight')).toMatchObject({ basedOn: 'daylight', learning: false, preferences: 'Keep my personal copy.' });
+  await p.getByRole('button', { name: '‹ Back', exact: true }).click(); await expect(p.getByRole('list', { name: 'Built-in templates', exact: true }).getByRole('button', { name: /^Daylight/ })).toBeVisible(); await expect(p.getByText('Saved in My templates', { exact: true })).toHaveCount(0);
+  await p.getByRole('tab', { name: 'My templates', exact: true }).click(); await expect(p.getByRole('heading', { name: 'No templates of your own yet', exact: true })).toBeVisible();
+});
+
+for (const initiallyRemoved of [false, true]) test(`D86: a bound user template remains usable with its mark off and can be saved in place (initially removed=${initiallyRemoved})`, async ({ page }) => {
+  const id = await openEditor(page, document(), 'User saved mark'), t: Rec = { ...ownTemplate('retained-template', 'Retained template'), preferences: 'Retain these preferences.', learning: false }; await storeOwn(page, t);
+  await menu(page, 'Change template'); const p = picker(page); await choose(p, t.name, 'My templates'); await p.getByRole('button', { name: 'Use Retained template', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Template: Retained template', exact: true })).toBeVisible(); await saved(page); const before = await state(page, id);
+  if (initiallyRemoved) {
+    await page.evaluate(async () => { const p = '/src/templates/library.ts', s = '/src/store/database.ts'; await (await import(p)).removeFromMyTemplates((await import(s)).projectStore, 'retained-template'); });
+    await expect(page.getByRole('button', { name: 'Template: Retained template', exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Template: Missing template', exact: true })).toHaveCount(0);
+  }
+  await menu(page, 'View details'); const d = current(page); await expect(d.getByRole('heading', { name: t.name, exact: true })).toBeVisible(); const f = await previewPreferences(d); await expect(learn(f)).not.toBeChecked();
+  if (!initiallyRemoved) {
+    await d.getByRole('button', { name: 'Remove from My templates', exact: true }).click(); await expect(notices(page)).toContainText('Retained template is no longer in My templates.');
+  }
+  await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeEnabled(); await expect(d.getByRole('heading', { name: t.name, exact: true })).toBeVisible(); await expect(d.getByRole('tab', { name: 'Your preferences', exact: true })).toHaveAttribute('aria-selected', 'true');
+  const hidden = (await templatesRow(page))!.templates.find((x: Rec) => x.id === t.id); expect(hidden).toMatchObject({ saved: false, preferences: t.preferences, learning: false }); expect(await state(page, id)).toEqual(before);
+  await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(notices(page)).toContainText('Retained template is in My templates.'); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
+  const restored = (await templatesRow(page))!.templates.find((x: Rec) => x.id === t.id); expect(restored.saved).not.toBe(false); expect(restored.preferences).toBe(t.preferences); expect(restored.learning).toBe(false); expect(await state(page, id)).toEqual(before);
+  await closeDialog(d, 'Current template'); await expect(page.getByRole('button', { name: 'Template: Retained template', exact: true })).toBeVisible();
+  await menu(page, 'View details'); await expect(d.getByRole('heading', { name: t.name, exact: true })).toBeVisible();
+});
+
+test('D92: no-template and preview switches share one value; Delete returns the latest value to the project', async ({ page }) => {
+  const id = await openEditor(page, document(), 'Learning owner'), before = await state(page, id), beforeHistory = await history(page); let d = await noTemplatePreferences(page);
+  await expect(learn(d)).toBeChecked(); expect(before.record).not.toHaveProperty('template_learning');
+  await learn(d).click(); await expect(learn(d)).toBeEnabled(); await expect(learn(d)).not.toBeChecked();
+  const off = await state(page, id); expect(off.record).toEqual({ ...before.record, template_learning: false }); expect(off.document).toEqual(before.document); expect(await history(page)).toEqual(beforeHistory);
+  await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
+  const made = (await ownFor(page, id))!; expect(made.learning).toBe(false); expect((await state(page, id)).record).toEqual(off.record); await closeDialog(d, 'Current template');
+  await menu(page, 'Change template'); const p = picker(page); await preview(p, made.name, 'My templates'); let f = await previewPreferences(p); await expect(learn(f)).not.toBeChecked();
+  await learn(f).click(); await expect(learn(f)).toBeChecked(); await expect.poll(async () => (await ownFor(page, id))!.learning).toBe(true); await closeDialog(p, 'Choose a Template');
+  d = await noTemplatePreferences(page); await expect(learn(d)).toBeChecked(); await learn(d).click(); await expect(learn(d)).toBeEnabled(); await expect(learn(d)).not.toBeChecked(); expect((await ownFor(page, id))!.learning).toBe(false); expect((await state(page, id)).record).toEqual(off.record);
+  await d.getByRole('button', { name: 'Remove from My templates', exact: true }).click(); await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeEnabled(); await expect(learn(d)).not.toBeChecked();
+  await learn(d).click(); await expect(learn(d)).toBeEnabled(); await expect(learn(d)).toBeChecked(); expect((await ownFor(page, id))!).toMatchObject({ id: made.id, saved: false, learning: true }); expect((await state(page, id)).record).toEqual(off.record);
+  await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled(); expect((await ownFor(page, id))!.id).toBe(made.id); await closeDialog(d, 'Current template');
+  await menu(page, 'Change template'); await preview(p, made.name, 'My templates'); f = await previewPreferences(p); await expect(learn(f)).toBeChecked(); await learn(f).click(); await expect(learn(f)).toBeEnabled(); await expect(learn(f)).not.toBeChecked(); await learn(f).click(); await expect(learn(f)).toBeEnabled(); await expect(learn(f)).toBeChecked();
+  await p.getByRole('button', { name: 'Delete', exact: true }).click(); await expect.poll(async () => await ownFor(page, id)).toBeUndefined(); await closeDialog(p, 'Choose a Template');
+  expect((await state(page, id)).record.template_learning).toBe(true); d = await noTemplatePreferences(page); await expect(learn(d)).toBeChecked();
+  await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled(); const remade = (await ownFor(page, id))!;
+  expect(remade.id).not.toBe(made.id); expect(remade.learning).toBe(true); expect((await state(page, id)).record.template_id).toBeNull(); expect((await state(page, id)).document).toEqual(before.document);
+});
+
+// Hold one public store write, not a UI/source hook. The view's real action and its retry/read logic remain untouched.
+async function holdOwnAction(page: Page, fail: boolean, table: 'settings' | 'projects' = 'settings') {
+  await page.evaluate(async ({ fail, table }) => {
+    const p = '/src/store/database.ts', store = (await import(p)).projectStore, swap = store.swapRow.bind(store), row = store.row.bind(store);
+    let release!: () => void; const ready = new Promise<void>(done => { release = done; });
+    const gate: Rec = { attempts: 0, reads: 0, entered: false, release, restore: () => { store.swapRow = swap; store.row = row; } }; (window as any).__t22OwnSave = gate;
+    store.row = async (...args: any[]) => { if (args[0] === 'projects' || args[0] === 'settings' && args[1] === 'templates') gate.reads++; return row(...args); };
+    store.swapRow = async (...args: any[]) => {
+      if (args[0] === table && (table === 'projects' || args[1] === 'templates')) { gate.attempts++; if (gate.attempts === 1) { gate.entered = true; await ready; if (fail) throw new Error('The saved-template write failed.'); } }
+      return swap(...args);
+    };
+  }, { fail, table });
+}
+for (const fail of [false, true]) test(`RC 6.5: one busy flag holds Save and Learn; failed action has a top alert and read-only retry (fail=${fail})`, async ({ page }) => {
+  const id = await openEditor(page, document(), 'Busy own template'), before = await state(page, id), d = await noTemplatePreferences(page), beforeNotices = await notices(page).innerText();
+  await holdOwnAction(page, fail);
+  try {
+    await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect.poll(async () => page.evaluate(() => (window as any).__t22OwnSave.entered)).toBe(true);
+    await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeDisabled(); await expect(learn(d)).toBeDisabled();
+    await page.evaluate(() => { (window as any).__t22OwnSave.release(); });
+    if (fail) {
+      const alert = d.getByRole('alert'); await expect(alert).toContainText('The saved-template write failed.'); await expect(alert.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+      expect((await alert.boundingBox())!.y).toBeLessThan((await d.getByRole('heading', { name: 'No template', exact: true }).boundingBox())!.y);
+      const reads = await page.evaluate(() => (window as any).__t22OwnSave.reads); await alert.getByRole('button', { name: 'Try again', exact: true }).click();
+      await expect.poll(async () => page.evaluate(() => (window as any).__t22OwnSave.reads)).toBeGreaterThan(reads); await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeEnabled(); await expect(alert).toHaveCount(0);
+      expect(await ownFor(page, id)).toBeUndefined(); expect(await page.evaluate(() => (window as any).__t22OwnSave.attempts)).toBe(1);
+    } else { await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled(); expect((await ownFor(page, id))!.fromProject).toBe(id); }
+    await expect(learn(d)).toBeEnabled(); expect(await notices(page).innerText()).toBe(beforeNotices); expect(await state(page, id)).toEqual(before);
+  } finally { await page.evaluate(() => { const gate = (window as any).__t22OwnSave; if (gate) { gate.release(); gate.restore(); } }); }
+});
+
+test('D92: a busy Learn write also disables the no-template Save button without creating a template', async ({ page }) => {
+  const id = await openEditor(page, document(), 'Busy Learn'), before = await state(page, id), beforeHistory = await history(page), d = await noTemplatePreferences(page);
+  await holdOwnAction(page, false, 'projects');
+  try {
+    await learn(d).click(); await expect.poll(async () => page.evaluate(() => (window as any).__t22OwnSave.entered)).toBe(true);
+    await expect(learn(d)).toBeDisabled(); await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeDisabled();
+    await page.evaluate(() => { (window as any).__t22OwnSave.release(); }); await expect(learn(d)).toBeEnabled(); await expect(learn(d)).not.toBeChecked(); await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeEnabled();
+    const after = await state(page, id); expect(after.record).toEqual({ ...before.record, template_learning: false }); expect(after.document).toEqual(before.document); expect(await history(page)).toEqual(beforeHistory); expect(await ownFor(page, id)).toBeUndefined();
+  } finally { await page.evaluate(() => { const gate = (window as any).__t22OwnSave; if (gate) { gate.release(); gate.restore(); } }); }
+});
+
+test('D99: lesson-created own template is hidden, shares Learn with No template, and its first Save lists the same lessons', async ({ page }) => {
+  const id = await createProject(page, document(), 'Lesson project');
+  const hidden = await page.evaluate(async id => {
+    const sp = '/src/store/database.ts', lp = '/src/templates/library.ts', bp = '/src/templates/binding.ts', store = (await import(sp)).projectStore, library = await import(lp), binding = await import(bp);
+    await binding.setProjectLearning(store, id, false); const current = await store.read(id), made = await library.lessonTemplate(store, id, current.document);
+    await library.updateTemplate(store, made.id, (t: Rec) => ({ ...t, learning: true, preferences: 'Keep this first lesson.' }));
+    return { id: made.id, name: made.name };
+  }, id);
+  await page.goto(`/project/${id}`); await saved(page); const before = await state(page, id); expect(before.record.template_learning).toBe(false);
+  await expect(page.getByRole('button', { name: 'Template: No template', exact: true })).toBeVisible();
+  await menu(page, 'Change template'); const p = picker(page); await p.getByRole('tab', { name: 'My templates', exact: true }).click();
+  await expect(p.getByRole('heading', { name: 'No templates of your own yet', exact: true })).toBeVisible(); await expect(p.getByRole('button', { name: /^Lesson project template/ })).toHaveCount(0); await closeDialog(p, 'Choose a Template');
+  const d = await noTemplatePreferences(page); await expect(d.getByRole('button', { name: 'Save to My templates', exact: true })).toBeEnabled(); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toHaveCount(0);
+  await expect(learn(d), 'the hidden template value wins over the differing project record').toBeChecked(); expect((await ownFor(page, id))!).toMatchObject({ id: hidden.id, saved: false, neverSaved: true, learning: true, preferences: 'Keep this first lesson.' });
+  const beforeNotices = await notices(page).innerText(); await d.getByRole('button', { name: 'Save to My templates', exact: true }).click(); await expect(d.getByRole('button', { name: 'Remove from My templates', exact: true })).toBeEnabled();
+  await expect(d.getByRole('tab', { name: 'Your preferences', exact: true })).toHaveAttribute('aria-selected', 'true'); await expect(learn(d)).toBeChecked(); await expect(page.getByRole('dialog')).toHaveCount(1); expect(await notices(page).innerText()).toBe(beforeNotices);
+  const listed = (await ownFor(page, id))!; expect(listed).toMatchObject({ id: hidden.id, name: 'Lesson project template', learning: true, preferences: 'Keep this first lesson.' }); expect(listed).not.toHaveProperty('neverSaved'); expect(listed).not.toHaveProperty('saved'); expect(await state(page, id)).toEqual(before);
+  await closeDialog(d, 'Current template'); await expect(page.getByRole('button', { name: 'Template: No template', exact: true })).toBeVisible(); await menu(page, 'Change template');
+  const row = await choose(p, hidden.name, 'My templates'); await expect(row).toBeVisible(); await expect(p.getByText('Saved in My templates', { exact: true })).toBeVisible(); expect((await templatesRow(page))!.templates.filter((t: Rec) => t.fromProject === id)).toHaveLength(1);
 });

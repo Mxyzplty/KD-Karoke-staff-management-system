@@ -27,6 +27,13 @@ export type Template = {
   version: number; savedAt: string;
   /** Set on the personal copy of a built-in template (it has the built-in's id). */
   basedOn?: string;
+  /** The project whose "Save to My templates" made this template: that project's own template (RC 6.5, D85). */
+  fromProject?: string;
+  /** false = taken off My templates (D86); the template stays and a project that uses it keeps it. Absent = listed. */
+  saved?: boolean;
+  /** Set, with `saved: false`, on a project's own template that a lesson made and no click has saved yet (D99): the first
+   *  "Save to My templates" then takes its name, fonts and colours from the project. A removed template does not have it. */
+  neverSaved?: true;
 };
 export const TEMPLATE_VERSION = 1, BUILT_IN_FAMILY = 'Cutframe', PERSONAL_FAMILY = 'Personal';
 /** The document key new items read (plan P3). */
@@ -38,8 +45,8 @@ export const defaultFont = (doc: Record<string, unknown>, key: 'titlesFont' | 'c
 };
 export const defaultsOf = (t: Template, epoch: number): TemplateDefaults => ({ templateId: t.id, epoch, ...t.defaults, palette: t.palette.map(s => ({ ...s })) });
 
-const KEYS = ['id', 'name', 'family', 'author', 'palette', 'examples', 'assets', 'defaults', 'captionTemplateId', 'presetIds', 'guidance', 'learning', 'preferences', 'version', 'savedAt', 'basedOn'];
-const OPTIONAL = ['captionTemplateId', 'basedOn'];
+const KEYS = ['id', 'name', 'family', 'author', 'palette', 'examples', 'assets', 'defaults', 'captionTemplateId', 'presetIds', 'guidance', 'learning', 'preferences', 'version', 'savedAt', 'basedOn', 'fromProject', 'saved', 'neverSaved'];
+const OPTIONAL = ['captionTemplateId', 'basedOn', 'fromProject', 'saved', 'neverSaved'];
 const text = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
 const plain = (v: unknown): v is RecordData => !!v && typeof v === 'object' && !Array.isArray(v);
 /** The keys of `o` outside `allowed`, or the missing ones, as a reason; null when the keys are exactly right. */
@@ -70,6 +77,9 @@ export function templateProblem(r: unknown): string | null {
   for (const k of ['name', 'family', 'author', 'savedAt']) if (!text(r[k])) return `${k} is missing`;
   for (const k of ['guidance', 'preferences']) if (typeof r[k] !== 'string') return `${k} is not text`;
   if (typeof r.learning !== 'boolean') return 'learning must be true or false';
+  if (r.fromProject !== undefined && !text(r.fromProject)) return 'fromProject is not a project id';
+  if (r.saved !== undefined && typeof r.saved !== 'boolean') return 'saved must be true or false';
+  if (r.neverSaved !== undefined && (r.neverSaved !== true || r.saved !== false)) return 'neverSaved must be true, on a template that is not saved';
   if (r.version !== TEMPLATE_VERSION) return `version must be ${TEMPLATE_VERSION}`;
   if (!Array.isArray(r.palette)) return 'palette is not a list';
   for (const [n, s] of r.palette.entries()) {

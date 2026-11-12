@@ -279,7 +279,7 @@ describe('L10 Save as copy keeps both versions', () => {
     const t = await open('default'), asset = await t.store.upload(new File(['bytes'], 'a.mp4', { type: 'video/mp4' })); await t.store.attach(t.id, asset.id);
     const other = (await t.store.read(t.id))!.document; await t.store.save(t.id, { ...other, fps: 12 }, other.rev); const original = (await t.store.read(t.id))!;
     t.edit(); await t.session.flush(); expect(t.session.state).toBe('conflict'); const mine = structuredClone(t.session.document);
-    const copy = await saveAsCopy(t.session, t.store, original.record);
+    const copy = await saveAsCopy(t.session, t.store, original.record, { id: original.record.template_id, epoch: original.record.template_epoch ?? 0 });
     expect(copy.title).toBe('Project (copy)'); expect(copy.id).not.toBe(t.id);
     const stored = (await t.store.read(copy.id))!.document; expect(stored).toEqual({ ...mine, rev: 0 }); expect(stored.fps).toBe(30); expect(stored.markers).toHaveLength(1);
     expect((await t.store.projectAssets(copy.id)).map(l => l.assetId)).toEqual([asset.id]);

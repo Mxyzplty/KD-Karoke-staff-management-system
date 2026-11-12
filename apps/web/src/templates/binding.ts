@@ -7,7 +7,7 @@
 import type { ProjectStore } from '../store/database';
 import { StoreError, type ProjectDocument, type ProjectRecord } from '../store/model';
 import { templateError } from './errors';
-import { findTemplate, verifyBuiltIn } from './library';
+import { findTemplate, projectTemplate, updateTemplate, verifyBuiltIn } from './library';
 import { defaultsOf, type Template, type TemplateDefaults } from './model';
 
 export type Binding = { epoch: number; templateId: string };
@@ -33,6 +33,18 @@ export async function bindTemplate(store: ProjectStore, projectId: string, reque
 export async function bindProject(store: ProjectStore, projectId: string, template: Template, expectedEpoch: number, load?: (file: string) => Promise<Blob>): Promise<Binding> {
   await verifyBuiltIn(template, load);
   return bindTemplate(store, projectId, { templateId: template.id, expectedEpoch, requestKey: crypto.randomUUID() });
+}
+
+/** The Learn switch of a project with no template (D85, D92): one value on one record. While the project's own template
+ *  exists (`own`, listed or not) it is that template's `learning`, the same value its preview page shows; else the project
+ *  record's, on when never set. */
+export const projectLearning = (record: ProjectRecord, own?: Template): boolean => own ? own.learning : record.template_learning ?? true;
+/** Writes that switch where projectLearning reads it. The record write is one row swap: no document revision, no
+ *  history step, no epoch change. */
+export async function setProjectLearning(store: ProjectStore, projectId: string, on: boolean): Promise<void> {
+  const own = await projectTemplate(store, projectId);
+  if (own) { await updateTemplate(store, own.id, t => ({ ...t, learning: on })); return; }
+  if (!await store.swapRow<ProjectRecord>('projects', projectId, row => row ? { ...row, template_learning: on } : null)) throw new StoreError('PROJECT_NOT_FOUND', 'This project no longer exists.');
 }
 
 /** The document with the template's defaults for new items (the caller saves it). */

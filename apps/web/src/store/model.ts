@@ -18,6 +18,8 @@ export type ProjectRecord = {
   title_source?: 'default' | 'user' | 'generated';
   /** T22 template binding (findings §22): the epoch guards against a stale selection, the request key makes a retry idempotent. Absent = unbound, epoch 0. */
   template_epoch?: number; template_request?: string;
+  /** T22 the Learn switch of a project with no template of its own (D85, D92). Absent = on. Read it through projectLearning. */
+  template_learning?: boolean;
 };
 export type Asset = {
   id: string; name: string; type: 'video' | 'image' | 'audio'; sizeBytes: number;

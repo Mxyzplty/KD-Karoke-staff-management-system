@@ -33,7 +33,7 @@ import { LayoutDropOverlay, ProjectFootage } from './layout-ui';
 import { Timeline } from './timeline';
 import { setQuality, setView, useView, view } from './view';
 import { saveAsCopy } from '../versions/checkpoints';
-import type { Checkpoints } from '../versions/checkpoints';
+import type { Checkpoints, TabBinding } from '../versions/checkpoints';
 import { CheckpointMenu } from '../versions/menu';
 import { TemplateChip } from '../templates/ui';
 
@@ -64,8 +64,8 @@ function Toggle({ label, children, render, className, data }: { label: string; c
   const [open, setOpen] = useState(false);
   return <div className={`toggle ${className ?? ''}`}><button aria-label={label} aria-expanded={open} {...data} onClick={() => setOpen(!open)}>{children}</button>{open && render(() => setOpen(false))}</div>;
 }
-function SaveState({ session, record, navigate }: { session: AutosaveSession; record: ProjectRecord; navigate: (path: string) => void }) {
-  const copy = () => void saveAsCopy(session, projectStore, record).then(c => navigate(`/project/${c.id}`)).catch(reportError);
+function SaveState({ session, record, binding, navigate }: { session: AutosaveSession; record: ProjectRecord; binding: TabBinding; navigate: (path: string) => void }) {
+  const copy = () => void saveAsCopy(session, projectStore, record, binding).then(c => navigate(`/project/${c.id}`)).catch(reportError);
   const d = session.document;
   return <div className="save-state">
     <p role="status">{session.state === 'saved' ? 'Saved locally' : session.state === 'saving' ? 'Saving…' : session.state === 'pending' ? 'Unsaved changes' : session.error?.message}</p>
@@ -111,12 +111,14 @@ function BackupToggle({ assets, navigate }: { assets: Asset[]; navigate: (path: 
   </Popover>}>☁ {on ? 'Backup on' : 'Local only'}</Toggle>;
 }
 function TopBar({ session, record, assets, navigate, checkpoints }: { session: AutosaveSession; record: ProjectRecord; assets: Asset[]; navigate: (path: string) => void; checkpoints: Checkpoints }) {
+  // The template binding this tab shows: the record as loaded, replaced by a bind this tab makes (D100).
+  const [binding, setBinding] = useState<TabBinding>({ id: record.template_id, epoch: record.template_epoch ?? 0 });
   const d = session.document;
   return <header className="editor-top">
     <div className="top-row">
       <button aria-label="Back to home" onClick={() => navigate('/')}>‹</button>
       <h1 className="project-name">{record.title}</h1>
-      <TemplateChip session={session} record={record} />
+      <TemplateChip session={session} record={record} binding={binding} onBind={setBinding} />
       <BackupToggle assets={assets} navigate={navigate} />
       <MenuButton label="Help" items={[...HELP_LINKS.map(link => ({ label: link.label, onSelect: () => openHelpLink(link, navigate) })), { label: 'Keyboard shortcuts', onSelect: () => setView({ shortcuts: true }) }]}>Help</MenuButton>
       <AgentBadge navigate={navigate} />
@@ -127,7 +129,7 @@ function TopBar({ session, record, assets, navigate, checkpoints }: { session: A
       <button aria-label="Redo" disabled={!history.canRedo()} onClick={() => dispatch({ type: 'redo' })}>↷</button>
       <MenuButton label="Resize" items={ASPECTS.map(a => ({ label: a.label, checked: d.size.width === a.size[0] && d.size.height === a.size[1], onSelect: () => dispatch({ type: 'resizeCanvas', aspectRatio: a.ratio }) }))}>Resize</MenuButton>
       <span className="split-button"><button onClick={() => dispatch({ type: 'saveCheckpoint' })}>Save</button><CheckpointMenu checkpoints={checkpoints} /></span>
-      <SaveState session={session} record={record} navigate={navigate} />
+      <SaveState session={session} record={record} binding={binding} navigate={navigate} />
     </div>
   </header>;
 }

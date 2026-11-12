@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The local template library (T22; findings §22, plan P1 / P9): the built-in templates plus one settings row holding the
 // user's templates and the saved list ("membership"). No authoring limits.
+// My templates lists the saved built-ins and every user template whose `saved` is not false (D86): Remove only clears that
+// mark, Delete is the only action that destroys a template. A project's own template (`fromProject`, RC 6.5 / D85) is
+// made by that project's "Save to My templates", or hidden by its first lesson (D99); the project stays unbound. None of
+// `fromProject`, `saved`, `neverSaved` travels in a template file.
 // A user-row template with a built-in's id (and `basedOn`) is that built-in's personal copy: lookups read the user row first.
 // Cutframe difference from Xapp (mechanism only): the copy is made at the first change, not when the template is chosen;
 // until then every view shows the built-in's own values. Deleting the copy gives the built-in back.
@@ -10,7 +14,7 @@ import { bundledFile } from '../catalogue/assets';
 import { mediaKind } from '../media/files';
 import { sha256Blob } from '../media/sha256';
 import type { ProjectStore } from '../store/database';
-import type { Asset, ProjectDocument, RecordData } from '../store/model';
+import { StoreError, type Asset, type ProjectDocument, type ProjectRecord, type RecordData } from '../store/model';
 import { PANEL_STYLE } from '../captions/templates';
 import { ADD_TEXT } from '../text/tools';
 import { staticValue } from '../timeline/properties';
@@ -37,10 +41,10 @@ const readRow = async (store: ProjectStore) => clean(await store.row<Row>('setti
 export const personalCopy = (t: Template): Template => ({ ...structuredClone(t), basedOn: t.id });
 
 /** Both picker tabs. `builtIn` shows each built-in template (its personal copy once there is one); `mine` is the saved
- *  built-ins followed by the user's own templates. */
+ *  built-ins followed by the user's own templates that were not taken off the list. */
 export async function listTemplates(store: ProjectStore): Promise<{ builtIn: Template[]; mine: Template[] }> {
   const row = await readRow(store), shown = BUILT_IN_TEMPLATES.map(t => row.templates.find(u => u.id === t.id) ?? t);
-  return { builtIn: shown, mine: [...shown.filter(t => row.membership.includes(t.id)), ...row.templates.filter(t => !builtIn(t.id))] };
+  return { builtIn: shown, mine: [...shown.filter(t => row.membership.includes(t.id)), ...row.templates.filter(t => !builtIn(t.id) && t.saved !== false)] };
 }
 /** The template an id names: the user's own or personal copy first, then the built-in. */
 export async function findTemplate(store: ProjectStore, id: string): Promise<Template | undefined> {
@@ -72,14 +76,82 @@ export async function updateTemplate(store: ProjectStore, id: string, change: (t
   if (!result) throw templateError('TEMPLATE_NOT_FOUND');
   return result;
 }
-/** Removes the user's template or personal copy and its place in the saved list. A built-in itself stays. */
+/** Removes the user's template or personal copy and its place in the saved list. A built-in itself stays.
+ *  A project's own template first hands its Learn value back to the project record, if the project still exists (D92
+ *  point 4), so that project's switch does not change by itself. Two writes in that order (the rows are in two stores):
+ *  a stop between them leaves the template in place and both values equal; a value changed between them runs both again. */
 export async function deleteTemplate(store: ProjectStore, id: string): Promise<void> {
-  await store.swapRow<Row>('settings', TEMPLATES_ROW, row => { const r = clean(row); return { ...r, templates: r.templates.filter(t => t.id !== id), membership: r.membership.filter(m => m !== id) }; });
+  for (;;) {
+    const own = (await readRow(store)).templates.find(t => t.id === id && t.fromProject);
+    if (own) await store.swapRow<ProjectRecord>('projects', own.fromProject!, r => r ? { ...r, template_learning: own.learning } : null);
+    let moved = false;
+    await store.swapRow<Row>('settings', TEMPLATES_ROW, row => {
+      const r = clean(row), now = r.templates.find(t => t.id === id);
+      if ((moved = !!own && !!now && now.learning !== own.learning)) return null;
+      return { ...r, templates: r.templates.filter(t => t.id !== id), membership: r.membership.filter(m => m !== id) };
+    });
+    if (!moved) return;
+  }
 }
-/** "Save to My templates": puts a built-in on the saved list (the user's own templates are always there). */
-export async function saveToMyTemplates(store: ProjectStore, id: string): Promise<void> {
+/** "Save to My templates" / "Remove from My templates" on a template that exists: a built-in joins or leaves the saved
+ *  list (it stays under Built-in templates and keeps its personal copy); a user template gets its `saved` mark set or
+ *  cleared, and nothing else of it changes. */
+async function setSaved(store: ProjectStore, id: string, on: boolean): Promise<void> {
   if (!await findTemplate(store, id)) throw templateError('TEMPLATE_NOT_FOUND');
-  if (builtIn(id)) await store.swapRow<Row>('settings', TEMPLATES_ROW, row => { const r = clean(row); return r.membership.includes(id) ? null : { ...r, membership: [...r.membership, id] }; });
+  await store.swapRow<Row>('settings', TEMPLATES_ROW, row => {
+    const r = clean(row);
+    if (builtIn(id)) return r.membership.includes(id) === on ? null : { ...r, membership: on ? [...r.membership, id] : r.membership.filter(m => m !== id) };
+    return r.templates.some(t => t.id === id && (t.saved !== false) !== on) ? { ...r, templates: r.templates.map(t => t.id === id ? marked(t, on) : t) } : null;
+  });
+}
+const marked = ({ saved: _, neverSaved: never, ...t }: Template, on: boolean): Template => on ? t : { ...t, saved: false, ...(never ? { neverSaved: never } : {}) };
+export const saveToMyTemplates = (store: ProjectStore, id: string) => setSaved(store, id, true);
+export const removeFromMyTemplates = (store: ProjectStore, id: string) => setSaved(store, id, false);
+
+// ---- A project's own template ----
+/** A project's own template (made by its "Save to My templates" or by its first lesson), listed or not. */
+export async function projectTemplate(store: ProjectStore, projectId: string): Promise<Template | undefined> {
+  return (await readRow(store)).templates.find(t => t.fromProject === projectId);
+}
+/** A project's own template as it is made (D85): named "<project name> template", the project's fonts and colours, no
+ *  assets, no guidance, the project's Learn value (it moves into the template when the template is made, D99 rule 3; the
+ *  project record does not change). */
+async function fromProject(store: ProjectStore, projectId: string, doc: ProjectDocument, now: Date): Promise<Template> {
+  const record = await store.row<ProjectRecord>('projects', projectId);
+  if (!record) throw new StoreError('PROJECT_NOT_FOUND', 'This project no longer exists.');
+  return { ...templateFromProject(doc, { name: `${record.title} template`, guidance: '', assets: [] }, now), learning: record.template_learning ?? true, fromProject: projectId };
+}
+/** "Save to My templates" in a project with no template (RC 6.5, D85 / D86 / D99). The project stays unbound.
+ *  - No own template yet: makes it, listed.
+ *  - One a lesson made and no click saved yet (`neverSaved`): it takes its name, fonts and colours from the project now,
+ *    keeps its id, its learned preferences, its guidance and its Learn value, and is listed.
+ *  - One that was saved before, listed or removed: only its mark is set again; the project is not read. */
+export async function saveProjectTemplate(store: ProjectStore, projectId: string, doc: ProjectDocument, now = new Date()): Promise<Template> {
+  const before = await projectTemplate(store, projectId), fresh = !before || before.neverSaved ? await fromProject(store, projectId, doc, now) : undefined;
+  let result: Template | undefined;
+  await store.swapRow<Row>('settings', TEMPLATES_ROW, row => {
+    const r = clean(row), own = r.templates.find(t => t.fromProject === projectId);
+    result = !own ? fresh : !own.neverSaved ? marked(own, true) : fresh && { ...fresh, id: own.id, guidance: own.guidance, learning: own.learning, preferences: own.preferences };
+    return !result || own && own.saved !== false ? null : { ...r, templates: [...r.templates.filter(t => t.id !== result!.id), result] };
+  });
+  if (!result) throw templateError('TEMPLATE_NOT_FOUND'); // deleted, or made by a lesson, between the two reads
+  return result;
+}
+/** The project's own template for a first lesson (D99 rule 2; T23 calls it on the agent's first write under the template
+ *  folder of a project with no template and the Learn switch on). Made as the click makes it, but not listed and marked
+ *  `neverSaved`: the project stays on "No template" and its button still reads "Save to My templates". When the project
+ *  already has its own template nothing is made and that one is returned. */
+export async function lessonTemplate(store: ProjectStore, projectId: string, doc: ProjectDocument, now = new Date()): Promise<Template> {
+  const before = await projectTemplate(store, projectId);
+  if (before) return before;
+  const made: Template = { ...await fromProject(store, projectId, doc, now), saved: false, neverSaved: true };
+  let result = made;
+  await store.swapRow<Row>('settings', TEMPLATES_ROW, row => {
+    const r = clean(row), own = r.templates.find(t => t.fromProject === projectId);
+    if (own) { result = own; return null; }
+    return { ...r, templates: [...r.templates.filter(t => t.id !== made.id), made] };
+  });
+  return result;
 }
 
 /** Checks the bundled files of a built-in template: each must load and have its recorded SHA-256, else DEFAULT_UNAVAILABLE. */
@@ -140,6 +212,8 @@ function toBase64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 }
+/** A template as a file carries it: without the three fields that mean something in this browser only. */
+const portable = ({ fromProject: _p, saved: _s, neverSaved: _n, ...t }: Template): Template => t;
 const assetIds = (t: Template) => [...new Set(templateRefs(t).filter(r => refKind(r.ref) === 'asset').map(r => r.ref.slice(6)))];
 /** The uploaded fonts a template names (its three default fonts and its font list). */
 function uploadedFonts(t: Template) {
@@ -164,7 +238,7 @@ export async function exportTemplate(store: ProjectStore, id: string): Promise<{
     await embed(blob, { id: font.sha256!, name: meta?.fileName || font.family, kind: 'font', mime: blob.type });
     carries.fonts.push(font.family);
   }
-  return { file: { format: TEMPLATE_FORMAT, version: TEMPLATE_VERSION, template, assets }, carries };
+  return { file: { format: TEMPLATE_FORMAT, version: TEMPLATE_VERSION, template: portable(template), assets }, carries };
 }
 
 const ASSET_KEYS = ['id', 'name', 'kind', 'mime', 'sha256', 'bytes', 'data'], FILE_KEYS = ['format', 'version', 'template', 'assets'];
@@ -172,7 +246,8 @@ const exact = (o: RecordData, keys: string[]) => Object.keys(o).length === keys.
 const invalid = (detail: string) => templateError('TEMPLATE_INVALID', detail);
 /** Reads a template file into the library. Every check runs first (format, version, closed schema, each asset's size and
  *  SHA-256, a file for every `asset:` reference, each font's size and name); any failure is TEMPLATE_INVALID and nothing is
- *  stored. A library asset or uploaded font with the same SHA-256 is reused. The same template id replaces. */
+ *  stored. A library asset or uploaded font with the same SHA-256 is reused. The same template id replaces. A file's
+ *  `fromProject`, `saved` and `neverSaved` are dropped: an imported template is always listed and is no project's own. */
 export async function importTemplate(store: ProjectStore, input: unknown): Promise<Template> {
   const file = input as RecordData;
   if (!file || typeof file !== 'object' || Array.isArray(file) || !exact(file, FILE_KEYS) || file.format !== TEMPLATE_FORMAT) throw invalid('The file is not a template file.');
@@ -196,7 +271,7 @@ export async function importTemplate(store: ProjectStore, input: unknown): Promi
     } else if (!['video', 'image', 'audio'].includes(a.kind) || mediaKind(a.name, a.mime) !== a.kind) throw invalid(`${where}: ${a.name} is not a file of the kind ${a.kind}.`);
     blobs.set(a.id, { asset: a as TemplateFileAsset, blob });
   }
-  const template = file.template as Template, missing = assetIds(template).find(id => blobs.get(id)?.asset.kind === 'font' || !blobs.has(id));
+  const template = portable(file.template as Template), missing = assetIds(template).find(id => blobs.get(id)?.asset.kind === 'font' || !blobs.has(id));
   if (missing) throw invalid(`The file does not carry the asset ${missing} its template uses.`);
 
   const added: string[] = [], had = new Set(userFonts().map(u => u.sha256));

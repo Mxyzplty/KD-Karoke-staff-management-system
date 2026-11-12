@@ -14,6 +14,8 @@ import type { AutosaveSession } from '../store/autosave';
 import { installIntentHandler } from '../editor/commands';
 import type { Intent, Outcome } from '../editor/commands';
 import { reportError } from '../ui';
+import { projectLearning } from '../templates/binding';
+import { projectTemplate } from '../templates/library';
 import { snapshot } from '../timeline/bus';
 import type { HistoryEntry } from '../timeline/bus';
 import { fingerprint, historyKey } from '../timeline/runtime';
@@ -108,10 +110,26 @@ export async function restoreCheckpoint(session: AutosaveSession, store: Pick<Pr
   return restored;
 }
 
+/** The template binding a tab shows in its chip. */
+export type TabBinding = { id: string | null; epoch: number };
 /** Conflict screen "Save as copy": this tab's version becomes a new project (with this project's media links); the stored
- *  version stays untouched, so neither version is lost. Title and destination are provisional. */
-export async function saveAsCopy(session: AutosaveSession, store: Pick<ProjectStore, 'create' | 'projectAssets' | 'attach'>, record: ProjectRecord): Promise<ProjectRecord> {
-  const copy = await store.create(`${record.title} (copy)`, { ...structuredClone(session.document), rev: 0 });
+ *  version stays untouched, so neither version is lost. Title and destination are provisional.
+ *  T22 (D93, D100): the copy is this tab's version, template included. Its binding is the one this tab's template chip
+ *  shows (`binding`: the record as this tab loaded it, replaced by any bind this tab made), never the stored record at
+ *  copy time. A binding with a template: the copy's record gets that id and epoch (a deleted template shows "Missing
+ *  template", as the original). No template: the copy is unbound and its Learn switch starts at the value the original's
+ *  switch shows now, on the copy's record; the copy has no template of its own. The document is copied as it is: its
+ *  defaults key is not rewritten, the copy's open repairs it when it is behind. If the record cannot be written, the
+ *  copy is deleted again. */
+export async function saveAsCopy(session: AutosaveSession, store: ProjectStore, record: ProjectRecord, binding: TabBinding): Promise<ProjectRecord> {
+  let copy = await store.create(`${record.title} (copy)`, { ...structuredClone(session.document), rev: 0 });
+  try {
+    const fields: Partial<ProjectRecord> = binding.id ? { template_id: binding.id, template_epoch: binding.epoch }
+      : { template_learning: projectLearning(await store.row<ProjectRecord>('projects', session.projectId) ?? record, await projectTemplate(store, session.projectId)) };
+    const written = await store.swapRow<ProjectRecord>('projects', copy.id, row => row ? { ...row, ...fields } : null);
+    if (!written) throw new StoreError('PROJECT_NOT_FOUND', 'This project no longer exists.');
+    copy = written;
+  } catch (e) { await store.deleteProject(copy.id).catch(() => {}); throw e; }
   for (const link of await store.projectAssets(session.projectId)) await store.attach(copy.id, link.assetId);
   return copy;
 }
