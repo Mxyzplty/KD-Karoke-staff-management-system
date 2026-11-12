@@ -1,13 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T22 steps 1/2 only: content counts, manifest coverage and bundled font / sound licences.
-// Oracle: plan §3 A1/A3/A7, T22 notes Step 1 (four WOFF2 files, three OFL families, eleven CC0 sounds),
+// T22 catalogue/preset content: counts, manifest coverage, bundled licences and own authored style/MG presets.
+// Oracle: plan §3 A1/A2/A3/A7, §31 and the pinned step-5 content contract; Step 1's four WOFF2 files/three OFL families/eleven CC0 sounds,
 // and vendor/manifest.json. Byte counts and SHA-256 are computed from the real files with node:crypto,
-// not copied from catalogue code or inferred from manifest metadata. Presets/templates are deferred below.
+// not copied from catalogue code or inferred from manifest metadata. Project-template counts remain deferred below.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { ELEMENTS } from '../apps/web/src/catalogue/elements';
 import { SOUNDS } from '../apps/web/src/catalogue/sounds';
+import { STYLE_PRESETS } from '../apps/web/src/presets/content';
+import { BUILT_IN_MG_PRESETS } from '../apps/web/src/presets/mg-content';
+import { stylePresetProblem } from '../apps/web/src/presets/model';
+import type { DirectPreset, GraphicStylePreset } from '../apps/web/src/presets/model';
+import { applyStylePreset } from '../apps/web/src/presets/apply';
+import { presetProblem } from '../apps/web/src/mg/presets';
+import { compileMotionGraphic } from '../apps/web/src/mg/compiler';
+import { API_NAMES, createRuntime } from '../apps/web/src/mg/runtime';
+import { build } from './t03-fixtures';
 
 type ManifestFile = { path: string; bytes: number; sha256: string };
 type Component = { name: string; license: string; files: ManifestFile[] };
@@ -55,12 +66,52 @@ describe('A7 (step 1): the bundled font components are OFL-1.1 and sound compone
   });
 });
 
-describe('A1: SR-17 content counts (catalogue step now; preset/template steps later)', () => {
+describe('A1: SR-17 content counts (catalogues and presets; templates later)', () => {
   it('ships at least 10 authored elements', () => expect(ELEMENTS.length).toBeGreaterThanOrEqual(10));
-  it.todo('A1: at least 14 style presets over the six required categories (step 5)');
-  it.todo('A1: at least 10 built-in motion-graphic presets (step 5)');
+  it('A1: at least 14 style presets over the six required categories, with unique ids', () => {
+    expect(STYLE_PRESETS.length).toBeGreaterThanOrEqual(14); expect(new Set(STYLE_PRESETS.map(p => p.id)).size).toBe(STYLE_PRESETS.length);
+    for (const category of ['text', 'lower-thirds', 'info-cards', 'slide-in-panels', 'misc', 'collages']) expect(STYLE_PRESETS.some(p => p.id.split('/')[0] === category), category).toBe(true);
+  });
+  it('A1: at least 10 built-in motion-graphic presets, with unique ids', () => {
+    expect(BUILT_IN_MG_PRESETS.length).toBeGreaterThanOrEqual(10); expect(new Set(BUILT_IN_MG_PRESETS.map(p => p.id)).size).toBe(BUILT_IN_MG_PRESETS.length);
+  });
   it.todo('A1: at least one default project template (step 8)');
   it.todo('A1: all nine existing caption template ids resolve (template/font integration steps)');
+});
+
+describe('A1/A2: every authored style and built-in MG preset is valid and usable', () => {
+  it.each(STYLE_PRESETS)('$id has a valid shape and a 118..430-character description', p => {
+    expect(stylePresetProblem(p), p.id).toBeNull(); expect(p.description.length, p.id).toBeGreaterThanOrEqual(118); expect(p.description.length, p.id).toBeLessThanOrEqual(430);
+  });
+  it.each(BUILT_IN_MG_PRESETS)('$id passes T08 presetProblem', p => expect(presetProblem(p), p.id).toBeNull());
+  for (const p of STYLE_PRESETS) for (const canvas of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }]) it(`${p.id} applies on ${canvas.width}×${canvas.height}`, () => {
+    const doc = build({ extra: { size: canvas } });
+    const items = applyStylePreset(doc, p, 0); expect(items.length).toBeGreaterThan(0); expect(doc.items).toHaveLength(items.length);
+  });
+  const graphicStyles = STYLE_PRESETS.filter(p => typeof (p as GraphicStylePreset).mg_code === 'string') as GraphicStylePreset[];
+  const codeRows = [...graphicStyles, ...BUILT_IN_MG_PRESETS].flatMap(p => [{ id: p.id, variant: 'mg_code', code: p.mg_code },
+    ...(p.mg_code_h ? [{ id: p.id, variant: 'mg_code_h', code: p.mg_code_h }] : [])]);
+  it.each(codeRows)('$id $variant compiles without error', ({ code }) => expect(() => compileMotionGraphic(code)).not.toThrow());
+  it.each(codeRows)('$id $variant renders finite static markup at four frames × three boxes', ({ id, code }) => {
+    const compiled = compileMotionGraphic(code);
+    for (const frame of [0, 10, 45, 149]) {
+      for (const box of [{ width: 540, height: 1920 }, { width: 600, height: 300 }, { width: 1080, height: 30 }]) {
+        const api: Record<string, any> = createRuntime({ frame, itemWidth: box.width, itemHeight: box.height, dryRun: true });
+        const Component = new Function(...API_NAMES, '__mgKey', '__mgTick', compiled.js)(...API_NAMES.map(name => api[name]), (key: unknown) => key, () => {}) as React.ComponentType;
+        const html = renderToStaticMarkup(React.createElement(Component));
+        expect(html, `${id}, frame${frame}, ${box.width}×${box.height}`).not.toMatch(/NaN|undefined|Infinity/);
+      }
+    }
+  });
+  it('all preset text is our own, direct fonts are approved, and MG code names only Roboto', () => {
+    for (const p of [...STYLE_PRESETS, ...BUILT_IN_MG_PRESETS]) expect(JSON.stringify(p), p.id).not.toMatch(/xapp/i);
+    for (const p of STYLE_PRESETS) for (const item of (p as DirectPreset).items ?? []) if (item.type === 'text' && item.details.fontFamily !== undefined)
+      expect(['Roboto', 'Manrope', 'Sora', 'Instrument Serif'], p.id).toContain(item.details.fontFamily);
+    for (const { id, code } of codeRows) {
+      const named = [...code.matchAll(/fontFamily\s*:\s*['"]([^'"]+)['"]/g)].map(match => match[1]);
+      for (const family of named) expect(family, id).toBe('Roboto');
+    }
+  });
 });
 
 describe('Lane A 01:36 ruling: the element box is the bounding box of its pieces', () => {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T22 step 4 G-K: real SVG->PNG import, placement, palette pixels and slot pictures on a paused Chromium stage.
+// T22 step 4 G-L: real SVG->PNG import, placement, palette pixels and slot pictures on paused and playing Chromium stages.
 // No fixture store, ffmpeg, network, encoded-PNG pin or screenshot hash. Agent calls use the real Executor in the page.
 // H: corner-brackets reaches its entire SVG box (12px inset path, 24px square-cap stroke): bbox tolerance 1 project px.
 // Underline extents are independently derived from its authored cubic extrema and 11px round stroke, not its empty margins.
@@ -10,7 +10,7 @@ import { recolor as oracleRecolor } from '../../parity/oracle/colour';
 import type { RGB } from '../../parity/oracle/math';
 import { createProject, guard, skipTour } from './t02-support';
 import { prop } from './t04-support';
-import { runCanvas } from './t15-support';
+import { canvasSizeOf, runCanvas, shown } from './t15-support';
 
 test.use({ viewport: { width: 1280, height: 900 } });
 test.setTimeout(90_000);
@@ -177,9 +177,9 @@ test.describe('J: synthetic flat-pixel recolour versus independent §49.19 oracl
   });
 });
 
-function slotItem(id: string): Rec {
+function slotItem(id: string, overrideRect?: { x: number; y: number; width: number; height: number }): Rec {
   const e = findElement(id)!, text = e.slot?.kind === 'text';
-  const rect = text ? { x: 40, y: 80, width: 320, height: 320 / 3 } : { x: 150, y: 30, width: 100, height: 200 };
+  const rect = overrideRect ?? (text ? { x: 40, y: 80, width: 320, height: 320 / 3 } : { x: 150, y: 30, width: 100, height: 200 });
   const b = e.slot?.kind === 'text' ? e.slot.box : { x: 0, y: 0, width: 1, height: 1 };
   const details: Rec = { name: e.name, element: { id, palette: e.palette, slot: text ? 'text' : 'media' } };
   // Rendering-only offline fixture: fonts.ts serves non-italic Roboto 400/700 locally. Manrope defaults belong to the fonts step.
@@ -208,4 +208,64 @@ test.describe('K: slot pictures and their own content both appear on the stage',
     screen.slice(0, 3).forEach((v, k) => expect(Math.abs(v - [255, 0, 255][k])).toBeLessThanOrEqual(2));
     body.slice(0, 3).forEach((v, k) => expect(Math.abs(v - [27, 27, 31][k])).toBeLessThanOrEqual(2));
   });
+});
+
+test('L: playing into unseen slot elements shows both pictures and both contents while the playhead advances', async ({ page }) => {
+  const labelBox = { x: 20, y: 90, width: 220, height: 220 / 3 }, phoneBox = { x: 280, y: 30, width: 100, height: 200 };
+  const label = slotItem('label-tag', labelBox), phone = slotItem('phone-frame', phoneBox);
+  label.id = 'playing-label'; phone.id = 'playing-phone'; label.properties.fontSize = prop(32);
+  for (const item of [label, phone]) item.display = { from: 1000, to: 7000 };
+  const projectId = await createProject(page, emptyDoc(), 'T22 cold-entry slot playback');
+  await page.evaluate(async ({ projectId, items }) => {
+    const sp = '/src/store/database.ts', cp = '/src/catalogue/assets.ts', store = (await import(sp)).projectStore;
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const g = c.getContext('2d')!; g.fillStyle = '#FF00FF'; g.fillRect(0, 0, 64, 64);
+    const blob = await new Promise<Blob>((resolve, reject) => c.toBlob(b => b ? resolve(b) : reject(new Error('PNG creation failed')), 'image/png'));
+    const flat = await store.upload(new File([blob], 'playing-cell.png', { type: 'image/png' })); await store.attach(projectId, flat.id);
+    await store.updateAsset(flat.id, (a: Rec) => ({ ...a, processing_status: 'ready', processing_steps: { ...a.processing_steps, probe: 'complete' }, media: { image: { width: 64, height: 64 } } }));
+    for (const item of items) {
+      const picture = await (await import(cp)).ensureCatalogueAsset(store, projectId, `element:${item.details.element.id}`);
+      item.metadata.assetId = picture.id;
+      if (item.type === 'layout') item.details.cells[0].source = { assetId: flat.id, type: 'image', url: `asset:${flat.id}` };
+    }
+    const current = await store.read(projectId); current.document.items = items; current.document.duration = 7000;
+    await store.save(projectId, current.document, current.document.rev);
+  }, { projectId, items: [label, phone] });
+  await page.goto(`/project/${projectId}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  await page.evaluate(async () => { const vp = '/src/editor/view.ts'; (await import(vp)).setView({ playheadMs: 0, quality: 'half' }); });
+  await shown(page, 0);
+  const regions = [{ box: labelBox, colours: [[255, 200, 61], [0, 0, 255]] }, { box: phoneBox, colours: [[27, 27, 31], [255, 0, 255]] }];
+  const sample = () => page.evaluate(async ({ regions, W, H }) => {
+    const vp = '/src/editor/view.ts', pp = '/src/render/playback.ts';
+    const t = (await import(vp)).view().playheadMs as number, playing = (await import(pp)).usePlayback.getState().playing as boolean;
+    const c = document.querySelector('canvas.run[data-run="0"]') as HTMLCanvasElement, g = c.getContext('2d')!;
+    // Playing quality/display/DPR may shrink the canvas: map each PROJECT box into the current bitmap before counting.
+    const counts = regions.flatMap(({ box, colours }) => {
+      const x = Math.max(0, Math.floor(box.x * c.width / W)), y = Math.max(0, Math.floor(box.y * c.height / H));
+      const right = Math.min(c.width, Math.ceil((box.x + box.width) * c.width / W)), bottom = Math.min(c.height, Math.ceil((box.y + box.height) * c.height / H));
+      const pixels = g.getImageData(x, y, right - x, bottom - y).data;
+      return colours.map(rgb => { let n = 0; for (let k = 0; k < pixels.length; k += 4) if (pixels[k + 3] > 200 && rgb.every((v, j) => Math.abs(v - pixels[k + j]) <= 12)) n++; return n; });
+    });
+    return { t, playing, width: c.width, height: c.height, counts };
+  }, { regions, W, H });
+  // The only paused frame is t=0, BEFORE [1000,7000): neither element has appeared. This does not claim an empty decoder cache.
+  const cold = await sample(); expect(cold.t).toBe(0); expect(cold.playing).toBe(false); expect(cold.counts).toEqual([0, 0, 0, 0]);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  try {
+    let visible = await sample();
+    // A not-yet-decoded bitmap may be skipped: poll for readiness during playback, never demand the first frame.
+    await expect.poll(async () => { visible = await sample(); return visible.playing && visible.t >= 1000 && visible.t < 7000 && visible.counts.every(n => n > 5); },
+      { timeout: 15_000, intervals: [50, 100], message: 'yellow label/blue text and dark frame/magenta cell inside their own boxes during playback' }).toBe(true);
+    const first = visible;
+    await expect.poll(async () => { visible = await sample(); return visible.playing && visible.t > first.t && visible.t < 7000 && visible.counts.every(n => n > 5); },
+      { timeout: 10_000, intervals: [50, 100], message: 'a second visible playing frame with an advancing playhead' }).toBe(true);
+    expect(visible.t).toBeGreaterThan(first.t); expect(visible.playing).toBe(true);
+    expect(await canvasSizeOf(page)).toEqual({ width: visible.width, height: visible.height });
+    expect(visible.width).toBeLessThanOrEqual(W / 2); expect(visible.height).toBeLessThanOrEqual(H / 2);
+  } finally {
+    const pause = page.getByRole('button', { name: 'Pause', exact: true });
+    if (await pause.isVisible()) await pause.click();
+  }
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
 });
