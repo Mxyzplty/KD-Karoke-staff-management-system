@@ -10,10 +10,13 @@ import { createProjectWithFootage } from './media/ingest';
 import { acceptAttribute, mediaKind } from './media/files';
 import { probeMedia } from './media/probe';
 import { formatDuration } from './media-ui';
+import { bindProject, writeDefaults } from './templates/binding';
+import type { Template } from './templates/model';
+import { TemplatePicker } from './templates/ui';
 
 type Queued = { file: File; preview?: string; durationMs?: number | null };
-export function Wizard({ close, navigate }: { close: () => void; navigate: (path: string) => void }) {
-  const [step, setStep] = useState(1), [picker, setPicker] = useState<'template' | 'reference' | 'footage'>(), [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false);
+export function Wizard({ close, navigate, template: preselected }: { close: () => void; navigate: (path: string) => void; template?: Template }) {
+  const [step, setStep] = useState(1), [picker, setPicker] = useState<'template' | 'reference' | 'footage'>(), [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [template, setTemplate] = useState(preselected);
   const [queued, setQueued] = useState<Queued[]>([]), computer = useRef<HTMLInputElement>(null), previews = useRef<string[]>([]);
   const [reference, setReference] = useState<ReferenceVideo>(), [references, setReferences] = useState<ReferenceVideo[]>([]), [referenceQuery, setReferenceQuery] = useState(''), referenceInput = useRef<HTMLInputElement>(null);
   useEffect(() => { if (picker === 'reference') void listReferences(projectStore).then(setReferences).catch(reportError); }, [picker]);
@@ -42,6 +45,11 @@ export function Wizard({ close, navigate }: { close: () => void; navigate: (path
       // Footage uploads are queued for the new project: name + size matches are reused silently (no dialog in the wizard).
       const { project, result } = await createProjectWithFootage(projectStore, queued.map(q => q.file), selected);
       for (const f of result.failed) reportError(f.error);
+      // T22: the picked template is bound before anything else is added. A bind that fails leaves no project behind.
+      if (template) try {
+        const bound = await bindProject(projectStore, project.id, template, 0), stored = await projectStore.read(project.id);
+        if (stored) await projectStore.save(project.id, writeDefaults(stored.document, template, bound.epoch), stored.document.rev);
+      } catch (e) { await projectStore.deleteProject(project.id).catch(() => {}); reportError(e); setBusy(false); return; }
       // The picked library reference is attached once the project exists (findings part 2 §26; T22 builds on this).
       if (reference) await attachReference(projectStore, project.id, reference.id).catch(() => notify('Project created, but the reference could not be attached.'));
       navigate(`/project/${project.id}`);
@@ -51,7 +59,7 @@ export function Wizard({ close, navigate }: { close: () => void; navigate: (path
     <div className="steps" aria-label={`Step ${step} of 2`}><i className={step === 1 ? 'active' : ''} /><i className={step === 2 ? 'active' : ''} /></div>
     {step === 1 ? <>
       <h3>Project Setup</h3><p>Choose a template and optional reference, or start fresh.</p>
-      <div className="setup-card"><h4>Template</h4><p>Bring a reusable style and structure to your project.</p><button onClick={() => setPicker('template')}>Choose template</button><button onClick={() => setPicker('template')}>Change</button><button disabled>Remove</button></div>
+      <div className="setup-card"><h4>Template</h4><p>{template ? template.name : 'Bring a reusable style and structure to your project.'}</p><button onClick={() => setPicker('template')}>Choose template</button><button onClick={() => setPicker('template')}>Change</button><button disabled={!template} onClick={() => setTemplate(undefined)}>Remove</button></div>
       <div className="setup-card"><h4>Reference Video <small>Optional</small></h4>{reference ? <><p>{reference.name}</p><p><small>From your library</small></p><button onClick={() => setReference(undefined)}>Remove</button></> : <><button onClick={() => referenceInput.current?.click()}>Upload a reference</button><button onClick={() => setPicker('reference')}>From your library</button></>}</div>
       <input ref={referenceInput} type="file" hidden accept="video/*,.mp4,.mov,.webm,.mkv,.m4v" aria-label="Choose a reference video" onChange={e => { void uploadPicked(e.target.files?.[0]); e.target.value = ''; }} />
       <div className="dialog-actions"><button onClick={close}>Cancel</button><button className="primary" onClick={() => setStep(2)}>Continue</button></div>
@@ -64,7 +72,7 @@ export function Wizard({ close, navigate }: { close: () => void; navigate: (path
       </div>
       <div className="dialog-actions"><button disabled={busy} onClick={() => setStep(1)}>← Back</button><button className="primary" disabled={busy} onClick={() => void create()}>{busy ? 'Creating…' : 'Create Project'}</button></div>
     </>}
-    {picker === 'template' && <Dialog title="Choose template" close={() => setPicker(undefined)}><p>Template selection is not yet implemented (T22).</p></Dialog>}
+    {picker === 'template' && <TemplatePicker close={() => setPicker(undefined)} use={t => { setTemplate(t); setPicker(undefined); }} />}
     {picker === 'reference' && <Dialog title="Reference library" close={() => setPicker(undefined)}><span className="chip">{references.length} saved</span><p>Choose a reference to attach when the project is created.</p><input aria-label="Search reference videos" placeholder="Search reference videos" value={referenceQuery} onChange={e => setReferenceQuery(e.target.value)} />
       {!references.length ? <p>No reference videos yet.</p> : <ul className="reference-list" aria-label="Saved references">{references.filter(r => r.name.toLowerCase().includes(referenceQuery.trim().toLowerCase())).map(r => <li key={r.id}><button onClick={() => { setReference(r); setPicker(undefined); }}>{r.name}</button><small>{analysisLabel(r)}</small></li>)}</ul>}
       <button onClick={() => referenceInput.current?.click()}>Upload reference video</button></Dialog>}

@@ -97,10 +97,11 @@ test('B2 top row: Back, name, template chip → T22, local-only cloud popover, H
   const leaks = guard(page); await page.setViewportSize({ width: 1280, height: 800 }); const id = await createProject(page, richDoc(), 'My edit'); await addAsset(page, id, 'tiny.png');
   await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally'); await watchIntents(page); const before = await stored(page, id);
   await expect(page.getByRole('heading', { level: 1, name: 'My edit' })).toBeVisible();
-  // Template chip: "No template" → View details / Change template / Save as template, each a T22 stub.
+  // Template chip: "No template" → View details / Change template / Save as template.
+  // T22 (C8 assertion-only edit): the three items open T22's dialogs now (see ui/t22-templates.spec.ts); they are no longer stubs and dispatch no feature intent.
   await page.getByRole('button', { name: 'Template: No template' }).click(); await expect(page.getByRole('menu', { name: 'Template: No template' })).toContainText('Project template');
   await expect(page.getByRole('menuitem')).toHaveText(['View details', 'Change template', 'Save as template']);
-  for (const label of ['View details', 'Change template', 'Save as template']) { await page.getByRole('menuitem', { name: label }).click(); await expect(notices(page)).toContainText(`${label} is not yet implemented (T22).`); await page.getByRole('button', { name: 'Template: No template' }).click(); }
+  for (const [label, dialog] of [['View details', 'Current template'], ['Change template', 'Choose a Template'], ['Save as template', 'Save as template']]) { await page.getByRole('menuitem', { name: label }).click(); await expect(page.getByRole('dialog', { name: dialog })).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0); await page.getByRole('button', { name: 'Template: No template' }).click(); }
   await page.keyboard.press('Escape'); await expect(page.getByRole('menu')).toHaveCount(0);
   // Cloud backup: local only, Auto off (T21 made it live), per-asset "Local only", a cost line.
   await page.getByRole('button', { name: 'Cloud backup: local only' }).click(); const cloud = page.getByRole('dialog', { name: 'Cloud backup' });
@@ -111,7 +112,7 @@ test('B2 top row: Back, name, template chip → T22, local-only cloud popover, H
   // Help: three guides (T21: two corpus pages, Community has no destination yet) and the shortcut list.
   await page.getByRole('button', { name: 'Help', exact: true }).click(); await expect(page.getByRole('menuitem')).toHaveText(['Getting-started guide', 'Agent-setup guide', 'Community', 'Keyboard shortcuts']);
   await page.getByRole('menuitem', { name: 'Community' }).click(); await expect(notices(page)).toContainText('No community space has been set up yet.');
-  expect((await intents(page)).map(l => l.outcome.owner)).toEqual(['T22', 'T22', 'T22']);
+  expect((await intents(page)).map(l => l.outcome.owner)).toEqual([]); // T22 (C8 assertion-only edit): the chip items dispatch nothing now
   await page.getByRole('button', { name: 'Help', exact: true }).click(); await page.getByRole('menuitem', { name: 'Keyboard shortcuts' }).click(); await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
   // Agent badge: never "Connected"; T18a's connect panel, no Disconnect before a connection; allowed-folder count; Set up → the External Agent card.
   await page.getByRole('button', { name: 'Agent: not connected' }).click(); const agent = page.getByRole('dialog', { name: 'Agent connection' });
@@ -121,7 +122,7 @@ test('B2 top row: Back, name, template chip → T22, local-only cloud popover, H
   await page.goBack(); await expect(page.getByRole('status')).toHaveText('Saved locally');
   // Export → T16; Back → home.
   await page.getByRole('button', { name: 'Export', exact: true }).click(); await expect(notices(page)).toContainText('Export is not yet implemented (T16).');
-  const log = await intents(page); expect(log.map(l => [l.outcome.code, l.outcome.owner])).toEqual([['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T22'], ['NOT_IMPLEMENTED', 'T16']]);
+  const log = await intents(page); expect(log.map(l => [l.outcome.code, l.outcome.owner])).toEqual([['NOT_IMPLEMENTED', 'T16']]); // T22 (C8 assertion-only edit): only Export is a stub here
   await expectUntouched(page, id, before);
   await page.getByRole('button', { name: 'Back to home' }).click(); await expect(page).toHaveURL(/\/$/); expect(leaks).toEqual([]);
 });

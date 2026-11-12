@@ -11,6 +11,7 @@ import { acceptAttribute } from './media/files';
 import { AssetPoster, analysisFailed, useDuplicateChoice, useFilePick } from './media-ui';
 import { clipRange, isRange, searchFootage } from './analysis/footage';
 import type { SearchResponse, SearchRow } from './analysis/types';
+import { TemplateLibrary } from './templates/ui';
 
 /** One notice per batch: stored / reused / skipped counts and each failure's code. */
 export function reportIngest(r: IngestResult) {
@@ -60,10 +61,10 @@ const noFilters: Filters = { from: '', to: '', location: '' };
 function folderPath(id: string, folders: Folder[]): string {
   const f = folders.find(f => f.id === id); return f ? `${f.parentId ? `${folderPath(f.parentId, folders)} / ` : ''}${f.name}` : '';
 }
-export function Library() {
+export function Library({ navigate }: { navigate: (path: string) => void }) {
   const [tab, setTab] = useState('assets');
   return <><p className="eyebrow">YOUR MEDIA</p><h1>Library</h1><p>Keep your media organised in this browser.</p><div role="tablist" aria-label="Library"><button role="tab" aria-selected={tab === 'assets'} onClick={() => setTab('assets')}>Assets</button><button role="tab" aria-selected={tab === 'templates'} onClick={() => setTab('templates')}>Templates</button></div>
-    {tab === 'assets' ? <LibraryBrowser /> : <section role="tabpanel"><h2>Templates</h2><p>Template library is not yet implemented (T22).</p></section>}</>;
+    {tab === 'assets' ? <LibraryBrowser /> : <TemplateLibrary navigate={navigate} />}</>;
 }
 export function LibraryBrowser({ picker = false, selected: supplied, onSelected }: { picker?: boolean; selected?: string[]; onSelected?: (ids: string[]) => void }) {
   const [data, setData] = useState<LibrarySnapshot>({ assets: [], folders: [], links: [] }), [loading, setLoading] = useState(true), [failed, setFailed] = useState(false);

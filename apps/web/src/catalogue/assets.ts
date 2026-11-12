@@ -14,7 +14,8 @@ import type { ToolContext, ToolResult } from '../timeline/tools';
 import { findElement } from './elements';
 import { findSound } from './sounds';
 
-const bundled = import.meta.glob('../../../../vendor/t22/{elements,sounds,fonts}/*', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+// `no-inline`: a small SVG would otherwise be served as a rewritten data URL, so its bytes would not be the recorded file's.
+const bundled = import.meta.glob('../../../../vendor/t22/{elements,sounds,fonts}/*', { eager: true, query: '?url&no-inline', import: 'default' }) as Record<string, string>;
 const MIME: Record<string, string> = { png: 'image/png', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg' };
 /** The stored picture of an element: `scale` × its catalogue size, the long side at most `maxSide` px. Placed larger than
  *  that, the picture is upscaled. */

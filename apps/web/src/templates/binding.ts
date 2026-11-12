@@ -7,7 +7,7 @@
 import type { ProjectStore } from '../store/database';
 import { StoreError, type ProjectDocument, type ProjectRecord } from '../store/model';
 import { templateError } from './errors';
-import { findTemplate } from './library';
+import { findTemplate, verifyBuiltIn } from './library';
 import { defaultsOf, type Template, type TemplateDefaults } from './model';
 
 export type Binding = { epoch: number; templateId: string };
@@ -26,6 +26,13 @@ export async function bindTemplate(store: ProjectStore, projectId: string, reque
   if (!found) throw new StoreError('PROJECT_NOT_FOUND', 'This project no longer exists.');
   if (!result) throw templateError('TEMPLATE_SELECTION_STALE');
   return result;
+}
+
+/** The UI's bind (the picker's Use button, the wizard): a built-in's bundled files are checked first, so a default
+ *  template that is not whole binds nothing (DEFAULT_UNAVAILABLE). Each call is a new request. */
+export async function bindProject(store: ProjectStore, projectId: string, template: Template, expectedEpoch: number, load?: (file: string) => Promise<Blob>): Promise<Binding> {
+  await verifyBuiltIn(template, load);
+  return bindTemplate(store, projectId, { templateId: template.id, expectedEpoch, requestKey: crypto.randomUUID() });
 }
 
 /** The document with the template's defaults for new items (the caller saves it). */

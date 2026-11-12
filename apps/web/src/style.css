@@ -186,3 +186,11 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); tex
 .caption-word-behavior { display: grid; gap: .4rem; }
 .caption-text { display: grid; gap: .4rem; } .caption-correction { align-items: flex-start; } .caption-correction textarea { flex: 1; min-height: 3.4rem; resize: vertical; font: inherit; }
 .caption-words { list-style: none; padding: 0; margin: 0; max-height: 40vh; overflow-y: auto; font-size: .8rem; } .caption-words li { display: flex; gap: .5rem; padding: .1rem 0; } .caption-words .word-time { color: var(--muted); min-width: 3.2rem; }
+/* T22 templates UI (findings §22, part 3 §46.1). Reuses dialog, .row, .hint, .eyebrow, .chip, .dialog-actions. */
+.template-browser, .template-details, .template-form { display: grid; gap: .7rem; } .template-rows, .template-refs, .template-swatches, .template-colours { list-style: none; padding: 0; margin: 0; display: grid; gap: .4rem; }
+.template-rows li { display: flex; gap: .5rem; align-items: center; } .template-row { flex: 1; display: flex; gap: .7rem; align-items: center; text-align: left; } .template-row[aria-pressed="true"] { border-color: var(--accent); }
+.template-row i, .template-swatches i { width: 1.6rem; height: 1.6rem; border-radius: 6px; border: 1px solid var(--line); flex: none; } .template-row span { flex: 1; display: grid; } .template-row small { color: var(--muted); }
+.template-footer { display: flex; gap: 1rem; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: .7rem; } .template-empty { border: 1px dashed var(--line); border-radius: 10px; padding: 1rem; }
+.template-swatches { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } .template-swatches li, .template-colours li { display: flex; gap: .5rem; align-items: center; } .template-colours input[type="color"] { padding: 2px; min-width: 2.4rem; }
+.template-preview { padding: .5rem 0; } .template-preview img, .template-preview video { max-width: 100%; max-height: 220px; } .template-sample { font-size: 1.6rem; margin: 0; } .template-notes { white-space: pre-wrap; }
+.template-export { flex-basis: 100%; border: 1px solid var(--line); border-radius: 10px; padding: .7rem; } .template-refs li[data-locked="true"] { color: var(--muted); }

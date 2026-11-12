@@ -10,6 +10,8 @@ import { withCellItems } from '../apps/web/src/timeline/layouts';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import { findElement } from '../apps/web/src/catalogue/elements';
 import { slotGraphic, textSlot } from '../apps/web/src/catalogue/graphic';
+import { placeElement } from '../apps/web/src/catalogue/place';
+import type { StoredMask } from '../apps/web/src/masks/model';
 import type { Asset, RecordData } from '../apps/web/src/store/model';
 import type { ProjectStore } from '../apps/web/src/store/database';
 import { assets, build, itemOf, mkItem, mkTrack, resetIds, video } from './t03-fixtures';
@@ -65,6 +67,31 @@ describe('A/B: element recolour and stored recolor entries are drawn, not pendin
     // Only Draw.item.effects (the input record, necessarily different) is normalised. No rendering field is omitted.
     expect(noInputEffects(plan)).toEqual(noInputEffects(baseline)); expect(plan.pending).toEqual([]);
     expect(plan.draws[0].effects).toEqual([]); expect(plan.draws[0]).not.toHaveProperty('element');
+  });
+  it('an image element with no slot is masked like any image, including with active recolour', () => {
+    const element = findElement('sticker-star')!, item = placeElement(element, { width: 1080, height: 1920 }, {
+      trackId: 'T', assetId: 'picture-sticker-star', bounds: { x: 40, y: 70, width: 240, height: 240 },
+    });
+    expect(item.type).toBe('image'); expect(item.details.element).toMatchObject({ id: 'sticker-star' }); expect(item.details.element).not.toHaveProperty('slot');
+    expect(framePlan(project(item), 500).draws[0]).toMatchObject({ kind: 'image', path: 'direct' });
+    const mask: StoredMask = { id: 'image-mask', name: 'Image mask', enabled: true, order: 0, source: 'shape', mode: 'add', colorIndex: 0,
+      points: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }, { anchor: { x: 100, y: 100 } }], closed: true, feather: 4, expansion: 2, opacity: 60, inverted: false };
+    item.masks = [structuredClone(mask)];
+    const plain = mkItem('plain-image', 'T', 0, 3000, { type: 'image', metadata: { assetId: 'asset-img1' }, masks: [structuredClone(mask)],
+      properties: properties({ positionX: 40, positionY: 70, width: 240, height: 240, scale: 1, rotation: 0, opacity: 1 }) });
+    // T12's stored 60% opacity becomes .6; the item-local triangle, feather and expansion are unchanged.
+    const expectedMasks = [{ id: 'image-mask', mode: 'add', inverted: false, opacity: 0.6, feather: 4, expansion: 2,
+      path: { points: mask.points, closed: true }, raster: null }];
+    const masked = framePlan(project(item), 500), ordinary = framePlan(project(plain), 500);
+    expect(masked.pending).toEqual([]); expect(masked.draws).toHaveLength(1); expect(ordinary.pending).toEqual([]); expect(ordinary.draws).toHaveLength(1);
+    expect(ordinary.draws[0].item.details).not.toHaveProperty('element'); expect(ordinary.draws[0].box).toEqual(masked.draws[0].box);
+    expect(masked.draws[0]).toMatchObject({ kind: 'image', path: 'css', masks: expectedMasks }); expect(masked.draws[0]).not.toHaveProperty('element');
+    expect(masked.draws[0].masks).toEqual(expectedMasks); expect(masked.draws[0].masks).toEqual(ordinary.draws[0].masks);
+    const editor = createEditor(project(item));
+    expect(editor.call('editProperties', { itemId: item.id, properties: { colors: ['#00FF00'] } })).toMatchObject({ success: true });
+    const recoloured = framePlan(editor.doc, 500); expect(recoloured.pending).toEqual([]); expect(recoloured.draws).toHaveLength(1);
+    expect(recoloured.draws[0]).toMatchObject({ kind: 'image', path: 'css', element: { palette: element.palette, colors: ['#00FF00', '#1B1B1F'] } });
+    expect(recoloured.draws[0].masks).toEqual(expectedMasks); expect(recoloured.draws[0].masks).toEqual(ordinary.draws[0].masks);
   });
 });
 

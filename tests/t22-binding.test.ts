@@ -2,15 +2,16 @@
 // T22 step 8 S1 / P2-P3. Oracle: findings §22 Cutframe spec, plan P1/P2/P3/S1 and the pinned step-8 binding rules.
 // Expected epochs, retry behaviour and defaults are literal contract expectations, never bind/read/default helper output.
 import 'fake-indexeddb/auto';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectStore } from '../apps/web/src/store/database';
 import { StoreError, emptyDocument } from '../apps/web/src/store/model';
 import type { ProjectRecord } from '../apps/web/src/store/model';
 import type { MediaStore } from '../apps/web/src/store/media';
-import { bindTemplate, writeDefaults, readDefaults, repairDefaults } from '../apps/web/src/templates/binding';
+import { bindProject, bindTemplate, writeDefaults, readDefaults, repairDefaults } from '../apps/web/src/templates/binding';
 import { defaultsOf } from '../apps/web/src/templates/model';
 import type { Template } from '../apps/web/src/templates/model';
-import { DEFAULT_TEMPLATE } from '../apps/web/src/templates/default';
+import { DEFAULT_FILES, DEFAULT_TEMPLATE } from '../apps/web/src/templates/default';
 import { saveTemplate, updateTemplate, deleteTemplate } from '../apps/web/src/templates/library';
 import { SNAPSHOT_KEYS } from '../apps/web/src/timeline/bus';
 
@@ -113,5 +114,54 @@ describe('P3: document defaults and repair from the current library', () => {
     await bindTemplate(store, id, { templateId: template.id, expectedEpoch: 0, requestKey: 'bind' }); await deleteTemplate(store, template.id);
     const record = (await store.read(id))!.record, beforeRecord = structuredClone(record), doc = writeDefaults(emptyDocument(), template, 0), before = structuredClone(doc);
     expect(await repairDefaults(store, record, doc)).toBeNull(); expect(doc).toEqual(before); expect((await store.read(id))!.record).toEqual(beforeRecord);
+  });
+});
+
+const bundledBytes = async (file: string) => new Blob([readFileSync(new URL(`../${file}`, import.meta.url))]);
+describe('step 10 bindProject: verified built-in files before binding, fresh requests and own-template isolation', () => {
+  it('loads every DEFAULT_FILES entry before changing the project record', async () => {
+    const store = setup(), project = await store.create('UI bind'), before = (await store.read(project.id))!;
+    const load = vi.fn(async (file: string) => {
+      expect((await store.read(project.id))!.record).toEqual(before.record);
+      return bundledBytes(file);
+    });
+    expect(await bindProject(store, project.id, DEFAULT_TEMPLATE, 0, load)).toEqual({ epoch: 1, templateId: 'daylight' });
+    expect(load.mock.calls.map(([file]) => file)).toEqual(DEFAULT_FILES.map(file => file.path));
+    const after = (await store.read(project.id))!;
+    expect(after.record).toMatchObject({ template_id: 'daylight', template_epoch: 1 }); expect(after.document).toEqual(before.document);
+  });
+  it.each(['load failure', 'different bytes'])('%s rejects DEFAULT_UNAVAILABLE without a partial binding', async kind => {
+    const store = setup(), project = await store.create('Unavailable UI bind'), before = (await store.read(project.id))!;
+    const load = vi.fn(async (file: string) => {
+      if (file === DEFAULT_FILES[1].path) {
+        if (kind === 'load failure') throw new Error('fixture file unavailable');
+        return new Blob(['not the recorded font']);
+      }
+      return bundledBytes(file);
+    });
+    await expectStoreError(bindProject(store, project.id, DEFAULT_TEMPLATE, 0, load), 'DEFAULT_UNAVAILABLE');
+    expect(load.mock.calls.map(([file]) => file)).toEqual(DEFAULT_FILES.slice(0, 2).map(file => file.path));
+    const after = (await store.read(project.id))!; expect(after).toEqual(before);
+    expect(after.record.template_id).toBeNull(); expect(after.record).not.toHaveProperty('template_epoch'); expect(after.record).not.toHaveProperty('template_request');
+  });
+  it('a stale UI expectedEpoch rejects TEMPLATE_SELECTION_STALE without changing the winning binding', async () => {
+    const store = setup(), project = await store.create('Stale UI bind');
+    await bindProject(store, project.id, DEFAULT_TEMPLATE, 0, bundledBytes); const before = await store.read(project.id);
+    await expectStoreError(bindProject(store, project.id, DEFAULT_TEMPLATE, 0, bundledBytes), 'TEMPLATE_SELECTION_STALE');
+    expect(await store.read(project.id)).toEqual(before);
+  });
+  it('two UI calls use distinct request keys and advance the epoch twice', async () => {
+    const store = setup(), project = await store.create('Repeated UI bind');
+    expect(await bindProject(store, project.id, DEFAULT_TEMPLATE, 0, bundledBytes)).toEqual({ epoch: 1, templateId: 'daylight' });
+    const first = (await store.read(project.id))!.record.template_request;
+    expect(await bindProject(store, project.id, DEFAULT_TEMPLATE, 1, bundledBytes)).toEqual({ epoch: 2, templateId: 'daylight' });
+    const second = (await store.read(project.id))!.record.template_request;
+    expect(first).toEqual(expect.any(String)); expect(first!.length).toBeGreaterThan(0); expect(second).toEqual(expect.any(String)); expect(second).not.toBe(first);
+  });
+  it('an own template binds without calling the bundled-file loader', async () => {
+    const store = setup(), project = await store.create('Own UI bind'), template = alternative(); await saveTemplate(store, template);
+    const load = vi.fn(async (_file: string): Promise<Blob> => { throw new Error('own templates must not load built-in files'); });
+    expect(await bindProject(store, project.id, template, 0, load)).toEqual({ epoch: 1, templateId: 'user-alternative' });
+    expect(load).not.toHaveBeenCalled();
   });
 });

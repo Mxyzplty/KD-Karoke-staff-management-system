@@ -35,6 +35,7 @@ import { setQuality, setView, useView, view } from './view';
 import { saveAsCopy } from '../versions/checkpoints';
 import type { Checkpoints } from '../versions/checkpoints';
 import { CheckpointMenu } from '../versions/menu';
+import { TemplateChip } from '../templates/ui';
 
 /** Below 1024 CSS px of viewport width the compact layout shows (W3-ED-01: 1023 compact, 1024 wide). */
 export const COMPACT_QUERY = '(width < 1024px)';
@@ -115,8 +116,7 @@ function TopBar({ session, record, assets, navigate, checkpoints }: { session: A
     <div className="top-row">
       <button aria-label="Back to home" onClick={() => navigate('/')}>‹</button>
       <h1 className="project-name">{record.title}</h1>
-      <MenuButton className="chip" label={`Template: ${record.template_id ? 'bound template' : 'No template'}`} header={<div className="menu-header"><small>Project template</small><strong>{record.template_id ? 'Bound template' : 'No template'}</strong></div>}
-        items={['View details', 'Change template', 'Save as template'].map(label => ({ label, onSelect: () => dispatch({ type: 'feature', owner: 'T22', label }) }))}>{record.template_id ? 'Template' : 'No template'}</MenuButton>
+      <TemplateChip session={session} record={record} />
       <BackupToggle assets={assets} navigate={navigate} />
       <MenuButton label="Help" items={[...HELP_LINKS.map(link => ({ label: link.label, onSelect: () => openHelpLink(link, navigate) })), { label: 'Keyboard shortcuts', onSelect: () => setView({ shortcuts: true }) }]}>Help</MenuButton>
       <AgentBadge navigate={navigate} />

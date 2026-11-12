@@ -16,6 +16,7 @@ import { readMode } from './versions/checkpoints';
 import { openVersions } from './versions/editor';
 import type { Checkpoints } from './versions/checkpoints';
 import { watchTitle } from './analysis/title';
+import { repairDefaults } from './templates/binding';
 // The editor routes every document change through this session (T03's command bus installs its intent handler on top).
 export let activeSession: AutosaveSession | undefined;
 export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (path: string) => void; demo?: ReactNode }) {
@@ -45,6 +46,8 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
       unmask = installMasks(projectStore.media, id);
       uninstall = installRuntime(local, projectStore, id, { maskMarker: mode === 'parity' ? 'both' : 'enter', addStock: async item => (await addStockToProject(projectStore, id, item)).asset, addCatalogue: cid => ensureCatalogueAsset(projectStore, id, cid), onAssets: tools => migrateRemovals({ ...tools, origin: 'user' }), ...(mode === 'parity' ? { noOp: 'reference', sliderEntries: 'step' } as const : {}) });
       setSession(local); setRecord(result.record); setLoad('ready');
+      // T22: `templateDefaults` behind the record's binding (a bind whose document write was lost) is derived again.
+      void repairDefaults(projectStore, result.record, local.document).then(doc => { if (doc && alive) local!.update(doc); }).catch(reportError);
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
     }).catch(e => { if (alive) { setLoad('error'); reportError(e); } });
