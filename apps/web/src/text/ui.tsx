@@ -18,8 +18,9 @@ import { BlendMode, PropRow, ShadowBody } from '../editor/inspector';
 import { select, view } from '../editor/view';
 import { PRESET_LABELS, PRESETS, readAnimation, SPEED, storedAnimation } from './animation';
 import type { Preset } from './animation';
-import { addUserFont, FontError, fontFamilies, fontNotices, findFont, loadFont, onFontChange, pickVariant, resolveFont, weightNumber } from './fonts';
+import { addUserFont, FontError, fontNotices, findFont, loadFont, onFontChange, pickVariant, resolveFont, weightNumber } from './fonts';
 import type { FontFamilyEntry, FontVariant } from './fonts';
+import { fontPickerOrder } from '../catalogue/fonts';
 import { NO_PRESET, presetProperties, TEXT_PRESETS } from './presets';
 import type { TextPreset } from './presets';
 import { currentFamily } from './properties';
@@ -95,7 +96,7 @@ function FontPicker({ item, report }: { item: RecordData; report: (m: string) =>
   useFonts();
   const [open, setOpen] = useState(false), [query, setQuery] = useState(''), file = useRef<HTMLInputElement>(null);
   const family = findFont(currentFamily(item))?.entry.family ?? (currentFamily(item) || 'Default');
-  const q = query.trim().toLowerCase(), list = fontFamilies().filter(f => !q || f.family.toLowerCase().includes(q) || (f.substituteFor ?? '').toLowerCase().includes(q));
+  const q = query.trim().toLowerCase(), list = fontPickerOrder().filter(f => !q || f.family.toLowerCase().includes(q) || (f.substituteFor ?? '').toLowerCase().includes(q));
   const choose = (f: FontFamilyEntry) => { setOpen(false); void changeFont(item, null, f.family, { fontFamily: f.family }, report); };
   const upload = async (f: File | undefined) => {
     if (!f) return;

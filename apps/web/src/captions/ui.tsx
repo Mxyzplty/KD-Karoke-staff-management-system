@@ -14,7 +14,8 @@ import { ColourPicker, Popover, Slider } from '../editor/controls';
 import { Switch } from '../editor/inspector';
 import type { Range } from '../editor/slider';
 import { staticValue } from '../timeline/properties';
-import { findFont, fontFamilies, loadFont, resolveFont } from '../text/fonts';
+import { findFont, loadFont, resolveFont } from '../text/fonts';
+import { fontPickerOrder } from '../catalogue/fonts';
 import { captionData } from './agent';
 import type { SourceButton, SourceData } from './generation';
 import { audibleSource, sourcesFor } from './generation';
@@ -130,7 +131,7 @@ export function CaptionsPanel({ projectId }: { projectId: string | null }) {
     </section>
     <section className="caption-manual" aria-label="Manual captions"><h4>Manual Captions</h4>
       <section aria-label="Style"><h5>Style</h5>
-        <label className="row">Font<select aria-label="Caption font" value={look.family} onChange={e => setLook({ ...look, family: e.target.value, fontWeight: '400', fontStyle: 'normal' })}>{fontFamilies().map(f => <option key={f.family} value={f.family}>{f.family}</option>)}</select></label>
+        <label className="row">Font<select aria-label="Caption font" value={look.family} onChange={e => setLook({ ...look, family: e.target.value, fontWeight: '400', fontStyle: 'normal' })}>{fontPickerOrder(templateId).map(f => <option key={f.family} value={f.family}>{f.family}</option>)}</select></label>
         <label className="row">Weight<select aria-label="Caption weight" value={currentFace} onChange={e => { const v = variants.find(v => v.face === e.target.value); if (v) setLook({ ...look, fontWeight: String(v.weight), fontStyle: v.italic ? 'italic' : 'normal' }); }}>{variants.map(v => <option key={v.face} value={v.face}>{v.label}</option>)}</select></label>
         <Slider label="Size" value={fontSize} range={{ min: 8, max: 200, step: 1 }} unit="px" perStep={perStep} onCommit={setFontSize} />
         <label className="row">Color<ColourPicker label="Caption text colour" value={look.color} onChange={color => setLook({ ...look, color })} /></label>
