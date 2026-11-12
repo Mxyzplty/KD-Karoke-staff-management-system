@@ -44,8 +44,9 @@ export type RuntimeOptions = BusOptions & {
   onAssets?: (tools: { bus: CommandBus; asset(id: string): Asset | undefined }) => void;
   /** Downloads a stock item into the project (T14) and resolves to its asset. */
   addStock?: (item: StockItem) => Promise<Asset>;
-  /** T22: imports a built-in element or sound (`element:<id>` / `sound:<slug>`) into the project and resolves to its asset. */
-  addCatalogue?: (id: string) => Promise<Asset>;
+  /** T22: imports a built-in element or sound (`element:<id>` / `sound:<slug>`) into the project and resolves to its asset
+   *  and an undo that takes back the project link this call made. */
+  addCatalogue?: (id: string) => Promise<{ asset: Asset; undo: () => Promise<void> }>;
 };
 const FLAG_ACTION = { hidden: 'hide', muted: 'mute', solo: 'solo', locked: 'lock' } as const;
 
@@ -282,12 +283,13 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
   const call = (name: string, args: RecordData = {}): ToolResult => callTool(tools, name, args);
   /** Set duration / Set fps / Set background, one undo step each (no UI control or agent tool reaches them yet). */
   const setSetting = (label: 'Set duration' | 'Set fps' | 'Set background', change: Parameters<typeof setSettings>[1]) => run(label, doc => setSettings(doc, change));
-  /** T22 (agent addMedia): the built-in's project asset, indexed under its stored id and under the catalogue id. */
+  /** T22 (agent addMedia): the built-in's project asset, indexed under its stored id and under the catalogue id. Resolves
+   *  to an undo: the index keys this call added are removed and the link it made is taken back. */
   const addCatalogue = async (id: string) => {
     if (!options.addCatalogue) throw new CommandError('UPLOAD_FAILED', 'Built-in elements and sounds cannot be added here.');
-    const a = await options.addCatalogue(id);
+    const { asset: a, undo } = await options.addCatalogue(id), added = [a.id, id].filter(key => !assets.has(key));
     assets.set(a.id, a); assets.set(id, a);
-    return a;
+    return async () => { for (const key of added) assets.delete(key); await undo(); };
   };
   return { bus, assets, setAssets, handle, call, tools, setSetting, addCatalogue, idle: () => pending };
 }

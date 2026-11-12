@@ -81,7 +81,10 @@ test('a second click on the same sound makes no second library copy and no secon
   expect(await assetCount(page)).toBe(1); expect(await linkedCount(page, id)).toBe(1); const first = await linked(page, id);
   // Content-addressed (part 2 §33, catalogue/assets.ts): the same bundled file has the same name and size, so the library reuses its copy.
   await addButton(page, sound.name).click(); await expect.poll(async () => (await liveDoc(page)).items.length, { message: 'the second click places the sound again', timeout: 20_000 }).toBe(2);
-  expect(await assetCount(page), 'one library copy').toBe(1); expect(await linkedCount(page, id)).toBe(1); expect(await linked(page, id)).toEqual(first);
+  expect(await assetCount(page), 'one library copy').toBe(1); expect(await linkedCount(page, id)).toBe(1);
+  // The stored length is written twice by design: the catalogue value on the click, the measured one when preparation ends. So it is checked against the catalogue, not against the first read.
+  const [{ durationMs: _, ...was }] = first, again = await linked(page, id); expect(again).toHaveLength(1); const [{ durationMs, ...now }] = again;
+  expect(now).toEqual(was); expect(Math.abs(durationMs - sound.durationMs), `asset length ${durationMs} ms`).toBeLessThanOrEqual(TOLERANCE_MS);
   const items = (await liveDoc(page)).items; expect(items.map((i: Rec) => i.type)).toEqual(['audio', 'audio']);
 });
 

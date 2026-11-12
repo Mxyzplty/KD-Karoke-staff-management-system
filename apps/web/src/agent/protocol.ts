@@ -20,7 +20,7 @@ export const RECONNECT_STABLE_MS = 5000;
 /** WebSocket close codes the helper uses (4000–4999 are application codes). */
 export const CLOSE = { superseded: 4409, unauthorized: 4401, replaced: 4410, protocol: 4400, shutdown: 4503 } as const;
 
-/** The 43 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
+/** The 46 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
  *  (addMotionGraphic, editMotionGraphic), T19's syncAndSwap and viewItemDetails (transcript, keyframes, beats), T10's
  *  writeEffects, T06's addShape and writeShapePoints, T07's addLayout and editLayout, T11's applyTransition, T05's addText,
  *  T21's getHelpSection and searchHelpDocs, T12's createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask and

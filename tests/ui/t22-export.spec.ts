@@ -106,6 +106,17 @@ async function bindDaylight(page: Page) {
   await picker.getByRole('list', { name: 'Built-in templates', exact: true }).getByRole('button', { name: /^Daylight/ }).click(); await picker.getByRole('button', { name: 'Use Daylight', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Template: Daylight', exact: true })).toBeVisible(); await saved(page);
 }
+// The unicode-range of the bundled Latin files (the pinned block of tests/t22-bundled-fonts.test.ts). A FontFace does not show
+// its file, so the bundled face is known by its family, its weight and this range; the browser may print the range in a
+// shorter form, so both sides are compared as number pairs.
+const BUNDLED_LATIN = 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD';
+const bundledSoraFaces = (page: Page, id: string): Promise<Rec[]> => page.evaluate(async ({ id, latin }) => {
+  const fp = '/src/text/fonts.ts', db = '/src/store/database.ts', fonts = await import(fp), { projectStore } = await import(db);
+  await fonts.loadTextFonts((await projectStore.read(id)).document);
+  const pairs = (range: string) => range.split(',').map(token => token.trim().replace(/^U\+/i, '').split('-').map(hex => parseInt(hex, 16))).map(p => `${p[0]}-${p[1] ?? p[0]}`).sort().join(',');
+  return Array.from(document.fonts).filter(face => face.family.replace(/^['"]|['"]$/g, '') === 'Sora' && face.weight === '800' && pairs(face.unicodeRange) === pairs(latin))
+    .map(face => ({ style: face.style, status: face.status }));
+}, { id, latin: BUNDLED_LATIN });
 
 test('(a) E1: the real text style preset exports glyphs and matches the same-frame preview capture', async ({ page }) => {
   const { id } = await setup(page, emptyDoc(), {}, 'T22 E1 text export');
@@ -150,5 +161,8 @@ test('(d) E4: real Daylight binding supplies bundled Sora-ExtraBold to agent add
   const added = await agentCall(page, 'addText', { textContent: 'Sora Hi', trackId: 'O1', duration: 0.2, fontSize: 48, color: '#ffffff', bounds: { x: 40, y: 50, width: 240 } }); // deliberately no font
   expect(added.success, JSON.stringify(added)).toBe(true); await saved(page); const title = (await stored(page, id)).document.items.find((i: Rec) => i.id === added.data.itemId);
   expect(title.details.fontFamily).toBe('Sora-ExtraBold'); expect(title.details.fontFamilyDisplay).toBe('Sora');
+  // Lit pixels alone would also pass with a fallback face. After the export's own font preload (loadTextFonts on the stored
+  // document), document.fonts holds one Sora 800 face with the bundled file's Latin range, and that face is loaded.
+  expect(await bundledSoraFaces(page, id), 'the bundled Sora-ExtraBold face in document.fonts').toEqual([{ style: 'normal', status: 'loaded' }]);
   const { frame, capture } = await exportFrame(page, id); expect(capture.graphics).toBe(0); expect(litPixels(capture.preview), 'bundled Sora preview glyphs').toBeGreaterThan(300); expect(litPixels(frame), 'bundled Sora exported glyphs').toBeGreaterThan(300);
 });

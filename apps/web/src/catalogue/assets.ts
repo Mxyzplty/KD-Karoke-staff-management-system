@@ -46,10 +46,11 @@ export async function bundledFile(file: string): Promise<Blob> {
 }
 
 /** The catalogue entry an agent id names: its file, asset type and, for a sound, its length. */
-function entry(id: unknown): { file: string; type: Asset['type']; licence: string; durationMs?: number; size?: { width: number; height: number } } | undefined {
+function entry(id: unknown): { file: string; type: Asset['type']; licence: string; attribution?: string; durationMs?: number; size?: { width: number; height: number } } | undefined {
   if (typeof id !== 'string') return undefined;
   const el = id.startsWith('element:') ? findElement(id.slice(8)) : undefined, sound = id.startsWith('sound:') ? findSound(id.slice(6)) : undefined;
-  return el ? { file: el.file, type: 'image', licence: 'AGPL-3.0-only', size: rasterSize(el.width, el.height) } : sound ? { file: sound.file, type: 'audio', licence: 'CC0-1.0', durationMs: sound.durationMs } : undefined;
+  // An element is our own work: it has no attribution.
+  return el ? { file: el.file, type: 'image', licence: 'AGPL-3.0-only', size: rasterSize(el.width, el.height) } : sound ? { file: sound.file, type: 'audio', licence: 'CC0-1.0', attribution: 'CC0 1.0 (public domain dedication)', durationMs: sound.durationMs } : undefined;
 }
 const idsOf = (input: RecordData | undefined): unknown[] => Array.isArray(input?.items) ? input!.items.map((i: RecordData) => i?.assetId) : [input?.assetId];
 const named = (id: unknown) => typeof id === 'string' && (id.startsWith('element:') || id.startsWith('sound:'));
@@ -66,25 +67,34 @@ export async function ensureCatalogueAsset(store: ProjectStore, projectId: strin
   // of an element, not its PNG), so a changed file of the same size is a new library copy, never the old one.
   const blob = await load(e.file), ext = e.size ? 'png' : e.file.split('.').pop()!;
   const file = new File([e.size ? await raster(blob, e.size) : blob], `cutframe-${id.replace(':', '-')}-${(await sha256Blob(blob)).slice(0, 8)}.${ext}`, { type: MIME[ext] });
-  const result = await uploadToProject(store, projectId, [file], { source: { kind: 'stock', provider: 'cutframe', providerId: id, licence: e.licence } });
+  const result = await uploadToProject(store, projectId, [file], { source: { kind: 'stock', provider: 'cutframe', providerId: id, licence: e.licence, ...(e.attribution ? { attribution: e.attribution } : {}) } });
   if (result.failed.length) throw result.failed[0].error;
   const asset = result.assets[0], durationMs = e.durationMs;
   // A fresh upload has no length until its preparation ends; the catalogue knows it, and the stored asset gets it now.
   if (durationMs === undefined || asset.durationMs !== null) return asset;
   return await store.updateAsset(asset.id, a => a.durationMs === null ? { ...a, durationMs } : a) ?? { ...asset, durationMs };
 }
+/** ensureCatalogueAsset with an undo: it removes the project link when the project had no live link to the asset before
+ *  this call. The library copy stays. */
+export async function linkCatalogueAsset(store: ProjectStore, projectId: string, id: string, load?: (file: string) => Promise<Blob>, raster?: typeof rasterise): Promise<{ asset: Asset; undo: () => Promise<void> }> {
+  const before = new Set((await store.projectAssets(projectId)).map(l => l.assetId)), asset = await ensureCatalogueAsset(store, projectId, id, load, raster);
+  return { asset, undo: async () => { if (!before.has(asset.id)) await store.detach(projectId, asset.id); } };
+}
 
 /** Tries the call on a draft with stand-in assets; a refusal is returned as it is and nothing is imported. Then `ensure`
- *  each known id (the caller indexes it under that id) and `run` the real call. */
-export async function callCatalogueTool(ctx: ToolContext, args: RecordData, options: { ensure: (id: string) => Promise<unknown>; run: () => ToolResult | Promise<ToolResult> }): Promise<ToolResult> {
+ *  each known id (the caller indexes it under that id) and `run` the real call. `ensure` resolves to its undo: when a later
+ *  id fails, the ids already ensured are undone, last first, so a failed call leaves no link. */
+export async function callCatalogueTool(ctx: ToolContext, args: RecordData, options: { ensure: (id: string) => Promise<() => Promise<void>>; run: () => ToolResult | Promise<ToolResult> }): Promise<ToolResult> {
   const standIn = (id: string): Asset | undefined => {
     const e = entry(id);
     return e && { id, name: id, type: e.type, sizeBytes: 0, mimeType: '', folderId: null, created_at: '', recorded_at: null, location: null, durationMs: e.durationMs ?? null };
   };
   const dry = callTool({ ...ctx, dryRun: true, asset: id => standIn(id) ?? ctx.asset(id) }, 'addMedia', args);
   if (dry.code !== 'DRY_RUN_OK') return dry;
+  const undos: (() => Promise<void>)[] = [];
   for (const id of catalogueIds(args)) {
-    try { await options.ensure(id); } catch (e) {
+    try { undos.push(await options.ensure(id)); } catch (e) {
+      for (const undo of undos.reverse()) await undo().catch(() => {});
       const code = (e as { code?: unknown })?.code;
       return { success: false, code: typeof code === 'string' && code ? code : 'UPLOAD_FAILED', error: `The built-in ${id} could not be added to the project. No items were added.`, operationMayHaveRun: false };
     }

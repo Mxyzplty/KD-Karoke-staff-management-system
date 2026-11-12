@@ -5,7 +5,7 @@
 // never placement(), placeElement() or another helper from catalogue/place.ts. Documents and options store ms.
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ELEMENTS, elementTrackKind, findElement } from '../apps/web/src/catalogue/elements';
+import { ELEMENTS, findElement } from '../apps/web/src/catalogue/elements';
 import type { CatalogueElement, Frac } from '../apps/web/src/catalogue/elements';
 import { placement, placeElement } from '../apps/web/src/catalogue/place';
 import type { PlaceOptions } from '../apps/web/src/catalogue/place';
@@ -332,11 +332,6 @@ describe('ELEMENTS: authored catalogue invariants', () => {
   it('findElement resolves each bare id, not unknown or element:-prefixed ids', () => {
     for (const e of ELEMENTS) { expect(findElement(e.id)).toEqual(e); expect(findElement(`element:${e.id}`)).toBeUndefined(); }
     expect(findElement('not-an-authored-element')).toBeUndefined();
-  });
-  it('elementTrackKind routes stickers to video, every other group to overlay', () => {
-    expect(element('corner-brackets').group).toBe('sticker');
-    expect(elementTrackKind(element('corner-brackets'))).toBe('video');
-    for (const e of ELEMENTS) expect(elementTrackKind(e), e.id).toBe(e.group === 'sticker' ? 'video' : 'overlay');
   });
 });
 

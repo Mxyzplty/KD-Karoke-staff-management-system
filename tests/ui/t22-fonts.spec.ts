@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 step 12 / A14 and lane A's rulings: the order of the two font pickers, read from the real DOM.
-// Text picker (inspector): every registry family in rank order, then uploads; no role filter; no family twice.
+// Text picker (inspector): every registry family in rank order; no role filter; no family twice.
 // Caption picker (Captions panel): the APPLIED caption template's list in its order, then the other registry families in rank
-// order, then uploads; no template applied gives the general order. Oracle: FONT_LISTS and FONT_REGISTRY data, ordered here
-// by that rule, never fontPickerOrder's output. A fresh browser context has no uploads. External requests are aborted and fail the case.
+// order; no template applied gives the general order. Oracle: FONT_LISTS and FONT_REGISTRY data, ordered here by that rule,
+// never fontPickerOrder's output. No case here uploads a font: a fresh browser context has none, and "uploads come last" is
+// tested in tests/t22-fonts.test.ts. External requests are aborted and fail the case.
 import { test, expect, type Page } from '@playwright/test';
 import { clip, openEditor, skipTour } from './t02-support';
 import { panel, prop, section } from './t04-support';

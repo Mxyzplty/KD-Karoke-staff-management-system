@@ -17,12 +17,16 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
 beforeEach(() => { vi.resetModules(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-async function setup() {
+/** `broken`: a face whose file url contains this text ends in 'error' and its load rejects, as a browser face does for a file it cannot read. */
+async function setup(broken?: string) {
   class FakeFontFace {
     status: FontFaceLoadStatus = 'unloaded';
     unicodeRange: string | undefined;
     constructor(public family: string, public source: string | ArrayBuffer, public descriptors: FontFaceDescriptors = {}) { this.unicodeRange = descriptors.unicodeRange; }
-    async load() { this.status = 'loaded'; return this; }
+    async load() {
+      if (broken && typeof this.source === 'string' && this.source.includes(broken)) { this.status = 'error'; throw new Error('A network error occurred.'); }
+      this.status = 'loaded'; return this;
+    }
   }
   const registered = new Set<FakeFontFace>(), added: FakeFontFace[] = [], deleted: FakeFontFace[] = [];
   // A real FontFaceSet.load loads matching glyph subsets, rather than merely returning registered faces.
@@ -85,7 +89,8 @@ describe('Latin load and extension register subsets once, without broadening the
   });
   it('Sora outside Latin: one face-specific Google stylesheet, bundled plus two other subsets, no duplicate Latin face', async () => {
     const e = await setup(), r = e.registry.resolveFont('Sora', 800)!; await e.fonts.loadFont(r, 'ž');
-    expect(e.fetch).toHaveBeenCalledTimes(1); expect(e.fetch.mock.calls[0][0]).toBe(e.registry.googleUrl(r.entry.family, r.variant));
+    // One face per request: family Sora, upright (ital 0), weight 800, display=block.
+    expect(e.fetch).toHaveBeenCalledTimes(1); expect(e.fetch.mock.calls[0][0]).toBe('https://fonts.googleapis.com/css2?family=Sora:ital,wght@0,800&display=block');
     expect(e.added).toHaveLength(3); expect(e.added.map(face => compact(face.unicodeRange!)).sort()).toEqual([LATIN, EXT, VIET].map(compact).sort());
     expect(e.added.filter(face => face.unicodeRange === LATIN)).toHaveLength(1); expect(e.registry.fontFailure(r)).toBeNull();
   });
@@ -139,6 +144,65 @@ describe('Google extension failure is remembered without deleting a usable bundl
   });
 });
 
+// Plan E5: a bundled file that cannot be read fails the export's font preload with FONT_LOAD_FAILED. No Google request can
+// stand in for the bundled Latin file: the text is Latin, so nothing is fetched.
+describe('E5: a bundled face that ends in error fails the export preload', () => {
+  const titleDoc = () => {
+    const track = { id: 'O1', name: 'O1', kind: 'overlay', hidden: false, locked: false, muted: false, solo: false, volume: 1 };
+    return { schemaVersion: 4, rev: 0, groups: {}, duration: 1000, fps: 30, size: { width: 320, height: 180 }, background: { type: 'color', value: 'transparent' }, transitions: [], markers: [],
+      tracks: [track], layerOrder: [{ type: 'track', id: 'O1' }], items: [{ ...item(), trackId: 'O1', display: { from: 0, to: 1000 }, details: { text: 'Title', fontFamily: 'Sora-ExtraBold', fontFamilyDisplay: 'Sora' } }] };
+  };
+  it('loadTextFonts on a Sora title rejects with FONT_LOAD_FAILED when the bundled Sora face ends in error', async () => {
+    const e = await setup('Sora-latin'), r = e.registry.resolveFont('Sora', 800)!;
+    const error = await e.fonts.loadTextFonts(titleDoc() as never).then(() => null, caught => caught);
+    expect(error).toBeInstanceOf(e.registry.FontError); expect(error).toMatchObject({ code: 'FONT_LOAD_FAILED', message: "The font 'Sora-ExtraBold' could not be loaded." });
+    expect(e.added).toHaveLength(1); expect(e.added[0]).toMatchObject({ source: expect.stringContaining('Sora-latin.woff2'), status: 'error' });
+    // The failed face is taken out again and the failure is remembered for the inspector; Google was not asked.
+    expect(e.registered.size).toBe(0); expect(e.registry.fontFailure(r)).toBe(error); expect(e.fetch).not.toHaveBeenCalled();
+  });
+  it('positive control: the same title loads when the bundled Sora face loads', async () => {
+    const e = await setup(); await expect(e.fonts.loadTextFonts(titleDoc() as never)).resolves.toEqual([]);
+    expect(e.added).toHaveLength(1); expect(e.added[0]).toMatchObject({ source: expect.stringContaining('Sora-latin.woff2'), status: 'loaded' }); expect(e.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// Review round 1: the extension belongs to the registration, so a caller that arrives while Google's answer is pending
+// waits for the same answer: it never ends with the Latin file only. A failed extension is not kept.
+describe('two callers of one bundled face while the Google stylesheet is pending', () => {
+  const CYRILLIC = 'U+0400-045F, U+2116', TEXT = 'Привет';
+  const withCyrillic = () => `${css('Manrope', 700)}\n@font-face { font-family: 'Manrope'; font-style: normal; font-weight: 700; font-display: swap; src: url(https://fonts.gstatic.com/t22/cyrillic.woff2) format('woff2'); unicode-range: ${CYRILLIC}; }`;
+  function hold(e: Awaited<ReturnType<typeof setup>>) {
+    const waiting: { resolve: (response: Response) => void; reject: (error: Error) => void }[] = [];
+    e.fetch.mockImplementation(() => new Promise<Response>((resolve, reject) => { waiting.push({ resolve, reject }); }));
+    return { answer: () => { for (const w of waiting.splice(0)) w.resolve(stylesheet(withCyrillic())); }, fail: () => { for (const w of waiting.splice(0)) w.reject(new Error('offline')); } };
+  }
+  it('two loadFont calls for one bundled face while Google’s answer is pending both end with the subset faces added', async () => {
+    const e = await setup(), r = e.registry.resolveFont('Manrope-Bold')!, google = hold(e), settled = [false, false];
+    expect(e.bundled.bundledCovers(TEXT)).toBe(false);
+    const calls = [0, 1].map(k => e.fonts.loadFont(r, TEXT).finally(() => { settled[k] = true; }));
+    await flush(); await flush();
+    expect(e.fetch).toHaveBeenCalledTimes(1); expect(settled, 'neither call ends before Google answers').toEqual([false, false]);
+    google.answer(); await expect(Promise.all(calls)).resolves.toEqual([undefined, undefined]);
+    const subset = [...e.registered].filter(face => face.unicodeRange === CYRILLIC);
+    expect(subset).toHaveLength(1); expect(subset[0].status, 'the face that holds the text is loaded').toBe('loaded');
+    // One stylesheet for both callers; the bundled Latin file once, Google's three other subsets once each.
+    expect(e.fetch).toHaveBeenCalledTimes(1); expect(e.added).toHaveLength(4); expect(e.registered.size).toBe(4);
+    expect(e.added.filter(face => face.unicodeRange === LATIN)).toHaveLength(1); expect(e.deleted).toEqual([]); expect(e.registry.fontFailure(r)).toBeNull();
+  });
+  it('two loadFont calls for one bundled face while Google’s answer is pending are both refused with the delivery error when Google fails', async () => {
+    const e = await setup(), r = e.registry.resolveFont('Manrope-Bold')!, google = hold(e);
+    const calls = [0, 1].map(() => e.fonts.loadFont(r, TEXT).then(() => null, caught => caught));
+    await flush(); await flush(); expect(e.fetch).toHaveBeenCalledTimes(1);
+    google.fail(); const errors = await Promise.all(calls);
+    for (const error of errors) { expect(error).toBeInstanceOf(e.registry.FontError); expect(error).toMatchObject({ code: 'FONT_DELIVERY_FAILED' }); }
+    // The usable bundled face stays; the failed extension is not kept, so the next call asks Google again.
+    expect(e.registered.size).toBe(1); expect([...e.registered][0].unicodeRange).toBe(LATIN); expect(e.deleted).toEqual([]);
+    e.fetch.mockImplementation(async () => stylesheet(withCyrillic()));
+    await expect(e.fonts.loadFont(r, TEXT)).resolves.toBeUndefined(); expect(e.fetch).toHaveBeenCalledTimes(2);
+    expect([...e.registered].filter(face => face.unicodeRange === CYRILLIC)).toHaveLength(1); expect(e.registry.fontFailure(r)).toBeNull();
+  });
+});
+
 describe('existing Roboto, Google-only and uploaded-font branches remain unchanged', () => {
   it.each([400, 700])('Roboto %i still uses its existing local branch', async weight => {
     const e = await setup(), r = e.registry.resolveFont('Roboto', weight)!; await e.fonts.loadFont(r, 'abc');
@@ -149,7 +213,7 @@ describe('existing Roboto, Google-only and uploaded-font branches remain unchang
   });
   it('Poppins Latin still fetches Google and registers the stylesheet faces', async () => {
     const e = await setup(), r = e.registry.resolveFont('Poppins', 400)!; e.fetch.mockImplementation(async () => stylesheet(css('Poppins', 400)));
-    await e.fonts.loadFont(r, 'abc'); expect(e.fetch).toHaveBeenCalledTimes(1); expect(e.fetch.mock.calls[0][0]).toBe(e.registry.googleUrl(r.entry.family, r.variant));
+    await e.fonts.loadFont(r, 'abc'); expect(e.fetch).toHaveBeenCalledTimes(1); expect(e.fetch.mock.calls[0][0]).toBe('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400&display=block');
     expect(e.added).toHaveLength(3); expect(e.registry.fontFailure(r)).toBeNull();
   });
   it('Poppins delivery failure records FONT_DELIVERY_FAILED and keeps no face', async () => {

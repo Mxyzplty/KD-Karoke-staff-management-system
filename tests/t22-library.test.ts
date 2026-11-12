@@ -216,6 +216,52 @@ describe('P9 failing imports leave library assets, uploaded fonts, template rows
     change(file); const before = await snapshot(target.store, target.files), error = await importTemplate(target.store, file).then(() => null, caught => caught);
     expect.soft(error).toBeInstanceOf(StoreError); expect.soft(error).toMatchObject({ code: 'TEMPLATE_INVALID' }); expect(await snapshot(target.store, target.files)).toEqual(before);
   });
+  // Review round 1. A valid file with one font this browser does not have and two named media files; entries in the order font, image, audio.
+  async function fileWithFont() {
+    const source = setup(), { t } = await mediaTemplate(source.store), font = await addUserFont(new File([fontBytes('T22 Transfer Font')], 'transfer.ttf', { type: 'font/ttf' }));
+    t.defaults.titlesFont = font.family; t.assets.fonts.push({ name: font.family, ref: `font:${font.family}` }); await saveTemplate(source.store, t);
+    const file = JSON.parse(JSON.stringify((await exportTemplate(source.store, t.id)).file));
+    file.assets.sort((a: RecordData, b: RecordData) => ['font', 'image', 'audio'].indexOf(a.kind) - ['font', 'image', 'audio'].indexOf(b.kind));
+    await removeUserFont(font.sha256); return { file, font };
+  }
+  const otherWav = () => { const bytes = wav(); bytes[45] = 1; return bytes; };
+  it('an asset entry no reference names is refused and nothing is stored', async () => {
+    const target = setup(), { file, font } = await fileWithFont(), extra = otherWav();
+    // Well formed in every field (bytes, size, SHA-256, kind); only no examples / audio / images reference names it.
+    file.assets.push({ id: crypto.randomUUID(), name: 'unnamed.wav', kind: 'audio', mime: 'audio/wav', sha256: hash(extra), bytes: extra.byteLength, data: Buffer.from(extra).toString('base64') });
+    const before = await snapshot(target.store, target.files); await failure(importTemplate(target.store, file), 'TEMPLATE_INVALID');
+    expect((await target.store.library()).assets).toEqual([]); expect(userFonts().some(f => f.sha256 === font.sha256)).toBe(false);
+    expect(await findTemplate(target.store, file.template.id)).toBeUndefined(); expect(await snapshot(target.store, target.files)).toEqual(before);
+  });
+  it('a failing second upload leaves no font, no upload and no template', async () => {
+    const target = setup(), { file, font } = await fileWithFont();
+    const kept = await target.store.upload(new File([otherWav()], 'untouched.wav', { type: 'audio/wav' })); await saveTemplate(target.store, template('untouched'));
+    const before = await snapshot(target.store, target.files), upload = target.store.upload.bind(target.store), error = new Error('The second upload failed.'); let uploads = 0;
+    const spy = vi.spyOn(target.store, 'upload').mockImplementation(async (...args: Parameters<ProjectStore['upload']>) => { if (++uploads === 2) throw error; return upload(...args); });
+    // The import rejects with the very error the upload threw, not a new or wrapped one.
+    try { await expect(importTemplate(target.store, file)).rejects.toBe(error); } finally { spy.mockRestore(); }
+    expect(uploads, 'the image was uploaded, then the audio upload failed').toBe(2);
+    expect(userFonts().some(f => f.sha256 === font.sha256), 'the font the import added is gone').toBe(false);
+    expect((await target.store.library()).assets.map(asset => asset.id), 'the first upload is gone; the file that was there stays').toEqual([kept.id]);
+    expect(await findTemplate(target.store, file.template.id)).toBeUndefined(); expect(await snapshot(target.store, target.files)).toEqual(before);
+  });
+  it('a failing template save after the uploads leaves no font, no upload and no template', async () => {
+    const target = setup(), { file, font } = await fileWithFont();
+    const kept = await target.store.upload(new File([otherWav()], 'untouched.wav', { type: 'audio/wav' })); await saveTemplate(target.store, template('untouched'));
+    const before = await snapshot(target.store, target.files), swap = target.store.swapRow.bind(target.store) as (...args: any[]) => Promise<any>, error = new Error('The template save failed.');
+    // Only the write of the templates row fails; every other row swap passes through.
+    const uploads = vi.spyOn(target.store, 'upload'), save = vi.spyOn(target.store, 'swapRow').mockImplementation((async (...args: any[]) => {
+      if (args[0] === 'settings' && args[1] === TEMPLATES_ROW) throw error; return swap(...args);
+    }) as typeof target.store.swapRow);
+    try {
+      // The import rejects with the very error the save threw, not a new or wrapped one.
+      await expect(importTemplate(target.store, file)).rejects.toBe(error);
+      expect(uploads, 'the image and the audio were both uploaded before the save').toHaveBeenCalledTimes(2);
+    } finally { save.mockRestore(); uploads.mockRestore(); }
+    expect(userFonts().some(f => f.sha256 === font.sha256), 'the font the import added is gone').toBe(false);
+    expect((await target.store.library()).assets.map(asset => asset.id), 'both uploads are gone; the file that was there stays').toEqual([kept.id]);
+    expect(await findTemplate(target.store, file.template.id)).toBeUndefined(); expect(await snapshot(target.store, target.files)).toEqual(before);
+  });
 });
 
 describe('§14 template error texts, pattern groups and typographic apostrophes', () => {

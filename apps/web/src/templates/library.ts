@@ -245,9 +245,11 @@ const ASSET_KEYS = ['id', 'name', 'kind', 'mime', 'sha256', 'bytes', 'data'], FI
 const exact = (o: RecordData, keys: string[]) => Object.keys(o).length === keys.length && keys.every(k => o[k] !== undefined);
 const invalid = (detail: string) => templateError('TEMPLATE_INVALID', detail);
 /** Reads a template file into the library. Every check runs first (format, version, closed schema, each asset's size and
- *  SHA-256, a file for every `asset:` reference, each font's size and name); any failure is TEMPLATE_INVALID and nothing is
- *  stored. A library asset or uploaded font with the same SHA-256 is reused. The same template id replaces. A file's
- *  `fromProject`, `saved` and `neverSaved` are dropped: an imported template is always listed and is no project's own. */
+ *  SHA-256, a file for every `asset:` reference, no media file without one, each font's size and name); any failure is
+ *  TEMPLATE_INVALID and nothing is stored. When a media upload or the save then fails, the fonts and uploads of this call
+ *  are removed and the store's error is thrown. A library asset or uploaded font with the same SHA-256 is reused. The same
+ *  template id replaces. A file's `fromProject`, `saved` and `neverSaved` are dropped: an imported template is always
+ *  listed and is no project's own. */
 export async function importTemplate(store: ProjectStore, input: unknown): Promise<Template> {
   const file = input as RecordData;
   if (!file || typeof file !== 'object' || Array.isArray(file) || !exact(file, FILE_KEYS) || file.format !== TEMPLATE_FORMAT) throw invalid('The file is not a template file.');
@@ -273,6 +275,8 @@ export async function importTemplate(store: ProjectStore, input: unknown): Promi
   }
   const template = portable(file.template as Template), missing = assetIds(template).find(id => blobs.get(id)?.asset.kind === 'font' || !blobs.has(id));
   if (missing) throw invalid(`The file does not carry the asset ${missing} its template uses.`);
+  const used = new Set(assetIds(template)), unused = [...blobs.values()].find(b => b.asset.kind !== 'font' && !used.has(b.asset.id));
+  if (unused) throw invalid(`The file carries ${unused.asset.name}, which its template does not use.`);
 
   const added: string[] = [], had = new Set(userFonts().map(u => u.sha256));
   try {
@@ -281,9 +285,19 @@ export async function importTemplate(store: ProjectStore, input: unknown): Promi
     for (const sha of added) await removeUserFont(sha).catch(() => {});
     throw invalid(`A font in the file could not be added: ${(e as Error).message}`);
   }
-  const library = (await store.library()).assets, ids = new Map<string, string>();
-  for (const { asset, blob } of blobs.values()) if (asset.kind !== 'font')
-    ids.set(asset.id, (library.find(x => x.sha256 === asset.sha256) ?? await store.upload(new File([blob], asset.name, { type: asset.mime }))).id);
-  const point = (r: { name: string; ref: string }) => refKind(r.ref) === 'asset' ? { ...r, ref: `asset:${ids.get(r.ref.slice(6))}` } : r;
-  return saveTemplate(store, { ...template, examples: template.examples.map(point), assets: { fonts: template.assets.fonts, audio: template.assets.audio.map(point), images: template.assets.images.map(point) } });
+  const library = (await store.library()).assets, ids = new Map<string, string>(), uploaded: string[] = [];
+  try {
+    for (const { asset, blob } of blobs.values()) if (asset.kind !== 'font') {
+      const stored = library.find(x => x.sha256 === asset.sha256) ?? await store.upload(new File([blob], asset.name, { type: asset.mime }));
+      if (!library.some(x => x.id === stored.id)) uploaded.push(stored.id);
+      ids.set(asset.id, stored.id);
+    }
+    const point = (r: { name: string; ref: string }) => refKind(r.ref) === 'asset' ? { ...r, ref: `asset:${ids.get(r.ref.slice(6))}` } : r;
+    return await saveTemplate(store, { ...template, examples: template.examples.map(point), assets: { fonts: template.assets.fonts, audio: template.assets.audio.map(point), images: template.assets.images.map(point) } });
+  } catch (e) {
+    // A storage failure, not a bad file: what this call added is removed and the store's own error is passed on.
+    for (const sha of added) await removeUserFont(sha).catch(() => {});
+    if (uploaded.length) await store.deleteAssets(uploaded).catch(() => {});
+    throw e;
+  }
 }

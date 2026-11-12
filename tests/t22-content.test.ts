@@ -27,7 +27,11 @@ import { applyStylePreset } from '../apps/web/src/presets/apply';
 import { presetProblem } from '../apps/web/src/mg/presets';
 import { compileMotionGraphic } from '../apps/web/src/mg/compiler';
 import { API_NAMES, createRuntime } from '../apps/web/src/mg/runtime';
-import { build } from './t03-fixtures';
+import type { Asset } from '../apps/web/src/store/model';
+import { CommandBus } from '../apps/web/src/timeline/bus';
+import { callTool } from '../apps/web/src/timeline/tools';
+import type { ToolContext } from '../apps/web/src/timeline/tools';
+import { assets, build, mkTrack, resetIds, useIds } from './t03-fixtures';
 
 type ManifestFile = { path: string; bytes: number; sha256: string };
 type Component = { name: string; license: string; files: ManifestFile[] };
@@ -39,6 +43,9 @@ const FONT_FILES = [
   'vendor/t22/fonts/InstrumentSerif-Regular-latin.woff2',
   'vendor/t22/fonts/InstrumentSerif-Italic-latin.woff2',
 ] as const;
+// Step 1's documented file/family association, not a font-loader implementation lookup.
+const FONT_FAMILY_FILES: Record<string, string[]> = { Manrope: ['vendor/t22/fonts/Manrope-latin.woff2'], Sora: ['vendor/t22/fonts/Sora-latin.woff2'],
+  'Instrument Serif': ['vendor/t22/fonts/InstrumentSerif-Regular-latin.woff2', 'vendor/t22/fonts/InstrumentSerif-Italic-latin.woff2'] };
 const CONTENT_FILES = [...ELEMENTS.map(e => e.file), ...SOUNDS.map(s => s.file), ...FONT_FILES];
 const templateStores: ProjectStore[] = [];
 afterEach(async () => { for (const store of templateStores.splice(0)) await store.close(); });
@@ -123,16 +130,32 @@ describe('A1: SR-17 content counts (catalogues, presets and project templates)',
 describe('A3/A7/A2: our default project template files, content identity and binding', () => {
   it('uses our name/fonts/palette/sound collection, not the reference default content', () => {
     expect(DEFAULT_TEMPLATE.name).not.toBe('Xapp Default'); expect(DEFAULT_TEMPLATE.name).not.toMatch(/xapp/i);
-    for (const name of Object.values(DEFAULT_TEMPLATE.defaults)) {
+    const defaults = Object.values(DEFAULT_TEMPLATE.defaults); expect(defaults.length).toBeGreaterThan(0);
+    for (const name of defaults) {
       const found = findFont(name); expect(found, name).not.toBeNull(); expect(['Inter', 'Montserrat', 'DM Serif Display']).not.toContain(found!.entry.family);
     }
+    // Plan line 15: "Clean room: … the Xapp Default template (Inter / Montserrat / DM Serif, White / Paper / Sky) … are
+    // reference only. Never copy them." The values below are that template's, listed only to prove ours differ.
+    expect(DEFAULT_TEMPLATE.palette.length).toBeGreaterThan(0);
     for (const swatch of DEFAULT_TEMPLATE.palette) {
       expect(['white', 'paper', 'sky']).not.toContain(swatch.name.toLowerCase()); expect(['#FFFFFF', '#F7F6F2', '#8BBCDF']).not.toContain(swatch.hex.toUpperCase());
     }
     expect(DEFAULT_TEMPLATE.assets.audio.length).not.toBe(25);
   });
+  it('each default font is a family bundled under OFL-1.1 in the vendor manifest', () => {
+    const defaults = Object.entries(DEFAULT_TEMPLATE.defaults); expect(defaults.length).toBeGreaterThan(0);
+    for (const [role, name] of defaults) {
+      const family = findFont(name)?.entry.family, files = FONT_FAMILY_FILES[family ?? ''];
+      expect(files, `${role}: ${name} (${family}) is not one of the three bundled families`).toBeDefined();
+      for (const path of files) {
+        const owners = manifest.components.filter(component => component.files.some(entry => entry.path === path)); expect(owners, path).toHaveLength(1);
+        expect(owners[0].license, `${role}: ${path}`).toBe('OFL-1.1');
+      }
+    }
+  });
   it('every default font/sound file has the required manifest licence', () => {
-    for (const file of DEFAULT_FILES) if (file.path.startsWith('vendor/t22/fonts/') || file.path.startsWith('vendor/t22/sounds/')) {
+    const licensed = DEFAULT_FILES.filter(file => file.path.startsWith('vendor/t22/fonts/') || file.path.startsWith('vendor/t22/sounds/')); expect(licensed.length).toBeGreaterThan(0);
+    for (const file of licensed) {
       const owners = manifest.components.filter(component => component.files.some(entry => entry.path === file.path)); expect(owners, file.path).toHaveLength(1);
       expect(owners[0].license, file.path).toBe(file.path.startsWith('vendor/t22/fonts/') ? 'OFL-1.1' : 'CC0-1.0');
     }
@@ -143,10 +166,9 @@ describe('A3/A7/A2: our default project template files, content identity and bin
   });
   it('DEFAULT_FILES covers every sound/element ref and at least one independently identified file per font family', () => {
     const paths = new Set(DEFAULT_FILES.map(file => file.path)); expect(paths.size).toBe(DEFAULT_FILES.length);
-    // Step 1's documented file/family association, not a font-loader implementation lookup.
-    const fontPaths: Record<string, string[]> = { Manrope: ['vendor/t22/fonts/Manrope-latin.woff2'], Sora: ['vendor/t22/fonts/Sora-latin.woff2'],
-      'Instrument Serif': ['vendor/t22/fonts/InstrumentSerif-Regular-latin.woff2', 'vendor/t22/fonts/InstrumentSerif-Italic-latin.woff2'] };
-    for (const { ref } of [...DEFAULT_TEMPLATE.examples, ...DEFAULT_TEMPLATE.assets.fonts, ...DEFAULT_TEMPLATE.assets.audio, ...DEFAULT_TEMPLATE.assets.images]) {
+    const fontPaths = FONT_FAMILY_FILES, refs = [...DEFAULT_TEMPLATE.examples, ...DEFAULT_TEMPLATE.assets.fonts, ...DEFAULT_TEMPLATE.assets.audio, ...DEFAULT_TEMPLATE.assets.images];
+    expect(refs.length).toBeGreaterThan(0);
+    for (const { ref } of refs) {
       const colon = ref.indexOf(':'), kind = ref.slice(0, colon), id = ref.slice(colon + 1);
       if (kind === 'sound') expect(paths.has(SOUNDS.find(sound => sound.slug === id)!.file), ref).toBe(true);
       if (kind === 'element') expect(paths.has(ELEMENTS.find(element => element.id === id)!.file), ref).toBe(true);
@@ -193,6 +215,29 @@ describe('A1/A2: every authored style and built-in MG preset is valid and usable
       for (const family of named) expect(family, id).toBe('Roboto');
     }
   });
+});
+
+// Plan A2: "every … catalogue element can be placed and rendered at both canvas orientations". Each element goes through the
+// agent's addMedia (the path of tests/t22-element-tools.test.ts): a plain graphic on a video track, a text-slot or
+// media-slot element on an overlay track, with and without bounds.
+describe('A2: every catalogue element is placed by addMedia on both canvases, with and without bounds', () => {
+  const BOUNDS = { x: 37, y: 83, width: 360, height: 240 };
+  it('the loop below has elements to run on', () => expect(ELEMENTS.length).toBeGreaterThan(0));
+  for (const e of ELEMENTS) for (const canvas of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }]) for (const bounded of [false, true])
+    it(`${e.id} on ${canvas.width}×${canvas.height}, ${bounded ? 'with' : 'without'} bounds`, () => {
+      useIds();
+      try {
+        let doc = build({ tracks: [mkTrack('V1', 'video'), mkTrack('O1', 'overlay')], extra: { size: canvas } });
+        const bus = new CommandBus({ get: () => doc, set: d => { doc = d; } }), type = e.slot?.kind === 'text' ? 'text' : e.slot?.kind === 'media' ? 'layout' : 'image';
+        const stored = { ...assets()[2], id: `stored-element:${e.id}`, name: e.id, type: 'image', durationMs: null } as Asset;
+        const ctx: ToolContext = { bus, asset: id => id === `element:${e.id}` ? stored : undefined };
+        const r = callTool(ctx, 'addMedia', { assetId: `element:${e.id}`, trackId: type === 'image' ? 'V1' : 'O1', ...(bounded ? { bounds: BOUNDS } : {}) });
+        expect(r.success, JSON.stringify(r)).toBe(true); expect(r.data.summary).toEqual({ total: 1, succeeded: 1, failed: 0 });
+        expect(r.data.results).toHaveLength(1); expect(r.data.results[0]).toMatchObject({ assetId: `element:${e.id}`, success: true, type });
+        expect(doc.items).toHaveLength(1); expect(doc.items[0]).toMatchObject({ id: r.data.results[0].itemId, type, trackId: type === 'image' ? 'V1' : 'O1', details: { element: { id: e.id } } });
+        expect(r.data.addedItemIds).toEqual([doc.items[0].id]);
+      } finally { resetIds(); }
+    });
 });
 
 describe('A13 C-gt: settled from code, RC 6.1, no stored output — pieces drawing is not built because it is unreachable with this catalogue', () => {

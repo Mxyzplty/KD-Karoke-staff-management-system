@@ -4,8 +4,6 @@
 // External requests are aborted. Font-load attempts are annotated (OQ-6 is later), never replaced by a font/loader fixture.
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
-import { STYLE_PRESETS } from '../../apps/web/src/presets/content';
-import type { DirectPreset } from '../../apps/web/src/presets/model';
 import { clip, intents, notices, openEditor, setViewState, skipTour, watchIntents } from './t02-support';
 import { prop } from './t04-support';
 
@@ -79,12 +77,15 @@ async function addBuiltin(page: Page, name = 'Title Wipe') {
 
 test('A22: a multi-item direct preset starts at zero, closes the panel and is one undo, not at the 10s playhead', async ({ page }) => {
   await openEditor(page, document(), 'T22 A22'); await setViewState(page, { playheadMs: 10000 }); await watchIntents(page);
-  const before = await liveDoc(page), p = await styles(page), preset = STYLE_PRESETS.find(p => p.id === 'lower-thirds/name-bar') as DirectPreset;
+  const before = await liveDoc(page), p = await styles(page);
   await p.getByRole('group', { name: 'Presets', exact: true }).getByRole('button', { name: 'Name Bar', exact: true }).click();
   await expect(notices(page)).toContainText('Applied "Name Bar" — 3 item(s)'); await expect(p.getByRole('heading', { name: 'Style presets', exact: true })).toHaveCount(0);
   const after = await liveDoc(page), beforeIds = new Set(before.items.map((item: Rec) => item.id)), added = after.items.filter((item: Rec) => !beforeIds.has(item.id));
-  expect(added).toHaveLength(3); expect(added.map((item: Rec) => item.display)).toEqual(preset.items.map(item => ({ from: item.relativeStart, to: item.relativeStart + item.duration })));
+  // Name Bar as authored: the bar for 0–4000 ms, the name from 300 ms for 3700 ms, the role from 450 ms for 3550 ms; placed at 0, not at the playhead.
+  expect(added).toHaveLength(3); expect(added.map((item: Rec) => item.display)).toEqual([{ from: 0, to: 4000 }, { from: 300, to: 4000 }, { from: 450, to: 4000 }]);
   expect(new Set(added.map((item: Rec) => item.trackId)).size).toBe(3); expect(after.tracks).toHaveLength(before.tracks.length + 3);
+  // Each item is on a track of its own that this call made: none of the three ids was a track before.
+  const trackIdsBefore = before.tracks.map((track: Rec) => track.id); for (const item of added) expect(trackIdsBefore).not.toContain(item.trackId);
   for (const item of added) expect(after.tracks.find((track: Rec) => track.id === item.trackId).kind).toBe('overlay');
   expect(await runtimeLabels(page)).toEqual(['Add items']); expect(await intents(page)).toHaveLength(1);
   await undo(page); const restored = await liveDoc(page);

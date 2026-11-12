@@ -4,9 +4,8 @@
 // Raster pixels are in ui/t22-render.spec.ts; no value is asserted against a stored output capture.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { framePlan } from '../apps/web/src/render/model';
-import { exportedItems, exportedMedia, precheck } from '../apps/web/src/export/prep';
+import { exportedMedia, precheck } from '../apps/web/src/export/prep';
 import { hasAudioStream } from '../apps/web/src/export/audio';
-import { withCellItems } from '../apps/web/src/timeline/layouts';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import { findElement } from '../apps/web/src/catalogue/elements';
 import { slotGraphic, textSlot } from '../apps/web/src/catalogue/graphic';
@@ -250,9 +249,12 @@ describe('E: export checks include slot pictures without changing ordinary media
     const before = hasAudioStream(doc); doc.items.push(elementItem('label-tag'), elementItem('phone-frame', 'frame'));
     expect(hasAudioStream(doc)).toBe(before); expect(before).toBe(audible);
   });
-  it('without slots exportedMedia is exactly withCellItems(exportedItems(doc)) restricted to video/image/audio', () => {
+  it('without slots exportedMedia is the video, the image and the filled layout cell, in document order, and nothing else', () => {
     const items = ordinaryItems(), doc = build({ tracks: items.map(i => mkTrack(i.trackId, 'video')), items });
-    const expected = withCellItems(exportedItems(doc)).filter(item => ['video', 'image', 'audio'].includes(item.type));
-    expect(exportedMedia(doc)).toEqual(expected);
+    // Of the eight ordinary items only the video and the image are media; the filled layout adds its cell c5 as `<layout id>/<cell id>`
+    // (T07). Text, shape, the empty layout, the caption and the motion graphic add nothing, and no item has a slot picture.
+    const media = exportedMedia(doc);
+    expect(media.map(item => item.id)).toEqual(['video', 'image', 'layout-filled/c5']); expect(media.map(item => item.type)).toEqual(['video', 'image', 'image']);
+    expect(media[2].metadata).toMatchObject({ assetId: 'asset-img1', layoutId: 'layout-filled', cellIndex: 0 });
   });
 });

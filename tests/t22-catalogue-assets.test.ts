@@ -7,7 +7,7 @@ import 'fake-indexeddb/auto';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { catalogueIds, callCatalogueTool, ensureCatalogueAsset, rasterSize, RASTER, usesCatalogue } from '../apps/web/src/catalogue/assets';
+import { catalogueIds, callCatalogueTool, ensureCatalogueAsset, linkCatalogueAsset, rasterSize, RASTER, usesCatalogue } from '../apps/web/src/catalogue/assets';
 import { ELEMENTS, findElement } from '../apps/web/src/catalogue/elements';
 import { findSound } from '../apps/web/src/catalogue/sounds';
 import { ProjectStore } from '../apps/web/src/store/database';
@@ -91,7 +91,7 @@ describe('callCatalogueTool: dry-run refusal means no ensure/import and no real 
   it('a good dry run ensures distinct ids in order, then runs once; the discovery draft never leaks', async () => {
     const w = context(), before = json(w.doc), events: string[] = [];
     const args = { trackId: 'V1', items: [{ assetId: 'element:sticker-heart' }, { assetId: 'element:sticker-star' }, { assetId: 'element:sticker-heart' }] };
-    const ensure = vi.fn(async (id: string) => { expect(json(w.doc)).toBe(before); expect(w.bus.undoStack).toHaveLength(0); events.push(id); });
+    const ensure = vi.fn(async (id: string) => { expect(json(w.doc)).toBe(before); expect(w.bus.undoStack).toHaveLength(0); events.push(id); return async () => { events.push(`undo ${id}`); }; });
     const sentinel = { success: true, data: { marker: 'real-run-result' } };
     const run = vi.fn(() => { expect(json(w.doc)).toBe(before); expect(w.bus.undoStack).toHaveLength(0); events.push('run'); return sentinel; });
     expect(await callCatalogueTool(w.ctx, args, { ensure, run })).toBe(sentinel);
@@ -100,7 +100,7 @@ describe('callCatalogueTool: dry-run refusal means no ensure/import and no real 
   });
   it('the real run adds exactly the requested items, with one undo (not a second copy from dry run)', async () => {
     const w = context(), before = json(w.doc), args = { trackId: 'V1', items: [{ assetId: 'element:sticker-star' }, { assetId: 'element:sticker-star' }] };
-    const ensure = vi.fn(async (id: string) => { w.index.set(id, assetFor(id)); });
+    const ensure = vi.fn(async (id: string) => { w.index.set(id, assetFor(id)); return async () => { w.index.delete(id); }; });
     const run = vi.fn(() => { expect(json(w.doc)).toBe(before); expect(w.bus.undoStack).toHaveLength(0); return callTool(w.ctx, 'addMedia', args); });
     expect((await callCatalogueTool(w.ctx, args, { ensure, run })).success).toBe(true);
     expect(ensure).toHaveBeenCalledTimes(1); expect(run).toHaveBeenCalledTimes(1); expect(w.doc.items).toHaveLength(2);
@@ -113,7 +113,7 @@ describe('callCatalogueTool: dry-run refusal means no ensure/import and no real 
     w.bus.undo();
     const before = json(w.doc), undo = json(w.bus.undoStack), redo = json(w.bus.redoStack);
     expect(w.bus.undoStack).toHaveLength(1); expect(w.bus.redoStack).toHaveLength(1);
-    const ensure = vi.fn(async () => undefined), run = vi.fn(() => ({ success: true }));
+    const ensure = vi.fn(async () => async () => {}), run = vi.fn(() => ({ success: true }));
     expect(await callCatalogueTool(w.ctx, { assetId: 'element:sticker-star', trackId: 'V1' }, { ensure, run })).toEqual({ success: true });
     expect(json(w.doc)).toBe(before); expect(json(w.bus.undoStack)).toBe(undo); expect(json(w.bus.redoStack)).toBe(redo);
   });
@@ -125,7 +125,9 @@ describe('callCatalogueTool: dry-run refusal means no ensure/import and no real 
       expect(r).toMatchObject({ success: false, code: expected, operationMayHaveRun: false });
       expect(run).not.toHaveBeenCalled(); expect(ensure).toHaveBeenCalledTimes(1); expect(json(w.doc)).toBe(before); expect(w.bus.undoStack).toHaveLength(0);
     });
-  it('first known id is ensured, second ensure rejects: run is never called and document/undo/redo stay unchanged', async () => {
+  // Plan lines 272 and 294 (ruled): `ensure` resolves to an undo; when a later id fails, the undos of the ids already ensured
+  // in this call each run once, last first, so the failed call leaves no link and no index entry of its own.
+  it('first known id is ensured, second ensure rejects: the first id is undone, run is never called and document/undo/redo stay unchanged', async () => {
     const w = context();
     w.bus.run('Add marker', 'user', d => { d.markers.push({ id: 'first', timeMs: 100 }); });
     w.bus.run('Add marker', 'user', d => { d.markers.push({ id: 'second', timeMs: 200 }); });
@@ -133,16 +135,36 @@ describe('callCatalogueTool: dry-run refusal means no ensure/import and no real 
     const before = json(w.doc), undo = json(w.bus.undoStack), redo = json(w.bus.redoStack);
     expect(w.bus.undoStack).toHaveLength(1); expect(w.bus.redoStack).toHaveLength(1);
     const first = 'element:sticker-star', second = 'element:sticker-heart';
+    const undoFirst = vi.fn(async () => { w.index.delete(first); });
     const ensure = vi.fn(async (id: string) => {
       if (id === second) throw Object.assign(new Error('second import failed'), { code: 'SECOND_IMPORT_FAILED' });
-      const asset = assetFor(id); w.index.set(id, asset); return asset;
+      w.index.set(id, assetFor(id)); return undoFirst;
     });
     const run = vi.fn(() => ({ success: true }));
     const result = await callCatalogueTool(w.ctx, { trackId: 'V1', items: [{ assetId: first }, { assetId: second }] }, { ensure, run });
     expect(result).toMatchObject({ success: false, code: 'SECOND_IMPORT_FAILED', operationMayHaveRun: false });
     expect(ensure.mock.calls.map(([id]) => id)).toEqual([first, second]); expect(run).not.toHaveBeenCalled();
-    expect(w.index.has(first)).toBe(true); expect(w.index.has(second)).toBe(false);
+    expect(undoFirst).toHaveBeenCalledTimes(1); expect(w.index.has(first)).toBe(false); expect(w.index.has(second)).toBe(false);
     expect(json(w.doc)).toBe(before); expect(json(w.bus.undoStack)).toBe(undo); expect(json(w.bus.redoStack)).toBe(redo);
+  });
+  it('third ensure rejects: the two ensured ids are undone once each, last first', async () => {
+    const w = context(), before = json(w.doc), ids = ['element:sticker-star', 'element:sticker-heart', 'element:sparkles'], events: string[] = [];
+    const ensure = vi.fn(async (id: string) => {
+      if (id === ids[2]) throw new Error('third import failed');
+      events.push(`ensure ${id}`); return async () => { events.push(`undo ${id}`); };
+    });
+    const run = vi.fn(() => ({ success: true }));
+    const result = await callCatalogueTool(w.ctx, { trackId: 'V1', items: ids.map(assetId => ({ assetId })) }, { ensure, run });
+    expect(result).toMatchObject({ success: false, code: 'UPLOAD_FAILED', operationMayHaveRun: false }); expect(run).not.toHaveBeenCalled();
+    expect(events).toEqual(['ensure element:sticker-star', 'ensure element:sticker-heart', 'undo element:sticker-heart', 'undo element:sticker-star']);
+    expect(json(w.doc)).toBe(before); expect(w.bus.undoStack).toHaveLength(0);
+  });
+  it('every id is ensured: no undo is called', async () => {
+    const w = context(), undos: ReturnType<typeof vi.fn>[] = [];
+    const ensure = vi.fn(async (_id: string) => { const undo = vi.fn(async () => {}); undos.push(undo); return undo; });
+    const run = vi.fn(() => ({ success: true }));
+    expect(await callCatalogueTool(w.ctx, { trackId: 'V1', items: [{ assetId: 'element:sticker-star' }, { assetId: 'element:sticker-heart' }] }, { ensure, run })).toEqual({ success: true });
+    expect(run).toHaveBeenCalledTimes(1); expect(undos).toHaveLength(2); for (const undo of undos) expect(undo).not.toHaveBeenCalled();
   });
 });
 
@@ -208,6 +230,59 @@ describe('ensureCatalogueAsset F-1: real store, content-addressed upload names a
     expect((await store.library()).assets).toHaveLength(2); expect(media.write).toHaveBeenCalledTimes(2);
     expect((await store.projectAssets(project.id)).map(link => link.assetId)).toEqual([first.id, second.id]);
   });
+  // Plan §8 (ruled): source {kind:'stock', provider:'cutframe', providerId:<id>, licence, attribution}; only a sound has an attribution.
+  it('a sound’s source carries the CC0 attribution', async () => {
+    const { store } = storeSetup(), project = await store.create(), bytes = readFileSync(new URL('../vendor/t22/sounds/mouse-click.wav', import.meta.url));
+    const asset = await ensureCatalogueAsset(store, project.id, 'sound:mouse-click', async () => new Blob([bytes], { type: 'audio/wav' }));
+    const source = { kind: 'stock', provider: 'cutframe', providerId: 'sound:mouse-click', licence: 'CC0-1.0', attribution: 'CC0 1.0 (public domain dedication)' };
+    expect(asset.source).toEqual(source); expect((await store.row<Asset>('assets', asset.id))?.source).toEqual(source);
+    expect((await store.library()).assets.map(a => a.source)).toEqual([source]);
+  });
+  it('an element’s source has no attribution', async () => {
+    const { store } = storeSetup(), project = await store.create(), bytes = readFileSync(new URL('../vendor/t22/elements/sticker-star.svg', import.meta.url));
+    const asset = await ensureCatalogueAsset(store, project.id, 'element:sticker-star', async () => new Blob([bytes], { type: 'image/svg+xml' }), async () => pngStub());
+    const source = { kind: 'stock', provider: 'cutframe', providerId: 'element:sticker-star', licence: 'AGPL-3.0-only' }, read = (await store.row<Asset>('assets', asset.id))?.source;
+    expect(asset.source).toEqual(source); expect(asset.source).not.toHaveProperty('attribution');
+    expect(read).toEqual(source); expect(read).not.toHaveProperty('attribution');
+  });
+  // Plan lines 272 and 294 (ruled): linkCatalogueAsset's undo detaches only a link this call created (a soft-deleted link it
+  // revived counts as created); a link that was live before stays. The library copy always stays.
+  const soundBlob = async () => new Blob([readFileSync(new URL('../vendor/t22/sounds/mouse-click.wav', import.meta.url))], { type: 'audio/wav' });
+  const linked = async (store: ProjectStore, projectId: string) => (await store.projectAssets(projectId)).map(link => link.assetId);
+  it('linkCatalogueAsset on a fresh project links the asset; its undo removes that link only and keeps the library copy', async () => {
+    const { store } = storeSetup(), p = await store.create(), q = await store.create();
+    const other = await ensureCatalogueAsset(store, q.id, 'sound:mouse-click', soundBlob);
+    const { asset, undo } = await linkCatalogueAsset(store, p.id, 'sound:mouse-click', soundBlob);
+    expect(asset.id).toBe(other.id); expect(await linked(store, p.id)).toEqual([asset.id]);
+    await undo();
+    expect(await linked(store, p.id)).toEqual([]); expect(await linked(store, q.id)).toEqual([asset.id]);
+    expect((await store.library()).assets.map(a => a.id)).toEqual([asset.id]); expect((await store.row<Asset>('assets', asset.id))?.id).toBe(asset.id);
+  });
+  it('linkCatalogueAsset on a project with no copy in the library: the undo removes the link and the new library copy stays', async () => {
+    const { store, files } = storeSetup(), p = await store.create();
+    const { asset, undo } = await linkCatalogueAsset(store, p.id, 'sound:mouse-click', soundBlob);
+    expect(await linked(store, p.id)).toEqual([asset.id]);
+    await undo();
+    expect(await linked(store, p.id)).toEqual([]); expect((await store.library()).assets.map(a => a.id)).toEqual([asset.id]); expect(files.has(asset.id)).toBe(true);
+  });
+  it('linkCatalogueAsset when the asset was already linked live: the undo leaves the link', async () => {
+    const { store } = storeSetup(), p = await store.create();
+    const existing = await ensureCatalogueAsset(store, p.id, 'sound:mouse-click', soundBlob);
+    expect(await linked(store, p.id)).toEqual([existing.id]);
+    const { asset, undo } = await linkCatalogueAsset(store, p.id, 'sound:mouse-click', soundBlob);
+    expect(asset.id).toBe(existing.id);
+    await undo();
+    expect(await linked(store, p.id)).toEqual([existing.id]);
+  });
+  it('linkCatalogueAsset revives a soft-deleted link; the undo removes it again', async () => {
+    const { store } = storeSetup(), p = await store.create();
+    const existing = await ensureCatalogueAsset(store, p.id, 'sound:mouse-click', soundBlob);
+    await store.detach(p.id, existing.id); expect(await linked(store, p.id)).toEqual([]);
+    const { asset, undo } = await linkCatalogueAsset(store, p.id, 'sound:mouse-click', soundBlob);
+    expect(asset.id).toBe(existing.id); expect(await linked(store, p.id)).toEqual([existing.id]);
+    await undo();
+    expect(await linked(store, p.id)).toEqual([]); expect((await store.library()).assets.map(a => a.id)).toEqual([existing.id]);
+  });
   it.each([false, true])('read-back sound asset, trim beyond true length = %s', async beyond => {
     const { store } = storeSetup(), project = await store.create(), sound = findSound('mouse-click')!;
     const bytes = readFileSync(new URL(`../${sound.file}`, import.meta.url));
@@ -252,7 +327,7 @@ describe('F: bounded 2× PNG raster contract', () => {
     const before = json(w.doc), undo = json(w.bus.undoStack), redo = json(w.bus.redoStack);
     const svg = new Blob([readFileSync(new URL('../vendor/t22/elements/sticker-star.svg', import.meta.url))], { type: 'image/svg+xml' });
     const raster = vi.fn(async () => { throw new Error('raster failed'); }), run = vi.fn(() => ({ success: true }));
-    const ensure = (id: string) => ensureCatalogueAsset(store, project.id, id, async () => svg, raster);
+    const ensure = async (id: string) => (await linkCatalogueAsset(store, project.id, id, async () => svg, raster)).undo;
     const result = await callCatalogueTool(w.ctx, { assetId: 'element:sticker-star', trackId: 'V1' }, { ensure, run });
     expect(result).toMatchObject({ success: false, code: 'UPLOAD_FAILED', operationMayHaveRun: false });
     expect(raster).toHaveBeenCalledTimes(1); expect(run).not.toHaveBeenCalled();
@@ -265,12 +340,31 @@ describe('Executor addMedia catalogue seam: runtime.addCatalogue is the only imp
   let seq = 0;
   const call = (toolName: string, input: RecordData = {}): Call => ({ type: 'call', callId: `t22-${++seq}`, executionKey: `t22-key-${seq}`, toolName, input, session: 't22' });
   function setup() {
-    const load = vi.fn(async (id: string) => assetFor(id)), e = createEditor(doc(), { options: { addCatalogue: load } });
+    const undo = vi.fn(async () => {}), load = vi.fn(async (id: string) => ({ asset: assetFor(id), undo })), e = createEditor(doc(), { options: { addCatalogue: load } });
     const add = vi.spyOn(e.runtime, 'addCatalogue'), storage = new Map<string, string>();
     const executor = new Executor({ storage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); } },
       current: () => e.runtime, ui: () => ({ selection: [], playheadMs: 0 }) });
-    return { e, load, add, executor };
+    return { e, load, undo, add, executor };
   }
+  // Plan lines 272 and 294 (ruled): runtime.addCatalogue resolves to an undo that un-indexes only the keys this call added
+  // (the stored id and the catalogue id), then calls the option's undo.
+  it('runtime.addCatalogue resolves to an undo: the two keys it added leave the index and the option’s undo runs once', async () => {
+    const { e, load, undo } = setup(), id = 'element:sticker-star', stored = 'stored-element:sticker-star';
+    expect(e.runtime.assets.has(id)).toBe(false); expect(e.runtime.assets.has(stored)).toBe(false);
+    const revert = await e.runtime.addCatalogue(id);
+    expect(typeof revert).toBe('function'); expect(load).toHaveBeenCalledExactlyOnceWith(id);
+    expect(e.runtime.assets.get(id)?.id).toBe(stored); expect(e.runtime.assets.get(stored)?.id).toBe(stored); expect(undo).not.toHaveBeenCalled();
+    await revert();
+    expect(e.runtime.assets.has(id)).toBe(false); expect(e.runtime.assets.has(stored)).toBe(false); expect(undo).toHaveBeenCalledTimes(1);
+  });
+  it('a key that was indexed before the call stays after the undo', async () => {
+    const { e, undo } = setup(), id = 'element:sticker-star', stored = 'stored-element:sticker-star';
+    e.runtime.assets.set(stored, assetFor(id));
+    const revert = await e.runtime.addCatalogue(id);
+    expect(e.runtime.assets.has(id)).toBe(true);
+    await revert();
+    expect(e.runtime.assets.has(stored)).toBe(true); expect(e.runtime.assets.has(id)).toBe(false); expect(undo).toHaveBeenCalledTimes(1);
+  });
   it('a fresh valid element call imports through runtime.addCatalogue and uses its stored asset id', async () => {
     const { e, load, add, executor } = setup();
     expect(await executor.execute(call('context'))).toMatchObject({ success: true });

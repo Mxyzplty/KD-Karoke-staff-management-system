@@ -60,5 +60,3 @@ export const ELEMENTS: readonly CatalogueElement[] = [
 ];
 
 export const findElement = (id: string): CatalogueElement | undefined => ELEMENTS.find(e => e.id === id);
-/** Contracts addMedia: stickers go on a video track; bubbles, labels and frames on an overlay track. */
-export const elementTrackKind = (e: CatalogueElement): 'video' | 'overlay' => e.group === 'sticker' ? 'video' : 'overlay';

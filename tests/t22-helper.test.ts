@@ -74,7 +74,7 @@ async function stdioClient(helper?: Helper) {
 }
 const definition = (name: string) => { const tool = TOOLS.find(t => t.name === name); expect(tool, `${name} is advertised`).toBeDefined(); return tool!; };
 const SHAPES: { name: string; properties: Rec; required: string[] }[] = [
-  { name: 'applyPreset', properties: { presetId: { type: 'string' }, timelineStart: { type: 'number', minimum: 0 } }, required: ['presetId'] },
+  { name: 'applyPreset', properties: { presetId: { type: 'string' }, timelineStart: { type: 'number', minimum: 0, default: 0 } }, required: ['presetId'] }, // plan line 112: "`timelineStart` ≥ 0, default 0"
   { name: 'browsePresets', properties: { category: { enum: CATEGORY_SLUGS }, query: { type: 'string' } }, required: [] },
   { name: 'fonts', properties: { familyName: { type: 'string' }, role: { enum: ['titles', 'captions'] }, videoStyle: { type: 'string' } }, required: [] },
 ];

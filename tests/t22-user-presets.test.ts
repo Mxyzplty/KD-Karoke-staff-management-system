@@ -65,6 +65,15 @@ function expectText(item: RecordData, original: RecordData) {
   }
   expect(item.display.to - item.display.from).toBe(original.display.to - original.display.from);
 }
+// The graphic() box (83.25, 157.75, 345.67, 219.23 on 1920×1080) on the 1080×1920 reference canvas, worked by hand:
+//   x = 83.25 / 1920 × 1080 = 46.828125, y = 157.75 / 1080 × 1920 = 2524/9 = 280.4444444444…,
+//   width = 345.67 / 1920 × 1080 = 194.439375, height = 219.23 / 1080 × 1920 = 3507.68/9 = 389.7422222222….
+const PORTRAIT_BOX = { x: 46.828125, y: 280.4444444444, width: 194.439375, height: 389.7422222222 };
+/** A box with exactly x / y / width / height, each within 1e-9 of the literal (float rounding and the ten printed decimals only). */
+function closeBox(got: RecordData | undefined, expected: { x: number; y: number; width: number; height: number }) {
+  expect(Object.keys(got ?? {}).sort()).toEqual(['height', 'width', 'x', 'y']);
+  for (const key of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(Number(got![key]) - expected[key]), key).toBeLessThanOrEqual(1e-9);
+}
 function expectPoints(actual: RecordData[], original: RecordData[]) {
   expect(actual).toHaveLength(original.length);
   actual.forEach((point, k) => {
@@ -125,17 +134,25 @@ describe('GFX-10: saved graphics, exact same-canvas box and T08 fallback placeme
     const original = graphic(), preset = savedGraphic(original, CANVAS, 'Saved graphic', NOW), store = setup();
     expect(preset).toMatchObject({ id: expect.stringMatching(/^my\//), name: 'Saved graphic', mg_code: CODE, mg_code_h: CODE, duration_ms: 5000,
       field_values: original.details.fieldValues, saved: { canvas: CANVAS, box: { x: 83.25, y: 157.75, width: 345.67, height: 219.23 } }, version: 1, savedAt: NOW.toISOString() });
-    expect(preset.spatial).toBeDefined(); expect(preset.spatial_h).toBeDefined();
+    // §31 reference boxes of the fixture box: on 1920×1080 it is the box itself; on 1080×1920 each axis is box / canvas × reference.
+    closeBox(preset.spatial_h, { x: 83.25, y: 157.75, width: 345.67, height: 219.23 }); closeBox(preset.spatial, PORTRAIT_BOX);
     await storePresets(store, [preset]); const listed = await userGraphicPresets(store); expect(listed).toEqual({ presets: [preset], skipped: [] });
     const [item] = applyStylePreset(target(), listed.presets[0], 2000);
     for (const key of ['positionX', 'positionY', 'width', 'height']) expect(staticValue(item, key)).toBe(original.properties[key].defaultValue);
     expect(item.details.code).toBe(CODE); expect(item.details.fieldValues).toEqual(original.details.fieldValues); expect(item.display).toEqual({ from: 2000, to: 7000 });
     expect(loadGraphicPresets([preset])).toEqual({ presets: [preset], skipped: [] });
   });
-  it.each([{ width: 1080, height: 1920 }, { width: 1080, height: 1080 }])('other canvas %j delegates placement to the approved T08 oracle', canvas => {
-    const preset = savedGraphic(graphic(), CANVAS, 'Saved graphic', NOW), expected = placeGraphicPreset(preset, canvas).box;
-    const [item] = applyStylePreset(target(canvas), preset);
-    expect([staticValue(item, 'positionX'), staticValue(item, 'positionY'), staticValue(item, 'width'), staticValue(item, 'height')]).toEqual([expected.x, expected.y, expected.width, expected.height]);
+  // §31 placement of PORTRAIT_BOX (not full frame, not within 10 px of the 1920 bottom: uniform fit, centred), worked by hand:
+  //   1080×1920: s = min(1080/1080, 1920/1920) = 1, no offset, so the box is PORTRAIT_BOX.
+  //   1080×1080: s = min(1080/1080, 1080/1920) = 0.5625, ox = (1080 − 1080 × 0.5625) / 2 = 236.25, oy = (1080 − 1920 × 0.5625) / 2 = 0;
+  //     x = 46.828125 × 0.5625 + 236.25 = 262.5908203125, y = 2524/9 × 0.5625 = 157.75,
+  //     width = 194.439375 × 0.5625 = 109.3721484375, height = 3507.68/9 × 0.5625 = 219.23.
+  it.each([
+    { canvas: { width: 1080, height: 1920 }, box: PORTRAIT_BOX },
+    { canvas: { width: 1080, height: 1080 }, box: { x: 262.5908203125, y: 157.75, width: 109.3721484375, height: 219.23 } },
+  ])('other canvas $canvas places the saved graphic by §31 at the worked box', ({ canvas, box }) => {
+    const preset = savedGraphic(graphic(), CANVAS, 'Saved graphic', NOW), [item] = applyStylePreset(target(canvas), preset);
+    closeBox({ x: staticValue(item, 'positionX'), y: staticValue(item, 'positionY'), width: staticValue(item, 'width'), height: staticValue(item, 'height') }, box);
     expect(item.details.fieldValues).toEqual(graphic().details.fieldValues);
   });
   it('legacy T08 and imported rows without saved/field_values still use spatial placement', () => {
@@ -204,11 +221,16 @@ describe('versioned settings rows and import/export', () => {
     const file = exportPresets(presets); expect(file).toEqual({ format: 'cutframe-presets', version: 1, presets });
     expect(importPresets(JSON.parse(JSON.stringify(file)))).toEqual({ presets, skipped: [] });
   });
-  it('invalid records keep their index and a nonempty reason in loaders/import, valid records survive', () => {
+  it('invalid records keep their index and their reason in loaders/import, valid records survive', () => {
     const valid = savedDirect([text()], CANVAS, 'Title', NOW), invalid = { id: 'text/bad', name: 'Bad', description: 'Missing content.' };
-    for (const loaded of [loadStylePresets([valid, invalid]), importPresets({ format: 'cutframe-presets', version: 1, presets: [valid, invalid] })]) {
-      expect(loaded.presets).toEqual([valid]); expect(loaded.skipped).toEqual([{ index: 1, reason: expect.any(String) }]); expect(loaded.skipped[0].reason.length).toBeGreaterThan(0);
-    }
+    // The style row names both missing parts; a file record without items is read as a motion-graphic preset, so its code is what is missing.
+    expect(loadStylePresets([valid, invalid])).toEqual({ presets: [valid], skipped: [{ index: 1, reason: 'has neither items nor mg_code' }] });
+    expect(importPresets({ format: 'cutframe-presets', version: 1, presets: [valid, invalid] })).toEqual({ presets: [valid], skipped: [{ index: 1, reason: 'mg_code is missing' }] });
+  });
+  it('a graphic record whose spatial is not a box is skipped with that reason, in the loader and the import', () => {
+    const good = savedGraphic(graphic(), CANVAS, 'Graphic', NOW), bad = { ...good, id: 'my/bad-box', spatial: { x: 0, y: 0, width: 0, height: 100 } };
+    expect(loadGraphicPresets([bad, good])).toEqual({ presets: [good], skipped: [{ index: 0, reason: 'spatial is not a box' }] });
+    expect(importPresets({ format: 'cutframe-presets', version: 1, presets: [bad, good] })).toEqual({ presets: [good], skipped: [{ index: 0, reason: 'spatial is not a box' }] });
   });
   it.each([{ format: 'other-format', version: 1 }, { format: 'cutframe-presets', version: 2 }])('wrong file %j throws INVALID_PRESET_FILE', fields => {
     expect(() => importPresets({ ...fields, presets: [] })).toThrowError(expect.objectContaining({ code: 'INVALID_PRESET_FILE' }));
@@ -236,8 +258,10 @@ describe('notKept names unsupported saved parts; customiseMessage trims only the
   it('plain text has no loss notice; disabled-only effects are not reported', () => {
     expect(notKept([text()])).toEqual([]); const item = text(); item.effects = [{ enabled: false, effectId: 'invert' }]; expect(notKept([item])).toEqual([]);
   });
-  it.each(['effects', 'masks', 'path keyframes', 'text look', 'keyframe handles', 'keyframes'])('%s is reported', part => {
+  it.each(['effects', 'masks', 'path keyframes', 'text look', 'keyframe handles', 'keyframes', 'keyframes without a number value'])('%s is reported', part => {
     let item = text();
+    // A colour keyframe has a string value: a saved preset carries number keyframes only.
+    if (part === 'keyframes without a number value') item.properties.color = p('#12AB34', [{ id: 'c0', time: 0, value: '#12AB34', easing: 'linear' }, { id: 'c1', time: 1250, value: '#AB1234', easing: 'linear' }]);
     if (part === 'effects') item.effects = [{ effectId: 'invert', enabled: true }];
     if (part === 'masks') item.masks = [{ id: 'mask' }];
     if (part === 'text look') item.details.look = { style: 'mercury' };

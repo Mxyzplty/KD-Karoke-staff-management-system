@@ -38,7 +38,7 @@ async function googleFaces(url: string, name: string, descriptors: FontFaceDescr
   if (!faces.length) throw new FontError('FONT_DELIVERY_FAILED', 'The font stylesheet lists no font files.');
   return faces;
 }
-type Registration = { faces: Promise<FontFace[]>; name: string; spec: string; extended?: true | 'failed' };
+type Registration = { faces: Promise<FontFace[]>; name: string; spec: string; extended?: true | 'failed'; extending?: Promise<FontError | null> };
 const loadedCount = (faces: FontFace[]) => faces.filter(f => f.status === 'loaded').length;
 const registered = new Map<string, Registration>();
 async function facesFor(r: ResolvedFont, name: string, descriptors: FontFaceDescriptors): Promise<FontFace[]> {
@@ -57,19 +57,23 @@ async function facesFor(r: ResolvedFont, name: string, descriptors: FontFaceDesc
 const lacksSubsets = (reg: Registration, r: ResolvedFont, text: string) => reg.extended !== true && r.entry.source !== 'user' && !!bundledFont(r.entry.family, r.variant.italic) && !bundledCovers(text);
 /** T22: the first time a text has a character outside a bundled family's Latin file, Google's other subset faces are added
  *  (its own copy of the Latin file is left out). When Google does not answer, the bundled face stays and the error is
- *  returned: the caller reports it as any failed Google family, after the Latin part has loaded. */
-async function extendBundled(reg: Registration, r: ResolvedFont, text: string, set: FontFaceSet): Promise<FontError | null> {
-  if (!lacksSubsets(reg, r, text)) return null;
+ *  returned: the caller reports it as any failed Google family, after the Latin part has loaded. A caller that arrives
+ *  while Google's answer is pending waits for the same answer. */
+function extendBundled(reg: Registration, r: ResolvedFont, text: string, set: FontFaceSet): Promise<FontError | null> {
+  if (reg.extending) return bundledCovers(text) ? Promise.resolve(null) : reg.extending;
+  if (!lacksSubsets(reg, r, text)) return Promise.resolve(null);
   reg.extended = true;
-  try {
-    const { name, descriptors } = register(r), more = (await googleFaces(googleUrl(r.entry.family, r.variant), name, descriptors)).filter(f => !isBundledRange(f.unicodeRange));
-    const faces = await reg.faces;
-    for (const f of more) { set.add(f); faces.push(f); }
-    return null;
-  } catch (e) {
-    reg.extended = 'failed';
-    return e instanceof FontError ? e : new FontError('FONT_DELIVERY_FAILED', 'The font stylesheet could not be downloaded.');
-  }
+  return reg.extending = (async () => {
+    try {
+      const { name, descriptors } = register(r), more = (await googleFaces(googleUrl(r.entry.family, r.variant), name, descriptors)).filter(f => !isBundledRange(f.unicodeRange));
+      const faces = await reg.faces;
+      for (const f of more) { set.add(f); faces.push(f); }
+      return null;
+    } catch (e) {
+      reg.extended = 'failed';
+      return e instanceof FontError ? e : new FontError('FONT_DELIVERY_FAILED', 'The font stylesheet could not be downloaded.');
+    } finally { reg.extending = undefined; }
+  })();
 }
 /** Loads one face for `text` (only the subsets the text needs; the whole face without text). Throws a FontError: the
  *  loader's own code (FONT_DELIVERY_FAILED, FONT_TOO_LARGE) or FONT_LOAD_FAILED. A failure is remembered (fontFailure) and

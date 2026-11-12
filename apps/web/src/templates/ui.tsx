@@ -292,8 +292,8 @@ export function TemplateChip({ session, record, binding, onBind }: { session: Au
   const name = !binding.id ? 'No template' : template ? template.name : template === null ? 'Missing template' : 'Template';
   async function use(t: Template) {
     try {
-      const bound = await bindProject(projectStore, session.projectId, t, binding.epoch);
-      session.update(writeDefaults(session.document, await findTemplate(projectStore, t.id) ?? t, bound.epoch));
+      const bound = await bindProject(projectStore, session.projectId, t, binding.epoch), stored = await findTemplate(projectStore, t.id) ?? t;
+      session.update(writeDefaults(session.document, stored, bound.epoch));
       onBind({ id: bound.templateId, epoch: bound.epoch }); setOpen(undefined);
       notify(`This project now uses ${t.name}. ${EDITOR_HINT}`);
       const missing = missingFonts(t);

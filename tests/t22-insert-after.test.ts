@@ -117,6 +117,14 @@ describe('A21: real supported add tools against all eight reference types', () =
       message: 'addCaptions needs a target caption trackId (or splitBySpeaker with speakerTrackIds). Create one with manageTrack.' });
     expectUnchanged(w, before, result);
   });
+  // C-8 with a valid target: the key is not an addCaptions input, so it is ignored. The call is answered as addCaptions on
+  // track R (no video or audio item, so no caption), not as an insert after 'ref', and not INVALID_COMBINATION.
+  it('C-8: addCaptions with a valid caption trackId ignores insertAfterItemId; nothing is placed after the reference', () => {
+    const w = world('caption'), before = structuredClone(w.doc);
+    const result = callTool(w.ctx, 'addCaptions', { trackId: 'R', insertAfterItemId: 'ref' });
+    expect(result, JSON.stringify(result)).toMatchObject({ success: true, message: "Added 0 captions on track 'R'.", data: { captionIds: [], captionCount: 0, trackId: 'R', trackIds: [] } });
+    expect(result).not.toHaveProperty('code'); expect(w.doc.items).toEqual(before.items); expect(w.doc.tracks).toEqual(before.tracks);
+  });
 });
 
 describe('T22: catalogue ids use their placed item type, not the source asset image type', () => {

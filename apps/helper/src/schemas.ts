@@ -112,7 +112,7 @@ const TOOL_LIST: Tool[] = [
   // (part 5 §55.6), so only their keys are checked here.
   // T22 (plan §10). The preset id is looked up by the handler (PRESET_NOT_FOUND).
   { name: 'applyPreset', description: 'Place a style preset from browsePresets on new overlay tracks, scaled to the canvas. Times in seconds.',
-    inputSchema: obj({ presetId: { type: 'string', description: 'A preset id from browsePresets' }, timelineStart: { type: 'number', minimum: 0, description: 'Start in seconds (default 0)' } }, ['presetId']) },
+    inputSchema: obj({ presetId: { type: 'string', description: 'A preset id from browsePresets' }, timelineStart: { type: 'number', minimum: 0, default: 0, description: 'Start in seconds (default 0)' } }, ['presetId']) },
   { name: 'applyTransition', description: 'Add, update or remove the transition on the cut between two neighbouring video / image clips of one track: betweenItems (either order) or atSeconds (nearest cut within 0.5 s on any track). add on a cut that has one replaces it. The length is clamped to 0.1 s … the shorter clip (at most 3 s) and the applied length is reported.',
     inputSchema: { ...obj({ action: { enum: ['add', 'update', 'remove'] }, betweenItems: { type: 'array', items: str, description: 'The two clip ids either side of the cut' }, atSeconds: secs('Pick the nearest cut within 0.5 s of this timeline time'),
       kind: { enum: ['fade', 'dissolve', 'additiveDissolve', 'dipToColorDissolve', 'slide', 'wipe'], description: 'Default fade (dips through black)' },

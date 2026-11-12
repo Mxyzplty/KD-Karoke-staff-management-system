@@ -456,6 +456,9 @@ describe('S3 editProperties target eligibility, locked tracks and batch atomicit
     const w = withItems(elementItem(key === 'media' ? 'phone-frame' : 'sticker-star'), mkItem('ordinary', 'V2', 0, 3000, { type: 'image' }));
     const r = edit(w, { [key]: key === 'media' ? ['asset-img1'] : ['#123456'] }, ['target', 'ordinary']);
     expect(r.success, json(r)).toBe(true); expect(r.data.results.find((row: RecordData) => row.itemId === 'ordinary')).toMatchObject({ ignored: { [key]: 'not a built-in element' } });
+    // The eligible element did change: the first palette slot is set (the second keeps its authored ink), or the opening is filled.
+    const target = itemOf(w.doc, 'target');
+    if (key === 'media') expect(target.details.cells[0].source.assetId).toBe('asset-img1'); else expect(target.details.element.colors).toEqual(['#123456', '#1B1B1F']);
   });
   it.each(['label-tag', 'sticker-star'])('%s has the correct ELEMENT_HAS_NO_MEDIA sentence; batch records the same ignored.media', id => {
     const e = findElement(id)!, message = id === 'label-tag' ? `${e.name} holds text, not media. Set its text instead.` : `${e.name} has no openings for media.`;

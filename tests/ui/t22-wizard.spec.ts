@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 step 11 / A17: wizard template binding, one library reference, rollback and retry; Q10 keeps uploaded footage.
 // Expectations are the written contract and Daylight's authored defaults, not the binding/default helper results.
-// Real store and controls. Faults are a bundled-file HTTP failure or a real template deletion, never patched functions.
+// Real store and controls. Faults are a bundled-file HTTP failure or a real template deletion; only the code-less case
+// replaces one public store method (`projectStore.save`) from the page, as no real fault there has no code.
 // The tracked CC0 WebM needs no generated media or ffmpeg; no skipped cases. No browser run by the test author.
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
@@ -140,6 +141,27 @@ test('A17: deleting a selected user template before Create rolls back the projec
   }, template.id); expect(missing).toBeNull();
   const before = await projects(page), refsBefore = await references(page);
   await wizard(page).getByRole('button', { name: 'Create Project', exact: true }).click(); await expectRollback(page, before, TEMPLATE_NOT_FOUND); expect(await references(page)).toEqual(refsBefore);
+});
+
+// Plan line 222: a template failure without its own code, the wizard's bind included, is reported as TEMPLATE_UNAVAILABLE.
+// The fault: the document save of the bind (wizard create, after bindProject) throws a plain Error with no `code`.
+const TEMPLATE_UNAVAILABLE = 'TEMPLATE_UNAVAILABLE: We couldn’t complete that request. Please try again.';
+async function codelessSaveFault(page: Page) {
+  await page.evaluate(async () => {
+    const p = '/src/store/database.ts', store = (await import(p)).projectStore, save = store.save.bind(store);
+    const fault: Rec = { calls: 0, restore: () => { store.save = save; } }; (window as any).__t22Save = fault;
+    store.save = async () => { fault.calls++; throw new Error('A17 fault without a code'); };
+  });
+  return { calls: () => page.evaluate(() => (window as any).__t22Save.calls as number), restore: () => page.evaluate(() => { (window as any).__t22Save.restore(); }) };
+}
+test('A17: a bind failure without a code rolls back the project, shows TEMPLATE_UNAVAILABLE and leaves the wizard usable', async ({ page }) => {
+  await page.goto('/'); await keepExistingProject(page); const reference = await seedReference(page);
+  await openWizard(page); await pickTemplate(page); await pickReference(page, reference); await footageStep(page);
+  const before = await projects(page), refsBefore = await references(page), fault = await codelessSaveFault(page);
+  try {
+    await wizard(page).getByRole('button', { name: 'Create Project', exact: true }).click(); await expectRollback(page, before, TEMPLATE_UNAVAILABLE);
+    expect(await fault.calls(), 'the bind reached the document save exactly once').toBe(1); expect(await references(page)).toEqual(refsBefore);
+  } finally { await fault.restore(); }
 });
 
 test('A17/Q10: footage uploaded by the failed Create remains readable in the library; only the new project and its links disappear', async ({ page }) => {

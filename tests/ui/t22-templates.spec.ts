@@ -291,6 +291,60 @@ for (const bound of [false, true]) test(`repairDefaults on open leaves a ${bound
   const after = await stored(page, id); expect(after.rev).toBe(before.rev); expect(after.json).toBe(before.json);
 });
 
+// Review round 1: the defaults write must use the document as it is after the template read, not as it was before it.
+// Holds the public store read of the templates row (no source hook): every such read waits until release. `afterBind`
+// arms the hold only once a project record with a template has been written, so the picker's own reads pass.
+async function holdTemplateRead(page: Page, afterBind: boolean) {
+  await page.evaluate(async afterBind => {
+    const p = '/src/store/database.ts', store = (await import(p)).projectStore, swap = store.swapRow.bind(store), row = store.row.bind(store);
+    let release!: () => void; const ready = new Promise<void>(done => { release = done; });
+    const gate: Rec = { armed: !afterBind, held: 0, release, restore: () => { store.swapRow = swap; store.row = row; } }; (window as any).__t22Read = gate;
+    store.swapRow = async (...args: any[]) => { const out = await swap(...args); if (args[0] === 'projects' && out?.template_id) gate.armed = true; return out; };
+    store.row = async (...args: any[]) => { if (gate.armed && args[0] === 'settings' && args[1] === 'templates') { gate.held++; await ready; } return row(...args); };
+  }, afterBind);
+}
+const freeTemplateRead = (page: Page) => page.evaluate(() => { const gate = (window as any).__t22Read; if (gate) { gate.release(); gate.restore(); } });
+// The edit that lands during the wait: one marker through the open editor's own command bus (as a user or agent edit does).
+const heldEdit = (page: Page, id: string) => page.evaluate(async id => {
+  const e = '/src/editor.tsx', r = '/src/timeline/runtime.ts', session = (await import(e)).activeSession, runtime = (await import(r)).activeRuntime;
+  if (session?.projectId !== id || !runtime) throw new Error('The editor of this project is not open.');
+  runtime.bus.run('Add marker', 'user', (doc: Rec) => { doc.markers.push({ id: 'held-edit', timeMs: 1000 }); });
+}, id);
+const markerIds = (doc: Rec) => doc.markers.map((m: Rec) => m.id);
+test('an edit made while the template is being read survives the bind', async ({ page }) => {
+  const id = await openEditor(page, document(), 'Edit during bind'); await holdTemplateRead(page, true);
+  try {
+    await menu(page, 'Change template'); const p = picker(page); await choose(p); await p.getByRole('button', { name: 'Use Daylight', exact: true }).click();
+    await expect.poll(async () => page.evaluate(() => (window as any).__t22Read.held), { message: 'the template read after the bind is waiting' }).toBeGreaterThan(0);
+    expect((await state(page, id)).record).toMatchObject({ template_id: 'daylight', template_epoch: 1 }); expect(await live(page)).not.toHaveProperty('templateDefaults');
+    await heldEdit(page, id); expect(markerIds(await live(page))).toEqual(['held-edit']);
+    await page.evaluate(() => { (window as any).__t22Read.release(); });
+    await expect(page.getByRole('button', { name: 'Template: Daylight', exact: true })).toBeVisible();
+    const now = await live(page); expect(now.templateDefaults).toEqual(DEFAULTS); expect(markerIds(now), 'the edit made during the read is still in the document').toEqual(['held-edit']);
+    await saved(page); const kept = (await state(page, id)).document; expect(kept.templateDefaults).toEqual(DEFAULTS); expect(markerIds(kept)).toEqual(['held-edit']);
+  } finally { await freeTemplateRead(page); }
+});
+test('an edit made while the defaults repair is pending survives it', async ({ page }) => {
+  const id = await createProject(page, document(), 'Edit during repair'); await seedBinding(page, id); expect((await state(page, id)).document).not.toHaveProperty('templateDefaults');
+  await holdTemplateRead(page, false);
+  try {
+    // Opened through the app's own popstate route, not a reload: the held read stays installed.
+    await page.evaluate(id => { window.history.pushState(null, '', `/project/${id}`); window.dispatchEvent(new PopStateEvent('popstate')); }, id);
+    // The repair starts its read in the same step that sets the session, so an open session means that read is waiting.
+    await expect.poll(async () => page.evaluate(async id => {
+      const e = '/src/editor.tsx', r = '/src/timeline/runtime.ts';
+      return (await import(e)).activeSession?.projectId === id && !!(await import(r)).activeRuntime && (window as any).__t22Read.held > 0;
+    }, id), { message: 'the editor is open and the repair read is waiting' }).toBe(true);
+    expect(await live(page)).not.toHaveProperty('templateDefaults');
+    await heldEdit(page, id); expect(markerIds(await live(page))).toEqual(['held-edit']);
+    await page.evaluate(() => { (window as any).__t22Read.release(); });
+    await expect.poll(async () => (await live(page)).templateDefaults, { message: 'the repair writes the defaults' }).toEqual(DEFAULTS);
+    expect(markerIds(await live(page)), 'the edit made during the repair is still in the document').toEqual(['held-edit']);
+    await expect(page.getByRole('button', { name: 'Template: Daylight', exact: true })).toBeVisible();
+    await saved(page); const kept = (await state(page, id)).document; expect(kept.templateDefaults).toEqual(DEFAULTS); expect(markerIds(kept)).toEqual(['held-edit']);
+  } finally { await freeTemplateRead(page); }
+});
+
 test('bundled variable Sora: a bound Text-panel title stores ExtraBold and differs in ink from an otherwise identical Regular item', async ({ page }) => {
   const id = await openEditor(page, document(), 'Two Sora weights'); await bindDaylight(page); const bold = await addTitle(page); await saved(page);
   const storedBold = (await state(page, id)).document.items.find((i: Rec) => i.id === bold.id); expect(storedBold.details).toMatchObject({ fontFamily: 'Sora-ExtraBold', fontFamilyDisplay: 'Sora' }); expect(storedBold.properties.fontWeight.defaultValue).toBe(800);

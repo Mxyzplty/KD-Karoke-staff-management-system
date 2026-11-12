@@ -58,7 +58,7 @@ function toolPick(pick: FontPick): ToolPick {
 }
 function listing(args: Args = {}, templateId?: string, role?: Role): PicksData {
   const data = success<PicksData>(fonts(args)), preferred = (templateId ? FONT_LISTS[templateId] : []).filter(pick => matches(pick, role));
-  expect(Array.isArray(data.picks)).toBe(true); expect(data.picks.length).toBeGreaterThanOrEqual(Math.max(1, preferred.length)); expect(data.picks.length).toBeLessThanOrEqual(CURRENT_PICK_CAP);
+  expect(Array.isArray(data.picks)).toBe(true); expect(data.picks.length).toBeGreaterThanOrEqual(Math.max(1, preferred.length)); expect(data.picks.length).toBe(Math.min(CURRENT_PICK_CAP, rankedPicks(templateId, role).length));
   expect(data.picks).toEqual(rankedPicks(templateId, role).slice(0, data.picks.length).map(toolPick)); expect(names(data.picks.slice(0, preferred.length))).toEqual(names(preferred));
   expect(new Set(names(data.picks)).size).toBe(data.picks.length); expect(data.total).toBe(fontFamilies().length); expect(typeof data.hint).toBe('string'); expect(data.hint).toContain('familyName');
   return data;

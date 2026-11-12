@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { useEffect, useRef, useState } from 'react';
 import { projectStore } from './store/database';
+import { StoreError, storageError } from './store/model';
 import { Dialog, notify, reportError } from './ui';
 import { attachReference, listReferences, uploadReference } from './media/references';
 import type { ReferenceVideo } from './media/references';
@@ -11,6 +12,7 @@ import { acceptAttribute, mediaKind } from './media/files';
 import { probeMedia } from './media/probe';
 import { formatDuration } from './media-ui';
 import { bindProject, writeDefaults } from './templates/binding';
+import { templateError } from './templates/errors';
 import type { Template } from './templates/model';
 import { TemplatePicker } from './templates/ui';
 
@@ -49,7 +51,10 @@ export function Wizard({ close, navigate, template: preselected }: { close: () =
       if (template) try {
         const bound = await bindProject(projectStore, project.id, template, 0), stored = await projectStore.read(project.id);
         if (stored) await projectStore.save(project.id, writeDefaults(stored.document, template, bound.epoch), stored.document.rev);
-      } catch (e) { await projectStore.deleteProject(project.id).catch(() => {}); reportError(e); setBusy(false); return; }
+      } catch (e) {
+        // A failure without a code of its own is reported as TEMPLATE_UNAVAILABLE (error codes §14).
+        await projectStore.deleteProject(project.id).catch(() => {}); reportError(storageError(e) instanceof StoreError ? e : templateError('TEMPLATE_UNAVAILABLE')); setBusy(false); return;
+      }
       // The picked library reference is attached once the project exists (findings part 2 §26; T22 builds on this).
       if (reference) await attachReference(projectStore, project.id, reference.id).catch(() => notify('Project created, but the reference could not be attached.'));
       navigate(`/project/${project.id}`);
