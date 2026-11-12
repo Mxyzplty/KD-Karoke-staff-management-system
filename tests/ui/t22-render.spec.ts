@@ -4,6 +4,7 @@
 // H: corner-brackets reaches its entire SVG box (12px inset path, 24px square-cap stroke): bbox tolerance 1 project px.
 // Underline extents are independently derived from its authored cubic extrema and 11px round stroke, not its empty margins.
 // J: <=16 code values per RGB channel, the T10a recolour tolerance (f32 GPU gamut bisection versus f64 oracle §49.19).
+// Slot geometry: C-gt: settled from code, RC 6.1, no stored output; whole item box, vertically centred local text slot.
 import { test, expect, type Page } from '@playwright/test';
 import { findElement } from '../../apps/web/src/catalogue/elements';
 import { recolor as oracleRecolor } from '../../parity/oracle/colour';
@@ -180,30 +181,50 @@ test.describe('J: synthetic flat-pixel recolour versus independent §49.19 oracl
 function slotItem(id: string, overrideRect?: { x: number; y: number; width: number; height: number }): Rec {
   const e = findElement(id)!, text = e.slot?.kind === 'text';
   const rect = overrideRect ?? (text ? { x: 40, y: 80, width: 320, height: 320 / 3 } : { x: 150, y: 30, width: 100, height: 200 });
-  const b = e.slot?.kind === 'text' ? e.slot.box : { x: 0, y: 0, width: 1, height: 1 };
   const details: Rec = { name: e.name, element: { id, palette: e.palette, slot: text ? 'text' : 'media' } };
   // Rendering-only offline fixture: fonts.ts serves non-italic Roboto 400/700 locally. Manrope defaults belong to the fonts step.
   if (text) Object.assign(details, { text: 'HI', fontFamily: 'Roboto-Bold', fontFamilyDisplay: 'Roboto' });
-  else if (e.slot?.kind === 'media') details.cells = e.slot.openings.map((bounds, k) => ({ id: `cell${k}`, bounds, source: null,
-    fillMode: 'fill', panX: 0, panY: 0, zoom: 100, volume: 100, opacity: 100, playbackRate: 1 }));
+  else if (e.slot?.kind === 'media') {
+    Object.assign(details, { layoutType: 'element', gap: 0, borderRadius: 0 });
+    details.cells = e.slot.openings.map((bounds, k) => ({ id: `cell${k}`, bounds, source: null,
+      fillMode: 'fill', panX: 0, panY: 0, zoom: 100, volume: 100, opacity: 100, playbackRate: 1 }));
+  }
   return { id: 'slot', type: text ? 'text' : 'layout', trackId: 'O1', display: { from: 0, to: 4000 }, details, metadata: { assetId: 'replace' },
-    properties: { positionX: prop(rect.x + b.x * rect.width), positionY: prop(rect.y + b.y * rect.height), width: prop(rect.width * b.width), height: prop(rect.height * b.height),
+    properties: { positionX: prop(rect.x), positionY: prop(rect.y), width: prop(rect.width), height: prop(rect.height),
       scale: prop(1), opacity: prop(1), fontSize: prop(48), fontWeight: prop(700), color: prop('#0000FF'), textAlign: prop('center') } };
 }
-async function colourCounts(page: Page, colours: number[][]) {
-  return page.evaluate(colours => {
-    const c = document.querySelector('canvas.run[data-run="0"]') as HTMLCanvasElement, pixels = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+type PixelBox = { x: number; y: number; width: number; height: number };
+const elementBox = (item: Rec): PixelBox => ({ x: item.properties.positionX.defaultValue, y: item.properties.positionY.defaultValue, width: item.properties.width.defaultValue, height: item.properties.height.defaultValue });
+const localRegion = (box: PixelBox, fraction: PixelBox): PixelBox => ({ x: box.x + fraction.x * box.width, y: box.y + fraction.y * box.height, width: fraction.width * box.width, height: fraction.height * box.height });
+function textRegion(item: Rec): PixelBox {
+  const slot = findElement(item.details.element.id)!.slot; if (slot?.kind !== 'text') throw new Error('fixture requires a text slot');
+  return localRegion(elementBox(item), slot.box);
+}
+async function colourCounts(page: Page, colours: number[][], box: PixelBox = { x: 0, y: 0, width: W, height: H }) {
+  return page.evaluate(({ colours, box }) => {
+    const c = document.querySelector('canvas.run[data-run="0"]') as HTMLCanvasElement;
+    const x = Math.max(0, Math.floor(box.x)), y = Math.max(0, Math.floor(box.y)), right = Math.min(c.width, Math.ceil(box.x + box.width)), bottom = Math.min(c.height, Math.ceil(box.y + box.height));
+    if (right <= x || bottom <= y) return colours.map(() => 0);
+    const pixels = c.getContext('2d')!.getImageData(x, y, right - x, bottom - y).data;
     return colours.map(rgb => { let count = 0; for (let k = 0; k < pixels.length; k += 4) if (pixels[k + 3] > 200 && rgb.every((v, j) => Math.abs(v - pixels[k + j]) <= 12)) count++; return count; });
-  }, colours);
+  }, { colours, box });
 }
 test.describe('K: slot pictures and their own content both appear on the stage', () => {
   test('label-tag shows its yellow picture and blue text', async ({ page }) => {
-    await openSeed(page, slotItem('label-tag'), [255, 0, 255], 'label-tag');
-    await expect.poll(async () => Math.min(...await colourCounts(page, [[255, 200, 61], [0, 0, 255]])), { timeout: 15_000 }).toBeGreaterThan(10);
+    const item = slotItem('label-tag'); await openSeed(page, item, [255, 0, 255], 'label-tag');
+    await expect.poll(async () => Math.min((await colourCounts(page, [[255, 200, 61]], elementBox(item)))[0], (await colourCounts(page, [[0, 0, 255]], textRegion(item)))[0]), { timeout: 15_000 }).toBeGreaterThan(10);
+  });
+  test('short slot text has blue pixels in the middle third and none above or below the slot', async ({ page }) => {
+    const item = slotItem('label-tag'); item.properties.fontSize = prop(16); const box = elementBox(item), slot = textRegion(item);
+    await openSeed(page, item, [255, 0, 255], 'label-tag');
+    const middle = { x: slot.x, y: slot.y + slot.height / 3, width: slot.width, height: slot.height / 3 };
+    await expect.poll(async () => (await colourCounts(page, [[0, 0, 255]], middle))[0], { timeout: 15_000 }).toBeGreaterThan(5);
+    const above = { x: box.x, y: box.y, width: box.width, height: slot.y - box.y }, below = { x: box.x, y: slot.y + slot.height, width: box.width, height: box.y + box.height - slot.y - slot.height };
+    expect((await colourCounts(page, [[0, 0, 255]], above))[0]).toBe(0); expect((await colourCounts(page, [[0, 0, 255]], below))[0]).toBe(0);
   });
   test('phone-frame is visible over a filled magenta opening', async ({ page }) => {
-    await openSeed(page, slotItem('phone-frame'), [255, 0, 255], 'phone-frame');
-    await expect.poll(async () => Math.min(...await colourCounts(page, [[27, 27, 31], [255, 0, 255]])), { timeout: 15_000 }).toBeGreaterThan(10);
+    const item = slotItem('phone-frame'); await openSeed(page, item, [255, 0, 255], 'phone-frame');
+    await expect.poll(async () => Math.min(...await colourCounts(page, [[27, 27, 31], [255, 0, 255]], elementBox(item))), { timeout: 15_000 }).toBeGreaterThan(10);
     const screen = await pixel(page, 200, 130), body = await pixel(page, 152, 130);
     screen.slice(0, 3).forEach((v, k) => expect(Math.abs(v - [255, 0, 255][k])).toBeLessThanOrEqual(2));
     body.slice(0, 3).forEach((v, k) => expect(Math.abs(v - [27, 27, 31][k])).toBeLessThanOrEqual(2));
@@ -234,7 +255,9 @@ test('L: playing into unseen slot elements shows both pictures and both contents
   await page.goto(`/project/${projectId}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
   await page.evaluate(async () => { const vp = '/src/editor/view.ts'; (await import(vp)).setView({ playheadMs: 0, quality: 'half' }); });
   await shown(page, 0);
-  const regions = [{ box: labelBox, colours: [[255, 200, 61], [0, 0, 255]] }, { box: phoneBox, colours: [[27, 27, 31], [255, 0, 255]] }];
+  const opening = findElement('phone-frame')!.slot; if (opening?.kind !== 'media') throw new Error('fixture requires a media opening');
+  const regions = [{ box: labelBox, colours: [[255, 200, 61]] }, { box: textRegion(label), colours: [[0, 0, 255]] },
+    { box: phoneBox, colours: [[27, 27, 31]] }, { box: localRegion(phoneBox, opening.openings[0]), colours: [[255, 0, 255]] }];
   const sample = () => page.evaluate(async ({ regions, W, H }) => {
     const vp = '/src/editor/view.ts', pp = '/src/render/playback.ts';
     const t = (await import(vp)).view().playheadMs as number, playing = (await import(pp)).usePlayback.getState().playing as boolean;

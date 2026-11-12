@@ -9,25 +9,29 @@ import type { TextAnimationState } from './animation';
 import { lineGlyphs } from './layout';
 import { requestFonts } from './fonts';
 import { lookPasses } from './looks';
-import { measuredLayout, setTextFont as setFont } from './measure';
+import { measuredLayout, measuredSize, setTextFont as setFont } from './measure';
 import type { Ctx } from './measure';
 import { caseTransform, textFill } from './style';
 import type { TextStyle } from './style';
 import type { RecordData } from '../store/model';
 
 /** What render/model.ts hands the compositor for a text item. shadowScale: CSS px × this (preview cssScale; 1 in export). */
-export type TextDraw = { item: RecordData; style: TextStyle; anim: TextAnimationState; look: unknown; shadowScale: number };
+export type TextDraw = { item: RecordData; style: TextStyle; anim: TextAnimationState; look: unknown; shadowScale: number;
+  /** T22: the text slot of an element item, in px inside the box. The text is laid out in it and centred vertically. */
+  slot?: { x: number; y: number; W: number; H: number } };
 
 /** Draws one text item into box px W × H. Returns false when nothing is drawn (empty text or a zero-sized box). */
 export function drawText(ctx: Ctx, d: TextDraw, W: number, H: number): boolean {
-  const s = d.style;
+  const s = d.style, slot = d.slot;
+  if (slot) { W = slot.W; H = slot.H; }
   if (!drawsText(s.text, W, H)) return false;
   requestFonts(d.item, s.text); // preview: faces not loaded yet start loading; the export preloaded them (fonts.ts)
   const base = ctx.globalAlpha, look = lookPasses(d.look, s.F, s.color);
   ctx.save();
+  if (slot) ctx.translate(slot.x, slot.y);
   let previous = '#000000';
   if (s.background !== 'transparent') { ctx.fillStyle = s.background; ctx.fillRect(0, 0, W, H); previous = s.background; }
-  const layout = measuredLayout(ctx, s, W);
+  const layout = measuredLayout(ctx, s, W), lift = slot ? (H - measuredSize(ctx, s, W).height) / 2 : 0;
   setFont(ctx, s);
   const k = d.shadowScale, shadow = look.shadow ?? s.shadow;
   if (shadow) { ctx.shadowColor = shadow.color; ctx.shadowOffsetX = shadow.x * k; ctx.shadowOffsetY = shadow.y * k; ctx.shadowBlur = shadow.blur * k; }
@@ -49,7 +53,7 @@ export function drawText(ctx: Ctx, d: TextDraw, W: number, H: number): boolean {
   /** One pass of the whole text at offset (dx, dy) and alpha × `alpha` (alpha < 1: a look's echo copy). */
   const pass = (dx: number, dy: number, alpha: number) => layout.lines.forEach((line, n) => {
     if (!line.text) return;
-    const top = textLineTop(s.pitch, s.F, n) + dy, anchor = textAnchorX(s.align, W) + dx;
+    const top = textLineTop(s.pitch, s.F, n) + dy + lift, anchor = textAnchorX(s.align, W) + dx;
     const x0 = s.align === 'center' ? anchor - line.width / 2 : s.align === 'right' ? anchor - line.width : anchor;
     ctx.globalAlpha = base * alpha;
     if (preset !== 'scramble' && preset !== 'step-fade') {

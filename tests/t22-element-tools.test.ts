@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 step 3: addMedia and editProperties through callTool, with our own ToolContext and asset lookup.
-// Oracle: T22 notes Step 3 interfaces (01:33, overridden at 01:38), findings part 2 §33, plan S3,
+// Geometry oracle: C-gt: settled from code, RC 6.1, no stored output; T22 Step 3 interfaces and plan S3 for envelopes,
 // error rows 101/102/105/143/144 and tool results addMedia / editProperties normal path. The newer notes retain
-// per-item failure codes (unlike the older captured envelope). Expected geometry comes from §33, not place.ts/edit.ts.
+// per-item failure codes (unlike the older captured envelope). Expected geometry is local arithmetic, not place.ts/edit.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Asset, RecordData } from '../apps/web/src/store/model';
 import { CommandBus } from '../apps/web/src/timeline/bus';
@@ -50,14 +50,14 @@ function edit(w: World, properties: RecordData, ids: string | string[] = 'target
 function elementItem(id: string, itemId = 'target'): RecordData {
   const e = findElement(id)!;
   const type = e.slot?.kind === 'text' ? 'text' : e.slot?.kind === 'media' ? 'layout' : 'image';
-  const properties = { positionX: 37, positionY: 83, width: e.width, height: e.height, scale: 1, rotation: 0, opacity: 1 };
+  const properties: RecordData = { positionX: 37, positionY: 83, width: e.width, height: e.height, scale: 1, rotation: 0, opacity: 1 };
   const details: RecordData = { name: e.name, element: { id, palette: structuredClone(e.palette), ...(e.stretch ? { stretch: true } : {}) } };
   if (e.slot?.kind === 'text') {
-    const b = e.slot.box;
-    Object.assign(properties, { positionX: 37 + b.x * e.width, positionY: 83 + b.y * e.height, width: b.width * e.width, height: b.height * e.height });
-    Object.assign(details, { text: '', fontFamily: 'Manrope Bold', fontFamilyDisplay: 'Manrope' }); details.element.slot = 'text';
+    Object.assign(properties, { fontSize: 48, fontWeight: 700, color: '#111111', textAlign: 'center' });
+    Object.assign(details, { text: '', fontFamily: 'Manrope-Bold', fontFamilyDisplay: 'Manrope' }); details.element.slot = 'text';
   } else if (e.slot?.kind === 'media') {
     details.element.slot = 'media';
+    Object.assign(details, { layoutType: 'element', gap: 0, borderRadius: 0 });
     details.cells = e.slot.openings.map((bounds, k) => ({ id: `cell-${k}`, bounds: { ...bounds }, source: null,
       fillMode: 'fill', panX: 0, panY: 0, zoom: 100, volume: 100, opacity: 100, playbackRate: 1 }));
   }
@@ -216,11 +216,12 @@ describe('editProperties element media: openings, clearing, keep and validation'
   });
 });
 
-describe('editProperties element size: proportion, width priority, stretch and text origin', () => {
-  it.each([{ width: 200 }, { height: 200 }, { width: 200, height: 400 }])('non-stretch star %j stays square, width wins', properties => {
+describe('A13 C-gt: settled from code, RC 6.1, no stored output — resize stores whole dimensions at the same corner', () => {
+  it.each([{ width: 200 }, { height: 200 }, { width: 200, height: 400 }])('non-stretch star %j stays square, width wins (our note, open with lane R)', properties => {
     const w = withItems(elementItem('sticker-star')), r = edit(w, properties);
     expect(r.success, json(r)).toBe(true); expect(drawnSize(itemOf(w.doc, 'target'))).toEqual({ width: 200, height: 200 });
     expect(itemOf(w.doc, 'target').properties.positionX).toEqual(prop(37)); expect(itemOf(w.doc, 'target').properties.positionY).toEqual(prop(83));
+    // This prose is our note, open with lane R; the width-priority geometry itself is settled in RC 6.1.
     if ('width' in properties && 'height' in properties) expectElementNote(r, 'sticker-star', /proportion|aspect/i);
   });
   it('stretch sets both dimensions independently', () => {
@@ -229,9 +230,22 @@ describe('editProperties element size: proportion, width priority, stretch and t
   });
   it.each(['width', 'height'])('text-slot %s resize keeps element origin (37,83), not the old text-slot origin', key => {
     const w = withItems(elementItem('label-tag')), r = edit(w, { [key]: key === 'width' ? 360 : 120 });
-    // Whole element 720×240 -> 360×120 at (37,83); slot 60/720,40/240,600/720,160/240 -> (67,103,300,80).
+    // RC 6.1: 720×240 ->360×120; the text item stores the WHOLE element box, not local slot (30,20,300,80).
     expect(r.success, json(r)).toBe(true);
-    expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ positionX: 67, positionY: 103, width: 300, height: 80 }));
+    expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ positionX: 37, positionY: 83, width: 360, height: 120 }));
+  });
+  it('an image resize changes stored width/height without touching its existing scale', () => {
+    const item = elementItem('sticker-star'); item.properties.scale = prop(2); const w = withItems(item), r = edit(w, { width: 200 });
+    expect(r.success, json(r)).toBe(true);
+    expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ positionX: 37, positionY: 83, width: 200, height: 200, scale: 2 }));
+  });
+  it('a media-slot layout resize stores the new whole box and keeps the corner', () => {
+    const w = withItems(elementItem('phone-frame')), r = edit(w, { width: 270 });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ positionX: 37, positionY: 83, width: 270, height: 540 }));
+  });
+  it.each([{ width: 300 }, { height: 75 }])('stretch resize changes only the given side %j', dimensions => {
+    const w = withItems(elementItem('underline-scribble')), r = edit(w, dimensions); expect(r.success, json(r)).toBe(true);
+    expect(itemOf(w.doc, 'target').properties).toMatchObject(stored({ width: dimensions.width ?? 800, height: dimensions.height ?? 120, positionX: 37, positionY: 83 }));
   });
   for (const key of ['width', 'height']) it.each([0, -1, NaN, Infinity, -Infinity])(`${key} %s refuses INVALID_PROPERTY_VALUE without changes`, value => {
     const w = withItems(elementItem('sticker-star')), before = json(w.doc), r = edit(w, { [key]: value });
@@ -245,6 +259,14 @@ describe('editProperties element size: proportion, width priority, stretch and t
     const batch = withItems(elementItem('sticker-star'), ordinary), result = edit(batch, { width: 200 }, ['target', 'ordinary']);
     expect(result.success, json(result)).toBe(true); expect(drawnSize(itemOf(batch.doc, 'target'))).toEqual({ width: 200, height: 200 });
     expect(itemOf(batch.doc, 'ordinary').properties).toMatchObject(stored({ width: 200, height: 100 }));
+  });
+});
+
+describe('text-slot refit integration checkpoint', () => {
+  it('refit not wired yet, open with lane R', () => {
+    const w = withItems(elementItem('label-tag')), before = itemOf(w.doc, 'target').properties.fontSize;
+    const r = edit(w, { text: 'A long line that will need to wrap. '.repeat(30) });
+    expect(r.success, json(r)).toBe(true); expect(itemOf(w.doc, 'target').properties.fontSize).toEqual(before);
   });
 });
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T22 step 2: pure element placement and the authored element / sound catalogues.
-// Oracle: findings part 2 §33, T22 notes' Step 2 maths table and record shapes (R-1..R-4), plan A13/A15/S3,
-// and error-code rows 105/108/112. C-gt: expected numbers below use those formulas and authored data only,
+// A13/A15 oracle: C-gt: settled from code, RC 6.1, no stored output. This replaces the old R-1..R-3 readings.
+// Error-code rows 105/108/112 remain the refusal oracle. Expected numbers use local RC 6.1 arithmetic and authored data only,
 // never placement(), placeElement() or another helper from catalogue/place.ts. Documents and options store ms.
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -41,6 +41,7 @@ function expectCommandError(run: () => unknown, code: string, message: string) {
 }
 
 // Worked A15 rectangles, as (x, y, width, height); label-tag's slot height is 160/240 = 2/3.
+// RC 6.1 rounding leaves these 12 integer rectangles unchanged; every image/text now stores this whole box, scale 1.
 //  1 star, portrait, no bounds: s=min(648/512,768/512)=1.265625 -> (216,636,648,648); no font.
 //  2 star, portrait, bounds: s=min(360/512,240/512)=0.46875 -> (37,83,240,240); no font.
 //  3 star, landscape, no bounds: s=min(1152/512,432/512)=0.84375 -> (744,324,432,432); no font.
@@ -59,15 +60,15 @@ const A15_ELEMENTS = [
   { id: 'phone-frame', type: 'layout', width: 540, height: 1080 },
 ] as const;
 
-describe('A15: §33 placement and stored item, 3 elements × bounds/no bounds × 2 canvases', () => {
+describe('A15 C-gt: settled from code, RC 6.1, no stored output — 3 elements × bounds/no bounds × 2 canvases', () => {
   for (const spec of A15_ELEMENTS) for (const canvas of [PORTRAIT, LANDSCAPE]) for (const bounded of [false, true]) {
     it(`${spec.id}, ${canvas.width} × ${canvas.height}, ${bounded ? 'with' : 'without'} bounds`, () => {
       const e = element(spec.id), opts: PlaceOptions = bounded ? { bounds: BOUNDS } : {};
       expect([e.width, e.height]).toEqual([spec.width, spec.height]);
-      // §33: fit the supplied positive sides, else fit 60% W × 40% H; R-1: bounds use their top-left.
+      // RC 6.1: bounds stay fractional at their origin; without bounds round size, then each centred corner separately.
       const s = bounded ? Math.min(360 / e.width, 240 / e.height) : Math.min(0.6 * canvas.width / e.width, 0.4 * canvas.height / e.height);
-      const width = e.width * s, height = e.height * s;
-      const rect = { x: bounded ? 37 : (canvas.width - width) / 2, y: bounded ? 83 : (canvas.height - height) / 2, width, height };
+      const width = bounded ? e.width * s : Math.round(e.width * s), height = bounded ? e.height * s : Math.round(e.height * s);
+      const rect = { x: bounded ? 37 : Math.round((canvas.width - width) / 2), y: bounded ? 83 : Math.round((canvas.height - height) / 2), width, height };
       const got = placement(e, canvas, opts);
       expect(got).toMatchObject({ type: spec.type, rect, stretched: false, display: { from: 0, to: 3000 } });
       expect(got.rect).toEqual(rect);
@@ -76,18 +77,18 @@ describe('A15: §33 placement and stored item, 3 elements × bounds/no bounds ×
 
       if (spec.type === 'image') {
         expect(got.text).toBeUndefined(); expect(got.cells).toBeUndefined();
-        expect(item.properties).toEqual(stored({ width: e.width, height: e.height, scale: s, positionX: rect.x, positionY: rect.y }));
+        expect(item.properties).toEqual(stored({ width, height, scale: 1, positionX: rect.x, positionY: rect.y }));
         expect(item.details.element).toEqual({ id: e.id, palette: e.palette });
         expect(item).toMatchObject({ playbackRate: 1, details: { name: 'Placed element' }, masks: [], effects: [] });
       } else if (spec.type === 'text') {
         const slot = textSlot(e);
         expect(slot.box).toEqual({ x: 60 / 720, y: 40 / 240, width: 600 / 720, height: 160 / 240 });
         expect(slot).toMatchObject({ fontFamily: 'Manrope', fontWeight: 700 });
-        const box = { x: rect.x + slot.box.x * width, y: rect.y + slot.box.y * height, width: slot.box.width * width, height: slot.box.height * height };
         const fontSize = Math.min(48, Math.max(8, Math.round(height * slot.box.height * 0.55)));
-        expect(got.text).toEqual({ box, fontSize, color: '#111111', textAlign: 'center', fontFamily: slot.fontFamily, fontWeight: slot.fontWeight });
+        expect(got.text).toEqual({ fontSize, color: '#111111', textAlign: 'center', fontFamily: slot.fontFamily, fontWeight: slot.fontWeight });
+        expect(got.text).not.toHaveProperty('box');
         expect(got.cells).toBeUndefined();
-        expect(item.properties).toMatchObject(stored({ positionX: box.x, positionY: box.y, width: box.width, height: box.height,
+        expect(item.properties).toMatchObject(stored({ positionX: rect.x, positionY: rect.y, width, height,
           fontSize, fontWeight: slot.fontWeight, color: '#111111', textAlign: 'center' }));
         expect(item.details.text).toBe('');
         expect(item.details.element).toEqual({ id: e.id, palette: e.palette, slot: 'text' });
@@ -97,12 +98,49 @@ describe('A15: §33 placement and stored item, 3 elements × bounds/no bounds ×
         expect(got.cells).toEqual(openings); expect(got.text).toBeUndefined();
         expect(item.properties).toEqual(stored({ positionX: rect.x, positionY: rect.y, width, height, scale: 1, rotation: 0, opacity: 1 }));
         expect(item.details.element).toEqual({ id: e.id, palette: e.palette, slot: 'media' });
+        expect(item.details).toMatchObject({ layoutType: 'element', gap: 0, borderRadius: 0 });
         const cells = item.details.cells as Cell[];
         expect(cells).toHaveLength(openings.length);
         cells.forEach((cell, k) => expect(cell).toMatchObject({ bounds: openings[k], ...CELL_DEFAULTS }));
       }
     });
   }
+});
+
+describe('A13/A15 C-gt: settled from code, RC 6.1, no stored output — lane R examples and independent rounding', () => {
+  const example = (text: boolean): CatalogueElement => ({ id: 'rc-test-only', name: 'RC test-only element', group: 'sticker', file: 'test-only-not-vendored.svg', width: 400, height: 200, palette: [],
+    ...(text ? { slot: { kind: 'text' as const, box: { x: 0, y: 0, width: 1, height: 0.5 }, fontFamily: 'Roboto', fontWeight: 700 } } : {}) });
+  const cases = [
+    { label: 'bounds: min(300/400,300/200)=.75', canvas: LANDSCAPE, bounds: { x: 100, y: 50, width: 300, height: 300 }, rect: { x: 100, y: 50, width: 300, height: 150 }, font: 41 },
+    { label: 'landscape: min(1152/400,432/200)=2.16', canvas: LANDSCAPE, bounds: undefined, rect: { x: 528, y: 324, width: 864, height: 432 }, font: 48 },
+    { label: 'portrait: min(648/400,768/200)=1.62', canvas: PORTRAIT, bounds: undefined, rect: { x: 216, y: 798, width: 648, height: 324 }, font: 48 },
+  ];
+  for (const text of [false, true]) it.each(cases)(`${text ? 'text slot' : 'plain image'}: $label`, ({ canvas, bounds, rect, font }) => {
+    const e = example(text), actual = placement(e, canvas, { bounds });
+    expect(actual).toMatchObject({ type: text ? 'text' : 'image', rect, stretched: false });
+    const item = placeElement(e, canvas, { bounds, trackId: TRACK, assetId: ASSET });
+    expect(item.properties).toMatchObject(stored({ positionX: rect.x, positionY: rect.y, width: rect.width, height: rect.height, scale: 1 }));
+    if (text) {
+      // 150*.5*.55=41.25 ->41; 432*.5*.55=118.8 ->48; 324*.5*.55=89.1 ->48.
+      const expectedFont = Math.min(48, Math.max(8, Math.round(rect.height * 0.5 * 0.55)));
+      expect(expectedFont).toBe(font); expect(actual.text?.fontSize).toBe(expectedFont); expect(actual.text).not.toHaveProperty('box');
+      expect(item.properties.fontSize).toEqual({ defaultValue: expectedFont, keyframes: [] });
+    }
+  });
+  it.each([
+    { label: 'portrait fractional width and odd x leftover', canvas: PORTRAIT, width: 317, height: 1000, rect: { x: 419, y: 576, width: 243, height: 768 } },
+    { label: 'landscape fractional width and odd x leftover', canvas: LANDSCAPE, width: 317, height: 1000, rect: { x: 892, y: 324, width: 137, height: 432 } },
+    { label: 'portrait fractional height and odd y leftover', canvas: PORTRAIT, width: 1000, height: 317, rect: { x: 216, y: 858, width: 648, height: 205 } },
+    { label: 'landscape fractional height and odd y leftover', canvas: LANDSCAPE, width: 1000, height: 317, rect: { x: 384, y: 358, width: 1152, height: 365 } },
+  ])('$label', ({ canvas, width, height, rect }) => {
+    const e = { ...example(false), width, height }, b = Math.min(0.6 * canvas.width / width, 0.4 * canvas.height / height);
+    const w = Math.round(width * b), h = Math.round(height * b);
+    // Tall: widths243.456->243 /136.944->137, x418.5->419 /891.5->892.
+    // Wide: heights205.416->205 /365.184->365, y857.5->858 /357.5->358.
+    expect({ x: Math.round((canvas.width - w) / 2), y: Math.round((canvas.height - h) / 2), width: w, height: h }).toEqual(rect);
+    expect(placement(e, canvas).rect).toEqual(rect);
+    expect(placeElement(e, canvas, { trackId: TRACK, assetId: ASSET }).properties).toEqual(stored({ width: w, height: h, scale: 1, positionX: rect.x, positionY: rect.y }));
+  });
 });
 
 describe('§33 fit / stretch: positive supplied sides only, no rectangle rounding', () => {
@@ -130,8 +168,7 @@ describe('§33 fit / stretch: positive supplied sides only, no rectangle roundin
     const item = placeElement(e, PORTRAIT, { bounds, trackId: TRACK, assetId: ASSET });
     if (id === 'underline-scribble') {
       expect(item.type).toBe('image');
-      expect(item.properties).toEqual(stored({ width: stretched ? width : e.width, height: stretched ? height : e.height,
-        scale: stretched ? 1 : s, positionX: bounds.x, positionY: bounds.y }));
+      expect(item.properties).toEqual(stored({ width, height, scale: 1, positionX: bounds.x, positionY: bounds.y }));
       expect(item.details.element).toEqual({ id: e.id, palette: e.palette, stretch: true });
     }
   });
@@ -179,27 +216,28 @@ describe('§33 time defaults and explicit ms', () => {
   });
 });
 
-describe('A13 / R-3: pieces and multiple media openings survive the record', () => {
-  it('pieces are carried, not placed independently: the whole authored element box is fit and centred', () => {
+describe('A13 C-gt: settled from code, RC 6.1, no stored output — catalogue pieces and media openings', () => {
+  it('catalogue piece boxes fill their natural box; default fitted size and corner round separately', () => {
     const multipart = ELEMENTS.filter(e => e.pieces?.length);
     expect(multipart.length).toBeGreaterThan(0);
     for (const e of multipart) {
-      const s = Math.min(0.6 * 1080 / e.width, 0.4 * 1920 / e.height), width = e.width * s, height = e.height * s;
-      const rect = { x: (1080 - width) / 2, y: (1920 - height) / 2, width, height };
+      const s = Math.min(0.6 * 1080 / e.width, 0.4 * 1920 / e.height), width = Math.round(e.width * s), height = Math.round(e.height * s);
+      const rect = { x: Math.round((1080 - width) / 2), y: Math.round((1920 - height) / 2), width, height };
       expect(placement(e, PORTRAIT).rect).toEqual(rect);
       const item = placeElement(e, PORTRAIT, { trackId: TRACK, assetId: ASSET });
       expect(item.type).toBe('image');
       expect(item.details.element).toEqual({ id: e.id, palette: e.palette, pieces: e.pieces });
-      expect(item.properties).toEqual(stored({ width: e.width, height: e.height, scale: s, positionX: rect.x, positionY: rect.y }));
+      expect(item.properties).toEqual(stored({ width, height, scale: 1, positionX: rect.x, positionY: rect.y }));
     }
   });
-  it('a two-opening media slot keeps opening order and the §33 cell defaults', () => {
+  it('a two-opening media slot keeps opening order, element layout type, zero gap/radius and cell defaults', () => {
     const e = element('split-frame'), openings = mediaSlot(e).openings;
     expect(openings).toHaveLength(2);
     expect(placement(e, PORTRAIT).cells).toEqual(openings);
     const item = placeElement(e, PORTRAIT, { trackId: TRACK, assetId: ASSET });
     expect(item.type).toBe('layout');
     expect(item.details.element).toEqual({ id: e.id, palette: e.palette, slot: 'media' });
+    expect(item.details).toMatchObject({ layoutType: 'element', gap: 0, borderRadius: 0 });
     expect(item.details.cells).toHaveLength(2);
     (item.details.cells as Cell[]).forEach((cell, k) => expect(cell).toMatchObject({ bounds: openings[k], ...CELL_DEFAULTS }));
   });

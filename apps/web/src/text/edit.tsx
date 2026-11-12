@@ -11,6 +11,8 @@ import { usePlayback } from '../render/playback';
 import { dispatch } from '../editor/commands';
 import { select, useView } from '../editor/view';
 import { canvasSpacing, parseGradient, textStyle } from './style';
+import { measureText } from './tools';
+import { textSlot } from '../catalogue/graphic';
 
 const css = (m: Mat) => `matrix(${m.join(', ')})`;
 type Target = { item: RecordData; local: number };
@@ -45,6 +47,9 @@ function Editor({ doc, target, done }: { doc: ProjectDocument; target: Target; d
   const [text, setText] = useState(original), ended = useRef(false), area = useRef<HTMLTextAreaElement>(null), latest = useRef(text);
   latest.current = text;
   const b = itemBox(doc, item, local), s = textStyle(item, local);
+  // T22: a text-slot element is edited in its slot, the text centred vertically as it is drawn (recomputed as it wraps).
+  const slot = textSlot(item, b.W, b.H), r = slot ?? { x: 0, y: 0, W: b.W, H: b.H };
+  const lift = slot ? Math.max(0, (slot.H - measureText({ ...item, details: { ...item.details, text } }, slot.W).height) / 2) : 0;
   const finish = () => {
     if (ended.current) return;
     ended.current = true; done();
@@ -61,8 +66,8 @@ function Editor({ doc, target, done }: { doc: ProjectDocument; target: Target; d
     onChange={e => setText(e.target.value)} onBlur={finish}
     onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); finish(); } }}
     style={{
-      position: 'absolute', left: 0, top: 0, width: b.W, height: b.H, transform: css(boxMatrix(b)), transformOrigin: '0 0', pointerEvents: 'auto',
-      boxSizing: 'border-box', margin: 0, padding: 0, border: 0, outline: '2px solid #38bdf8', resize: 'none', overflow: 'hidden',
+      position: 'absolute', left: r.x, top: r.y, width: r.W, height: r.H, transform: css(boxMatrix(b)), transformOrigin: `${-r.x}px ${-r.y}px`, pointerEvents: 'auto',
+      boxSizing: 'border-box', margin: 0, padding: 0, paddingTop: lift, border: 0, outline: '2px solid #38bdf8', resize: 'none', overflow: 'hidden',
       background: 'rgb(0 0 0 / .55)', color: parseGradient(s.color) ? '#ffffff' : s.color, font: s.font, lineHeight: `${s.pitch}px`,
       textAlign: s.align as 'left', textTransform: s.transform as 'none', letterSpacing: canvasSpacing(s.letterSpacing), wordSpacing: canvasSpacing(s.wordSpacing),
       whiteSpace: 'pre-wrap', overflowWrap: s.wrap === 'normal' ? 'normal' : 'break-word', wordBreak: s.wrap === 'break-all' ? 'break-all' : 'normal',

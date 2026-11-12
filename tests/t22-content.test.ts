@@ -180,7 +180,10 @@ describe('A1/A2: every authored style and built-in MG preset is valid and usable
   });
 });
 
-describe('Lane A 01:36 ruling: the element box is the bounding box of its pieces', () => {
+describe('A13 C-gt: settled from code, RC 6.1, no stored output — pieces drawing is not built because it is unreachable with this catalogue', () => {
+  it('no catalogue element has both pieces and stretch, so spare-space pieces drawing is unreachable', () => {
+    expect(ELEMENTS.filter(element => element.pieces?.length && element.stretch)).toEqual([]);
+  });
   it('every multipart element spans 0..1 on both axes, to 1e-9', () => {
     const multipart = ELEMENTS.filter(element => element.pieces?.length);
     expect(multipart.length).toBeGreaterThan(0);

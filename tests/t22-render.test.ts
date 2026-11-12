@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T22 step 4 A-E: render plans and export preconditions, against the implementer's step-4 written contract and §33.
-// Geometry expectations are local arithmetic over the authored slot fractions, never slotGraphic/elementRect/boxMatrix.
-// R-1..R-3 remain readings, not a live Xapp comparison. Raster pixels are in ui/t22-render.spec.ts.
+// T22 render plans/export: C-gt: settled from code, RC 6.1, no stored output; this replaces R-1..R-3.
+// Geometry expectations are local arithmetic over authored slot fractions, never slotGraphic/textSlot/boxMatrix results.
+// Raster pixels are in ui/t22-render.spec.ts; no value is asserted against a stored output capture.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { framePlan } from '../apps/web/src/render/model';
 import { exportedItems, exportedMedia, precheck } from '../apps/web/src/export/prep';
@@ -9,6 +9,7 @@ import { hasAudioStream } from '../apps/web/src/export/audio';
 import { withCellItems } from '../apps/web/src/timeline/layouts';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import { findElement } from '../apps/web/src/catalogue/elements';
+import { slotGraphic, textSlot } from '../apps/web/src/catalogue/graphic';
 import type { Asset, RecordData } from '../apps/web/src/store/model';
 import type { ProjectStore } from '../apps/web/src/store/database';
 import { assets, build, itemOf, mkItem, mkTrack, resetIds, video } from './t03-fixtures';
@@ -24,12 +25,13 @@ function elementItem(id: string, itemId = 'element'): RecordData {
   const values: RecordData = { positionX: 40, positionY: 70, width: e.width, height: e.height, scale: 1, opacity: 1, rotation: 0 };
   const details: RecordData = { name: e.name, element: { id, palette: structuredClone(e.palette), colors: e.palette.map(p => p.base), ...(text ? { slot: 'text' } : media ? { slot: 'media' } : {}) } };
   if (e.slot?.kind === 'text') {
-    const b = e.slot.box;
-    Object.assign(values, { positionX: 40 + b.x * e.width, positionY: 70 + b.y * e.height, width: b.width * e.width, height: b.height * e.height,
-      fontSize: 48, fontWeight: 700, color: '#111111', textAlign: 'center' });
+    Object.assign(values, { fontSize: 48, fontWeight: 700, color: '#111111', textAlign: 'center' });
     Object.assign(details, { text: 'HI', fontFamily: 'Roboto-Bold', fontFamilyDisplay: 'Roboto' });
-  } else if (e.slot?.kind === 'media') details.cells = e.slot.openings.map((bounds, k) => ({ id: `cell-${k}`, bounds: { ...bounds }, source: null,
-    fillMode: 'fill', panX: 0, panY: 0, zoom: 100, volume: 100, opacity: 100, playbackRate: 1 }));
+  } else if (e.slot?.kind === 'media') {
+    Object.assign(details, { layoutType: 'element', gap: 0, borderRadius: 0 });
+    details.cells = e.slot.openings.map((bounds, k) => ({ id: `cell-${k}`, bounds: { ...bounds }, source: null,
+      fillMode: 'fill', panX: 0, panY: 0, zoom: 100, volume: 100, opacity: 100, playbackRate: 1 }));
+  }
   return mkItem(itemId, 'T', 0, 4000, { type: text ? 'text' : media ? 'layout' : 'image', details, properties: properties(values), metadata: { assetId: `picture-${id}` } });
 }
 const project = (...items: RecordData[]) => build({ tracks: [mkTrack('T', 'video')], items, extra: { size: { width: 1080, height: 1920 } } });
@@ -95,9 +97,9 @@ describe('C: documents without details.element retain one ordered draw per visib
   });
 });
 
-describe('D: slot picture follows its parent, including animated transforms and transitions', () => {
-  it.each(['label-tag', 'phone-frame'])('%s has the specified two draws, ids, alpha/blend/filter and transformed slot anchor', id => {
-    const item = elementItem(id), e = findElement(id)!;
+describe('A13 C-gt: settled from code, RC 6.1, no stored output — slot picture and parent share the whole box', () => {
+  it.each(['label-tag', 'phone-frame'])('%s has two draws with equal animated box/matrix, ids, alpha/blend/filter', id => {
+    const item = elementItem(id);
     item.properties.positionX = prop(0, [{ id: 'x0', time: 0, value: 100, easing: 'linear' }, { id: 'x1', time: 2000, value: 140 }]);
     item.properties.positionY = prop(0, [{ id: 'y0', time: 0, value: 200, easing: 'linear' }, { id: 'y1', time: 2000, value: 260 }]);
     item.properties.scale = prop(1, [{ id: 's0', time: 0, value: 1, easing: 'linear' }, { id: 's1', time: 2000, value: 2 }]);
@@ -107,9 +109,7 @@ describe('D: slot picture follows its parent, including animated transforms and 
     expect(plan.pending).toEqual([]); expect(plan.draws.map(d => d.kind)).toEqual(id === 'label-tag' ? ['image', 'text'] : ['layout', 'image']);
     const picture = plan.draws.find(d => d.kind === 'image')!, parent = plan.draws.find(d => d.kind !== 'image')!;
     expect(plan.draws.map(d => d.item.id)).toEqual([item.id, item.id]); expect(picture.item.metadata.assetId).toBe(item.metadata.assetId);
-    const slot = e.slot?.kind === 'text' ? e.slot.box : { x: 0, y: 0, width: 1, height: 1 };
-    const W = item.properties.width.defaultValue / slot.width, H = item.properties.height.defaultValue / slot.height;
-    near(picture.box.W, W); near(picture.box.H, H);
+    expect(picture.box).toEqual(parent.box); expect(picture.matrix).toEqual(parent.matrix);
     for (const draw of [picture, parent]) {
       near(draw.alpha, 0.5); expect(draw.blend).toBe('multiply'); expect(draw.filter).toBe('blur(2px)');
       near(draw.box.sx, 1.5); near(draw.box.sy, 1.5); near(draw.box.rotation, 30);
@@ -119,8 +119,50 @@ describe('D: slot picture follows its parent, including animated transforms and 
     const w = item.properties.width.defaultValue, h = item.properties.height.defaultValue;
     near(parent.box.W, w); near(parent.box.H, h);
     const anchor = [120 + w * 1.5 / 2 - a * w / 2 - c * h / 2, 230 + h * 1.5 / 2 - b * w / 2 - d * h / 2];
-    const parentPoint = point(parent.matrix, 0, 0), picturePoint = point(picture.matrix, slot.x * W, slot.y * H);
+    const parentPoint = point(parent.matrix, 0, 0), picturePoint = point(picture.matrix, 0, 0);
     for (let k = 0; k < 2; k++) { near(parentPoint[k], anchor[k]); near(picturePoint[k], anchor[k]); }
+  });
+  it.each([{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }])('text-slot geometry is local to the whole fitted box on %j', canvas => {
+    const item = elementItem('label-tag'), b = Math.min(0.6 * canvas.width / 720, 0.4 * canvas.height / 240);
+    const W = Math.round(720 * b), H = Math.round(240 * b);
+    Object.assign(item.properties, properties({ width: W, height: H, positionX: Math.round((canvas.width - W) / 2), positionY: Math.round((canvas.height - H) / 2) }));
+    const doc = project(item); doc.size = canvas;
+    const expected = { x: W * (60 / 720), y: H * (40 / 240), W: W * (600 / 720), H: H * (160 / 240) };
+    expect(textSlot(item, W, H)).toEqual(expected);
+    const parent = framePlan(doc, 1000).draws.find(draw => draw.kind === 'text')!; expect(parent.text!.slot).toEqual(expected);
+  });
+  it('text-slot geometry uses keyframed width/height at the requested frame', () => {
+    const item = elementItem('label-tag');
+    item.properties.width = prop(720, [{ id: 'w0', time: 0, value: 360, easing: 'linear' }, { id: 'w1', time: 2000, value: 720 }]);
+    item.properties.height = prop(240, [{ id: 'h0', time: 0, value: 120, easing: 'linear' }, { id: 'h1', time: 2000, value: 300 }]);
+    const text = framePlan(project(item), 1000).draws.find(draw => draw.kind === 'text')!;
+    expect(text.box.W).toBe(540); expect(text.box.H).toBe(210);
+    expect(text.text!.slot).toEqual({ x: 540 * (60 / 720), y: 210 * (40 / 240), W: 540 * (600 / 720), H: 210 * (160 / 240) });
+  });
+  it('an ordinary text has no text slot, and non-slot metadata produces no extra picture', () => {
+    const item = elementItem('label-tag'); delete item.details.element;
+    expect(textSlot(item, 720, 240)).toBeNull(); expect(slotGraphic(item)).toBeNull();
+    const plan = framePlan(project(item), 1000); expect(plan.draws).toHaveLength(1); expect(plan.draws[0].text).not.toHaveProperty('slot');
+  });
+  it.each(['label-tag', 'phone-frame'])('%s slotGraphic describes a known picture, not a second slot-sized box', id => {
+    const item = elementItem(id), graphic = slotGraphic(item)!;
+    expect(graphic.known).toBe(true); expect(graphic).not.toHaveProperty('box'); expect(graphic.item).toMatchObject({ id: item.id, type: 'image', metadata: { assetId: item.metadata.assetId } });
+  });
+  it.each(['label-tag', 'phone-frame'])('%s picture ignores a stored parent GPU effect but still follows CSS filtering', id => {
+    const item = elementItem(id); item.effects = [{ id: 'stored-gpu', effectId: 'grayscale', enabled: true, order: 0, parameters: { amount: prop(100) } }];
+    const first = framePlan(project(item), 1000), parent = first.draws.find(draw => draw.kind !== 'image')!, picture = first.draws.find(draw => draw.kind === 'image')!;
+    expect(first.pending).toEqual([]); expect(parent.effects.map(effect => effect.effectId)).toEqual(['grayscale']); expect(picture.effects).toEqual([]); expect(picture.path).toBe('direct');
+    item.properties.blur = prop(2); const filtered = framePlan(project(item), 1000).draws;
+    expect(filtered.find(draw => draw.kind === 'image')).toMatchObject({ effects: [], filter: 'blur(2px)', path: 'css' });
+  });
+  it.each(['label-tag', 'phone-frame'])("a slot element's text, cells and picture are not masked: T12 masks video and image items only (%s)", id => {
+    const item = elementItem(id); item.masks = [{ id: 'stored-mask', name: 'Stored mask', enabled: true, order: 0, source: 'shape', mode: 'add', colorIndex: 0,
+      points: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }, { anchor: { x: 100, y: 100 } }], closed: true, feather: 0, expansion: 0, opacity: 100, inverted: false }];
+    if (item.type === 'layout') item.details.cells[0].source = { assetId: 'asset-img1', type: 'image', url: 'asset:asset-img1' };
+    const plan = framePlan(project(item), 1000); expect(plan.pending).toEqual([]); expect(plan.draws).toHaveLength(2);
+    for (const draw of plan.draws) expect(draw).not.toHaveProperty('masks');
+    if (item.type === 'layout') expect(plan.draws.find(draw => draw.kind === 'layout')!.layout!.cells[0].media!.draw).not.toHaveProperty('masks');
+    expect(plan.draws.find(draw => draw.kind === 'image')!.path).toBe('direct');
   });
   it.each(['label-tag', 'phone-frame'])('%s recolour belongs to the picture only; opacity .5 stays .5 on both draws, not grouped', id => {
     const item = elementItem(id); item.details.element.colors[0] = '#00FF00'; item.properties.opacity = prop(0.5);

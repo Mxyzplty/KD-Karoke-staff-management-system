@@ -25,7 +25,7 @@ import { cellItem, cellsOf, LAYOUT_PARITY } from '../timeline/layouts';
 import { activeAt, KINDS, type Active } from '../timeline/transitions';
 import type { Pair } from './transitions';
 import { recolorActive, type RecolorElement } from '../effects/uniforms';
-import { slotGraphic } from '../catalogue/graphic';
+import { slotGraphic, textSlot } from '../catalogue/graphic';
 
 export type Mat = [number, number, number, number, number, number];
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -272,7 +272,8 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
     const style = textStyle(item, local), anim = animationState(item.details?.textAnimation, local, style.text);
     box = animateBox(box, anim.channels); alpha *= anim.channels.o;
     if (!(alpha > 0)) return null;
-    textDraw = { item, style, anim, look: item.details?.look, shadowScale: k };
+    const slot = textSlot(item, box.W, box.H); // T22: a text-slot element lays its text out inside the slot
+    textDraw = { item, style, anim, look: item.details?.look, shadowScale: k, ...slot ? { slot } : {} };
   }
   if (caption) {
     // §57: render modes animate each word; the independently chosen text entrance also animates the whole caption box.
@@ -303,19 +304,17 @@ export function itemDraw(doc: ProjectDocument, item: RecordData, t: number, out:
   return d;
 }
 export const isPending = (d: Draw | Pending): d is Pending => 'owner' in d;
-/** T22 (catalogue/graphic.ts): the picture of a slot element as one image draw beside its item's own draw `d`. It shares
- *  d's alpha, blend, filter, effects and transform (keyframes and the text entrance included): its box is the element box,
- *  placed so that d's box is the slot box inside it. */
+/** T22 (catalogue/graphic.ts): the picture of a slot element as one image draw beside its item's own draw `d`, stretched
+ *  over d's box. It shares d's transform (keyframes and the text entrance included), alpha, blend and CSS filter (a text or layout item holds no masks: T12 masks video and image items).
+ *  Its only effect is the element-colours pass: the item's own effects do not run on it. */
 function slotDraw(d: Draw): Draw | Pending | null {
   const g = slotGraphic(d.item);
   if (!g) return null;
-  if (!g.box) return { itemId: d.item.id, owner: 'T22', what: `Unknown element '${d.item.details.element.id}'` };
-  const W = d.box.W / g.box.width, H = d.box.H / g.box.height, u = -g.box.x * W, v = -g.box.y * H, [e, f] = apply(d.matrix, u, v);
+  if (!g.known) return { itemId: d.item.id, owner: 'T22', what: `Unknown element '${d.item.details.element.id}'` };
   const element = recolorActive(g.item.details.element) ? g.item.details.element as RecolorElement : undefined;
   return {
-    item: g.item, kind: 'image', local: d.local, sourceMs: d.sourceMs, box: { ...d.box, x: d.box.x + u * d.box.sx, y: d.box.y + v * d.box.sy, W, H },
-    matrix: [d.matrix[0], d.matrix[1], d.matrix[2], d.matrix[3], e, f], alpha: d.alpha, blend: d.blend, filter: d.filter, radius: 0, border: null,
-    path: d.filter || d.effects.length || element ? 'css' : 'direct', stackedAlpha: false, effects: d.effects, ...element ? { element } : {},
+    item: g.item, kind: 'image', local: d.local, sourceMs: d.sourceMs, box: d.box, matrix: d.matrix, alpha: d.alpha, blend: d.blend, filter: d.filter, radius: 0, border: null,
+    path: d.filter || element ? 'css' : 'direct', stackedAlpha: false, effects: [], ...element ? { element } : {},
   };
 }
 /** T11: the two draws of a transition pair carry its id, their role and the kind at linear progress p (§55.4). */

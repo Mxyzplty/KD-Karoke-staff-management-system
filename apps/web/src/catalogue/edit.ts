@@ -9,7 +9,8 @@ import { cellsOf, cellSource } from '../timeline/layouts';
 import { fail } from '../timeline/model';
 import { setStatic, staticValue } from '../timeline/properties';
 import { findElement } from './elements';
-import { elementRect } from './place';
+import { measureText } from '../text/tools';
+import { textSlot } from './graphic';
 
 export const isElement = (i: RecordData) => typeof i.details?.element?.id === 'string';
 const SIZE = ['width', 'height'], HEX = /^#[0-9a-f]{6}$/i, NOT_ELEMENT = 'not a built-in element';
@@ -70,7 +71,7 @@ export function editElements(items: RecordData[], props: RecordData, asset: (id:
     }
     if (SIZE.some(k => k in props)) {
       for (const k of SIZE) if (k in props && !(typeof props[k] === 'number' && Number.isFinite(props[k]) && props[k] > 0)) bad(`${k} must be a positive number.`);
-      const now = elementRect(i, el), stretch = data.stretch === true;
+      const now = { width: staticValue(i, 'width') as number, height: staticValue(i, 'height') as number }, stretch = data.stretch === true;
       let { width, height } = now;
       if (stretch) { width = props.width ?? width; height = props.height ?? height; }
       else {
@@ -78,7 +79,7 @@ export function editElements(items: RecordData[], props: RecordData, asset: (id:
         width *= s; height *= s;
         if ('width' in props && 'height' in props && Math.abs(height - props.height) > 1e-6) notes.push(`${name} keeps its proportions: it is now ${+width.toFixed(2)} × ${+height.toFixed(2)} (the width was used).`);
       }
-      resize(i, el, now, { ...now, width, height }, stretch);
+      setStatic(i, 'width', width); setStatic(i, 'height', height);
       applied.width = width; applied.height = height;
     }
     results.push({ itemId: i.id, applied, ...(Object.keys(ignored).length ? { ignored } : {}) });
@@ -86,18 +87,17 @@ export function editElements(items: RecordData[], props: RecordData, asset: (id:
   return { results, notes };
 }
 
-/** Writes a new element box (same top-left corner) to the item that holds it. */
-function resize(i: RecordData, el: ReturnType<typeof findElement>, from: { x: number; y: number; width: number; height: number }, to: typeof from, stretch: boolean) {
-  if (i.type === 'image') {
-    if (stretch) { setStatic(i, 'width', to.width); setStatic(i, 'height', to.height); setStatic(i, 'scale', 1); }
-    else setStatic(i, 'scale', (staticValue(i, 'scale') as number) * to.width / from.width);
-    return;
-  }
-  if (i.type === 'text') {
-    const box = el?.slot?.kind === 'text' ? el.slot.box : { x: 0, y: 0, width: 1, height: 1 };
-    setStatic(i, 'positionX', to.x + box.x * to.width); setStatic(i, 'positionY', to.y + box.y * to.height);
-    setStatic(i, 'width', box.width * to.width); setStatic(i, 'height', box.height * to.height);
-    return;
-  }
-  setStatic(i, 'width', to.width); setStatic(i, 'height', to.height);
+/** The font-size limits of a text slot's refit; the 48 of the insert does not apply. */
+export const REFIT = { min: 8, max: 400 } as const;
+/** Refits the font size of a text-slot element item to its slot (reference compares part 6 §6.1 point 2): the largest whole
+ *  size from 8 to min(400, floor(slot height)) at which the text, wrapped at the slot width, is no higher than the slot; 8
+ *  when none fits. Writes it and returns it. null = nothing done: not a text-slot element, or no text yet (the insert's
+ *  size holds while the text is empty). */
+export function refitSlotText(i: RecordData): number | null {
+  const slot = i.type === 'text' ? textSlot(i, staticValue(i, 'width') as number, staticValue(i, 'height') as number) : null;
+  if (!slot || typeof i.details?.text !== 'string' || !i.details.text) return null;
+  let size = Math.min(REFIT.max, Math.floor(slot.H));
+  for (; size > REFIT.min; size--) { setStatic(i, 'fontSize', size); if (measureText(i, slot.W).height <= slot.H) return size; }
+  setStatic(i, 'fontSize', REFIT.min);
+  return REFIT.min;
 }

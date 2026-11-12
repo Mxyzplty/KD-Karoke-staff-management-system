@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T22 element placement (findings part 2 §33): the item an element becomes and where it sits. A text slot gives a text
-// item (font size = clamp(8…48, round(element height × slot height × 0.55)), #111111 / centre by default), a media slot a
-// layout item whose cells are the openings, anything else an image item. Given bounds → scaled to fit, or stretched when
-// the element allows it and both sides are given; no bounds → fitted into 60 % of the canvas width × 40 % of its height,
-// centred. Times in ms; duration default 3 s. Pure.
+// T22 element placement (findings part 2 §33; the points §33 leaves open are settled from Xapp's code, reference compares
+// part 6 §6.1, with no stored output behind them). A text slot gives a text item (font size = clamp(8…48, round(box height
+// × slot height × 0.55)), #111111 / centre by default), a media slot a layout item whose cells are the openings, anything
+// else an image item. Every item's box is the whole element box, at scale 1. Given bounds → scaled to fit with the top-left
+// corner at the bounds origin and nothing rounded, or stretched when the element allows it and both sides are given; no
+// bounds → fitted into 60 % of the canvas width × 40 % of its height and centred, the four values rounded one by one.
+// Times in ms; duration default 3 s. Pure.
 import type { RecordData } from '../store/model';
 import { fontDetails, textRecord } from '../text/tools';
 import { newCell } from '../timeline/layouts';
 import { fail, fmt, newId } from '../timeline/model';
-import { staticValue, storedProperties } from '../timeline/properties';
+import { storedProperties } from '../timeline/properties';
 import type { CatalogueElement, Frac } from './elements';
 
 /** A box in canvas px. */
@@ -20,7 +22,7 @@ export interface Placement {
   rect: Box;
   stretched: boolean;
   display: { from: number; to: number };
-  text?: { box: Box; fontSize: number; color: string; textAlign: string; fontFamily: string; fontWeight: number };
+  text?: { fontSize: number; color: string; textAlign: string; fontFamily: string; fontWeight: number };
   cells?: Frac[];
 }
 export const ELEMENT_MS = 3000, ELEMENT_FIT = { width: 0.6, height: 0.4 };
@@ -30,12 +32,13 @@ export const elementItemType = (el: CatalogueElement): Placement['type'] => el.s
 /** A bounds side that constrains the fit. Infinity does not (as in T03's fitProperties, where min() drops it); bounds
  *  whose only side is Infinity are refused here, where T03 would store a non-finite scale. */
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
-// ---- The three readings of §33 its text does not settle (notes R-1..R-3; open question C-6). One place each.
-/** R-1: a fitted element sits with its top-left corner at the bounds origin (as T03's fitProperties puts media). */
+// ---- Three points §33's text does not settle (notes R-1..R-3), settled from code in part 6 §6.1. One place each.
+/** R-1: a fitted element sits with its top-left corner at the bounds origin; the spare room is right or below. */
 const fittedOrigin = (bounds: { x: number; y: number }) => ({ x: bounds.x, y: bounds.y });
-/** R-2: "element height × slot height" is the placed element height in canvas px times the slot box's share of it. */
+/** R-2: the height is the box height after fitting, in canvas px, times the slot's share of it. Holds for the empty insert. */
 const slotFontSize = (rect: Box, slot: Frac) => Math.min(48, Math.max(8, Math.round(rect.height * slot.height * 0.55)));
-/** R-3: the box that is placed is the element's own width × height, which is the bounding box of its pieces. */
+/** R-3: the natural size is the bounding box of the pieces. In every element of ours that box is the whole element
+ *  (tests/t22-content), so it is the element's own width × height. */
 const elementSize = (el: CatalogueElement) => ({ width: el.width, height: el.height });
 
 export function placement(el: CatalogueElement, canvas: { width: number; height: number }, opts: PlaceOptions = {}): Placement {
@@ -54,47 +57,37 @@ export function placement(el: CatalogueElement, canvas: { width: number; height:
     }
   } else {
     const s = Math.min(ELEMENT_FIT.width * canvas.width / size.width, ELEMENT_FIT.height * canvas.height / size.height);
-    rect = { x: (canvas.width - size.width * s) / 2, y: (canvas.height - size.height * s) / 2, width: size.width * s, height: size.height * s };
+    const width = Math.round(size.width * s), height = Math.round(size.height * s);
+    rect = { x: Math.round((canvas.width - width) / 2), y: Math.round((canvas.height - height) / 2), width, height };
   }
   const out: Placement = { type: elementItemType(el), rect, stretched, display: { from, to: from + length } };
   if (el.slot?.kind === 'text') {
-    const sl = el.slot, box = sl.box;
-    out.text = { box: { x: rect.x + box.x * rect.width, y: rect.y + box.y * rect.height, width: box.width * rect.width, height: box.height * rect.height },
-      fontSize: slotFontSize(rect, box), color: sl.color ?? '#111111', textAlign: sl.textAlign ?? 'center',
-      fontFamily: sl.fontFamily, fontWeight: sl.fontWeight };
+    const sl = el.slot;
+    out.text = { fontSize: slotFontSize(rect, sl.box), color: sl.color ?? '#111111', textAlign: sl.textAlign ?? 'center', fontFamily: sl.fontFamily, fontWeight: sl.fontWeight };
   }
   if (el.slot?.kind === 'media') out.cells = el.slot.openings.map(o => ({ ...o }));
   return out;
 }
 
-/** The element box of a placed element item, in canvas px (the text item of a text slot holds only the slot box). */
-export function elementRect(i: RecordData, el?: CatalogueElement): Box {
-  const v = (k: string) => staticValue(i, k) as number;
-  if (i.type === 'image') return { x: v('positionX'), y: v('positionY'), width: v('width') * v('scale'), height: v('height') * v('scale') };
-  if (i.type !== 'text' || el?.slot?.kind !== 'text') return { x: v('positionX'), y: v('positionY'), width: v('width'), height: v('height') };
-  const box = el.slot.box, width = v('width') / box.width, height = v('height') / box.height;
-  return { x: v('positionX') - box.x * width, y: v('positionY') - box.y * height, width, height };
-}
-
-/** The stored item of one placed element. */
+/** The stored item of one placed element. Its box is the element box: a text item lays its text out inside the slot
+ *  (catalogue/graphic.ts textSlot), a layout item is of type `element` with no gap and square corners. */
 export function placeElement(el: CatalogueElement, canvas: { width: number; height: number }, opts: PlaceOptions & { trackId: string; assetId: string; name?: string }): RecordData {
   const p = placement(el, canvas, opts), { rect } = p, palette = el.palette.map(e => ({ ...e }));
   if (p.type === 'text') {
     const t = p.text!;
     const record = textRecord({ text: '', trackId: opts.trackId, display: p.display, details: { ...fontDetails(t.fontFamily, t.fontWeight), element: { id: el.id, palette, slot: 'text' } },
-      properties: { positionX: t.box.x, positionY: t.box.y, width: t.box.width, height: t.box.height, fontSize: t.fontSize, fontWeight: t.fontWeight, color: t.color, textAlign: t.textAlign } });
+      properties: { positionX: rect.x, positionY: rect.y, width: rect.width, height: rect.height, fontSize: t.fontSize, fontWeight: t.fontWeight, color: t.color, textAlign: t.textAlign } });
     record.metadata = { assetId: opts.assetId };
     return record;
   }
   if (p.type === 'layout')
-    return { id: newId('item'), type: 'layout', trackId: opts.trackId, display: p.display, details: { cells: p.cells!.map(newCell), element: { id: el.id, palette, slot: 'media' } },
+    return { id: newId('item'), type: 'layout', trackId: opts.trackId, display: p.display, details: { layoutType: 'element', gap: 0, borderRadius: 0, cells: p.cells!.map(newCell), element: { id: el.id, palette, slot: 'media' } },
       metadata: { assetId: opts.assetId },
       properties: storedProperties({ positionX: rect.x, positionY: rect.y, width: rect.width, height: rect.height, scale: 1, rotation: 0, opacity: 1 }) };
   const element: RecordData = { id: el.id, palette };
   if (el.pieces) element.pieces = el.pieces.map(x => ({ ...x }));
   if (el.stretch) element.stretch = true;
   return { id: newId('item'), type: 'image', trackId: opts.trackId, display: p.display, playbackRate: 1, details: { name: opts.name ?? el.name, element }, metadata: { assetId: opts.assetId },
-    properties: storedProperties(p.stretched ? { width: rect.width, height: rect.height, scale: 1, positionX: rect.x, positionY: rect.y }
-      : { width: el.width, height: el.height, scale: rect.width / el.width, positionX: rect.x, positionY: rect.y }),
+    properties: storedProperties({ width: rect.width, height: rect.height, scale: 1, positionX: rect.x, positionY: rect.y }),
     masks: [], effects: [] };
 }
