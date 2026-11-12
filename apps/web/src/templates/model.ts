@@ -31,6 +31,11 @@ export type Template = {
 export const TEMPLATE_VERSION = 1, BUILT_IN_FAMILY = 'Cutframe', PERSONAL_FAMILY = 'Personal';
 /** The document key new items read (plan P3). */
 export type TemplateDefaults = FontDefaults & { templateId: string; epoch: number; palette: Swatch[] };
+/** A bound project's default font for new titles or captions (plan P4), or undefined in a project without a template. */
+export const defaultFont = (doc: Record<string, unknown>, key: 'titlesFont' | 'captionsFont'): string | undefined => {
+  const name = (doc.templateDefaults as RecordData | undefined)?.[key];
+  return typeof name === 'string' && name.trim() ? name : undefined;
+};
 export const defaultsOf = (t: Template, epoch: number): TemplateDefaults => ({ templateId: t.id, epoch, ...t.defaults, palette: t.palette.map(s => ({ ...s })) });
 
 const KEYS = ['id', 'name', 'family', 'author', 'palette', 'examples', 'assets', 'defaults', 'captionTemplateId', 'presetIds', 'guidance', 'learning', 'preferences', 'version', 'savedAt', 'basedOn'];

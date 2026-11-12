@@ -13,6 +13,7 @@ import { storedProperties } from '../timeline/properties';
 import type { ToolContext, ToolResult } from '../timeline/tools';
 import { checkAnimation } from './animation';
 import { findFont, resolveFont } from './font-registry';
+import { defaultFont } from '../templates/model';
 import { checkLook, lookFallbacks } from './looks';
 import { measureContext, measuredSize } from './measure';
 import { checkTextProperty, fontNotFoundText, writeFont } from './properties';
@@ -42,6 +43,9 @@ export const fontDetails = (name: string, weight?: unknown, style?: unknown): Re
 /** The measured size of a record's text at wrap width W (item-local 0 ms). */
 export const measureText = (record: RecordData, W: number) => measuredSize(measureContext(), textStyle(record, 0), W);
 
+/** T22: the bound template's titles font when this browser has it, else undefined (today's default applies). */
+const templateTitlesFont = (doc: ProjectDocument): string | undefined => { const f = defaultFont(doc, 'titlesFont'); return f && findFont(f) ? f : undefined; };
+
 // ---- The UI's Add text (W3-ED-22): an empty overlay track (the lowest unlocked one), else a new overlay track on top; 0 s.
 export function presetTrack(doc: ProjectDocument): string {
   const empty = stack(doc).filter(id => track(doc, id)!.kind === 'overlay' && !trackLocked(doc, id) && !itemsOn(doc, id).length);
@@ -54,6 +58,9 @@ export function addTextPreset(doc: ProjectDocument, text = ADD_TEXT.text, at?: {
   const from = at ? Math.max(0, Math.round(at.timeMs)) : 0, display = { from, to: from + ADD_TEXT.durationMs };
   const record = textRecord({ text, trackId: '', display, details: fontDetails(ADD_TEXT.family, ADD_TEXT.weight),
     properties: { fontSize: ADD_TEXT.fontSize, fontWeight: ADD_TEXT.weight, color: ADD_TEXT.color, textAlign: ADD_TEXT.textAlign, wordWrap: ADD_TEXT.wordWrap, borderWidth: 0, borderColor: '#000000' } });
+  // T22 (plan P4): in a project bound to a template, a new title takes the template's titles font.
+  const titles = templateTitlesFont(doc);
+  if (titles) writeFont(record, { fontFamily: titles });
   const size = projectSize(doc), m = measureText(record, Infinity), width = Math.ceil(m.width), height = Math.round(m.height);
   Object.assign(record.properties, storedProperties({ positionX: Math.round((size.width - width) / 2), positionY: Math.round((size.height - height) / 2), width, height }));
   const dropTrack = at?.trackId ? track(doc, at.trackId) : undefined;
@@ -102,7 +109,7 @@ export function addTextIn(doc: ProjectDocument, args: RecordData): ToolResult {
   for (const k of ['fontSize', 'color', 'backgroundColor']) if (args[k] !== undefined) { checkTextProperty({ type: 'text' }, k, args[k]); style[k] = args[k]; }
   // A look's plain fallbacks first; explicit fields of the call win (§34).
   const fb = look ? lookFallbacks(look, fontSizePx(fontSize)) : null;
-  const font = args.font ?? fb?.details.fontFamily;
+  const font = args.font ?? fb?.details.fontFamily ?? templateTitlesFont(doc);
   const W = b ? b.width : args.maxWidth ?? Math.round(size.width * AGENT_TEXT.widthShare);
   const record = textRecord({ text, trackId: '', display: { from: 0, to: length }, properties: { ...fb?.properties, ...style, width: W },
     details: { ...look ? { look } : {}, ...animation ? { textAnimation: animation } : {} } });

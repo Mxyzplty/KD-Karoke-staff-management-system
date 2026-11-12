@@ -17,6 +17,7 @@ import type { CaptionStyleRecord } from './model';
 import { editAllCaptionStyles as editAllOnTrack } from './properties';
 import { AGENT_STYLE, findTemplate, PANEL_STYLE, templateOptions, templateStyle, TEMPLATES } from './templates';
 import type { StyleSpec } from './templates';
+import { defaultFont } from '../templates/model';
 
 type Handler = (ctx: ToolContext, args: RecordData) => ToolResult;
 /** No transcripts loaded (the sync UI path, or the agent path before prep): every asset reads as never analysed. */
@@ -31,15 +32,24 @@ const BUTTON = { speech: 'speech', music: 'lyrics', all: 'all' } as const;
  *  only its Voiceover button captions them, so the panel never passes `all`. */
 const PANEL_BUTTONS: readonly string[] = ['speech', 'video', 'voiceover', 'lyrics', 'all'];
 
+/** The base look without a caption template. T22 (plan P4, ruling OQ-1): in a project bound to a project template, it takes
+ *  the template's captions font when this browser has it (an explicit font, or a chosen caption template, still wins). */
+function baseStyle(doc: ProjectDocument, fromPanel: boolean): StyleSpec {
+  const base: StyleSpec = { ...(fromPanel ? PANEL_STYLE : AGENT_STYLE) }, m = findFont(defaultFont(doc, 'captionsFont') ?? '');
+  if (!m) return base;
+  base.family = m.entry.family;
+  if (m.variant) { base.fontWeight = String(m.variant.weight); base.fontStyle = m.variant.italic ? 'italic' : 'normal'; }
+  return base;
+}
 /** The look addCaptions writes: the template (if any) with the agent's style fields on top, else AGENT_STYLE with them.
  *  Validates `font` against the registry (FONT_UNAVAILABLE). Returns the spec, or null when no style argument is given. */
-function styleFrom(args: RecordData, size: { width: number; height: number }, fromPanel = false): StyleSpec | null {
+function styleFrom(doc: ProjectDocument, args: RecordData, size: { width: number; height: number }, fromPanel = false): StyleSpec | null {
   const t = args.templateId !== undefined ? findTemplate(args.templateId) : undefined;
   if (args.templateId !== undefined && !t) fail('CAPTION_TEMPLATE_NOT_FOUND', 'Caption template not found', { message: `No caption template '${String(args.templateId)}'. Call listCaptionTemplates for the available ids.` });
   const given = ['font', 'fontFamily', 'fontWeight', 'fontStyle', 'fontSize', 'color', 'backgroundColor', 'textDecoration', 'borderColor', 'borderWidth', 'boxShadow'].some(k => args[k] !== undefined);
   if (!t && !given) return null;
   // The panel's Size / Stroke build on the manual default (PANEL_STYLE, §46.5); the agent's style fields build on AGENT_STYLE.
-  const spec: StyleSpec = t ? templateStyle(t, size) : { ...(fromPanel ? PANEL_STYLE : AGENT_STYLE) };
+  const spec: StyleSpec = t ? templateStyle(t, size) : baseStyle(doc, fromPanel);
   if (args.font !== undefined) {
     const m = typeof args.font === 'string' ? findFont(args.font) : null;
     if (!m) fail('FONT_UNAVAILABLE', 'Font not available', { message: `Font '${String(args.font)}' is not available. Call the fonts tool for the fonts you can use, or omit font for the default.` });
@@ -82,7 +92,7 @@ export function addCaptionsIn(doc: ProjectDocument, args: RecordData, data: (ass
       if (t.kind !== 'caption') fail('INVALID_TRACK', `Track '${args.trackId}' is not a caption track`, { message: `addCaptions targets a caption track, but '${args.trackId}' is a ${t.kind} track.` });
     }
   }
-  const template = args.templateId !== undefined ? findTemplate(args.templateId) : undefined, spec = styleFrom(args, size, fromPanel);
+  const template = args.templateId !== undefined ? findTemplate(args.templateId) : undefined, spec = styleFrom(doc, args, size, fromPanel);
   const chunk = { ...(template ? templateOptions(template, size) : CHUNK_DEFAULTS) };
   if (!template && num(args.maxWords)) chunk.maxWords = args.maxWords;
   if (!template && num(args.maxCharacters)) chunk.maxCharacters = args.maxCharacters;
@@ -95,7 +105,7 @@ export function addCaptionsIn(doc: ProjectDocument, args: RecordData, data: (ass
     ? (typeof args.source === 'string' && PANEL_BUTTONS.includes(args.source) ? args.source as SourceButton : 'speech')
     : (typeof args.source === 'string' && args.source in BUTTON ? BUTTON[args.source as keyof typeof BUTTON] : 'speech');
   // The panel's manual-caption default is Open Sans Regular (§46.5); the agent's no-style default is Roboto Bold (G-18, §12).
-  const fallback: CaptionStyleRecord = bindingStyle(fromPanel ? PANEL_STYLE : AGENT_STYLE, size.height);
+  const fallback: CaptionStyleRecord = bindingStyle(baseStyle(doc, fromPanel), size.height);
   const o = {
     button, sourceItems: Array.isArray(args.sourceItems) ? args.sourceItems.map(String) : undefined, range, split,
     trackId: split ? undefined : (typeof args.trackId === 'string' && args.trackId ? args.trackId : undefined),

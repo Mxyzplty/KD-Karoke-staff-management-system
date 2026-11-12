@@ -10,13 +10,18 @@ import { bundledFile } from '../catalogue/assets';
 import { mediaKind } from '../media/files';
 import { sha256Blob } from '../media/sha256';
 import type { ProjectStore } from '../store/database';
-import type { RecordData } from '../store/model';
+import type { Asset, ProjectDocument, RecordData } from '../store/model';
+import { PANEL_STYLE } from '../captions/templates';
+import { ADD_TEXT } from '../text/tools';
+import { staticValue } from '../timeline/properties';
 import { addUserFont, findFont, fontNames, MAX_FONT_BYTES, removeUserFont, userBlob, userFonts } from '../text/font-registry';
 import { DEFAULT_FILES, DEFAULT_TEMPLATE } from './default';
 import { templateError } from './errors';
-import { refKind, templateProblem, templateRefs, TEMPLATE_VERSION, type Template } from './model';
+import { PERSONAL_FAMILY, refKind, templateProblem, templateRefs, TEMPLATE_VERSION, type FontDefaults, type Swatch, type Template, type TemplateDefaults } from './model';
 
 export const TEMPLATES_ROW = 'templates', TEMPLATE_FORMAT = 'cutframe-template';
+/** The author line of a template the user saved (a reading: there are no accounts, so no user name). */
+export const TEMPLATE_AUTHOR = 'You';
 export const BUILT_IN_TEMPLATES: readonly Template[] = [DEFAULT_TEMPLATE];
 type Row = { id: string; templates: Template[]; membership: string[] };
 export type TemplateFileAsset = { id: string; name: string; kind: 'video' | 'image' | 'audio' | 'font'; mime: string; sha256: string; bytes: number; data: string };
@@ -83,6 +88,50 @@ export async function verifyBuiltIn(template: Template, load: (file: string) => 
     const hash = await load(f.path).then(sha256Blob, () => null);
     if (hash !== f.sha256) throw templateError('DEFAULT_UNAVAILABLE', hash ? `${f.path} is not the recorded file.` : `${f.path} is missing.`);
   }
+}
+
+// ---- Save as template ----
+/** How many colours a template made from an unbound project takes (plan Q1). */
+export const PROJECT_PALETTE_MAX = 6;
+const hex6 = (v: unknown): string | null => {
+  const m = typeof v === 'string' ? /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v.trim()) : null;
+  return m ? `#${(m[1].length === 3 ? [...m[1]].map(c => c + c).join('') : m[1]).toUpperCase()}` : null;
+};
+const mostUsed = (values: string[]): string[] => {
+  const count = new Map<string, number>();
+  for (const v of values) count.set(v, (count.get(v) ?? 0) + 1);
+  return [...count].sort((a, b) => b[1] - a[1]).map(([v]) => v); // a stable sort: ties stay in first-use order
+};
+/** The fonts and colours a project's template carries (plan Q1). A bound project: its current `templateDefaults`. An
+ *  unbound one: captions = the caption font most in use (else the caption panel's default), titles = the font of the largest
+ *  text item (else Add text's default), accent = the next distinct text font by size (else the titles font), palette = up to
+ *  6 distinct text and shape fill colours by use, named "Colour 1…n". A text item without a stored font is not counted. */
+export function projectDefaults(doc: ProjectDocument): { defaults: FontDefaults; palette: Swatch[] } {
+  const bound = doc.templateDefaults as TemplateDefaults | undefined;
+  if (typeof bound?.templateId === 'string' && Array.isArray(bound.palette)) return { defaults: { captionsFont: bound.captionsFont, titlesFont: bound.titlesFont, accentFont: bound.accentFont }, palette: bound.palette.map(s => ({ ...s })) };
+  const font = (i: RecordData): string | undefined => typeof i.details?.fontFamily === 'string' && i.details.fontFamily ? i.details.fontFamily : undefined;
+  const size = (i: RecordData) => parseFloat(String(staticValue(i, 'fontSize'))) || 0;
+  const texts = doc.items.filter(i => i.type === 'text' && font(i)).sort((a, b) => size(b) - size(a)).map(i => font(i)!);
+  const titlesFont = texts[0] ?? ADD_TEXT.family;
+  const colours = doc.items.flatMap(i => i.type === 'text' ? [hex6(staticValue(i, 'color'))] : i.type === 'shape' ? [hex6(staticValue(i, 'fillColor'))] : []).filter((c): c is string => !!c);
+  return {
+    defaults: { captionsFont: mostUsed(doc.items.filter(i => i.type === 'caption' && font(i)).map(i => font(i)!))[0] ?? PANEL_STYLE.family, titlesFont, accentFont: texts.find(f => f !== titlesFont) ?? titlesFont },
+    palette: mostUsed(colours).slice(0, PROJECT_PALETTE_MAX).map((hex, n) => ({ name: `Colour ${n + 1}`, hex })),
+  };
+}
+/** A new personal template from a project ("Save as template"): the name, the "what should it carry forward" text as its
+ *  guidance, the chosen library assets, and the project's fonts and colours (projectDefaults). `base` is the project's bound
+ *  template: its caption template and presets come along. Learning starts on. The caller stores it with saveTemplate. */
+export function templateFromProject(doc: ProjectDocument, choices: { name: string; guidance: string; assets: Asset[]; base?: Template }, now = new Date()): Template {
+  const { defaults, palette } = projectDefaults(doc), name = choices.name.trim();
+  const families = [...new Set(Object.values(defaults).map(f => findFont(f)?.entry.family ?? f))];
+  const refs = (type: Asset['type']) => choices.assets.filter(a => a.type === type).map(a => ({ name: a.name, ref: `asset:${a.id}` }));
+  return {
+    id: `my-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'template'}-${now.getTime().toString(36)}`, name, family: PERSONAL_FAMILY, author: TEMPLATE_AUTHOR,
+    palette, examples: refs('video'), assets: { fonts: families.map(f => ({ name: f, ref: `font:${f}` })), audio: refs('audio'), images: refs('image') }, defaults,
+    ...(choices.base?.captionTemplateId ? { captionTemplateId: choices.base.captionTemplateId } : {}), presetIds: [...choices.base?.presetIds ?? []],
+    guidance: choices.guidance, learning: true, preferences: '', version: TEMPLATE_VERSION, savedAt: now.toISOString(),
+  };
 }
 
 // ---- Template files ----
