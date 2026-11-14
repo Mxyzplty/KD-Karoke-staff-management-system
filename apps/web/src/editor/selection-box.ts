@@ -123,7 +123,7 @@ export function vectorHit(masks: FrameMask[], p: Pt, inside: InsidePath): boolea
 }
 /** 7.1 point 8's mask test (§54.10 point 8, Author's ruling e and his answer of 13 Nov on l.746). Only video and image items carry
  *  masks (render/model.ts). The masks that count are frameMasks' (§54.6 5.1): none left, the item passes. The rule comes from the
- *  stored list: any raster mask, in range or not (disabled too: lane A's reading, for Author), means the combined alpha of the
+ *  stored list: any raster mask, in range or not (disabled too: confirmed by Author, 13 Nov), means the combined alpha of the
  *  masks that count, a hit above 4 of 255, null passes. No raster stored: the booleans. */
 export function maskHit(doc: ProjectDocument, item: RecordData, t: number, p: Pt, reads: MaskReads): boolean {
   if (item.type !== 'video' && item.type !== 'image') return true;
