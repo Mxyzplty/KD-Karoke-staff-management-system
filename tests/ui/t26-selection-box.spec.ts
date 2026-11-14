@@ -507,3 +507,33 @@ test.describe('T26 window listeners: pointercancel commits (7.1 l.1802), window 
     await expect(marquee).toHaveCount(0); expect([...await selection(page)].sort()).toEqual(['m1', 'm2']);
   });
 });
+
+test.describe('T26 row 7: corner drags on T22 elements (RC 6.2, l.1612)', () => {
+  // A corner drag changes `scale` (one factor for both axes) and the position; it never changes width or height, and no refit runs.
+  // Both items are stored in T22's own form (details.element, as slotItem and the element insert write it). They sit far from the canvas centre axes (540, 960).
+  // The pointer goes half way along the diagonal from the dragged corner to the opposite one: factor 0.5.
+  const element = (id: string, extra: Record<string, unknown> = {}) => ({ id, palette: [{ base: '#FFD23F', kind: 'color' }], ...extra });
+
+  test('a stretch element (underline-scribble, stretch: true) keeps width and height under a corner drag: scale 0.5, one "Edit items" step', async ({ page }) => {
+    // 600 x 90 at (100, 300): nw (100, 300), se (700, 390); half way along the diagonal is (400, 345).
+    const scribble = { ...image('s', 'o1', 100, 300, 600, 90), details: { name: 's', element: element('underline-scribble', { stretch: true }) } };
+    await open(page, doc([scribble])); await choose(page, ['s']); const g = await geo(page);
+    await drag(page, await knob(page, 'se'), g.at(400, 345));
+    await closeTo(() => pv(page, 's', 'scale'), 0.5, 0.02);
+    expect(await pv(page, 's', 'width'), 'width is not stretched by the drag').toBe(600); expect(await pv(page, 's', 'height'), 'height is not stretched by the drag').toBe(90);
+    expect(await pv(page, 's', 'positionX')).toBe(100); expect(await pv(page, 's', 'positionY')).toBe(300); // se drag: the nw corner stays
+    expect(await undoLabels(page)).toEqual(['Edit items']); expect(await transforms(page)).toHaveLength(1);
+  });
+
+  test('a text-slot element (label-tag) is not refitted by a corner drag: fontSize, width, height and text stay, scale changes, one "Edit items" step', async ({ page }) => {
+    // label-tag has a text slot (catalogue/elements.ts, label-tag). 300 x 100 at (100, 800): nw (100, 800), se (400, 900); half way is (250, 850). fontSize 100 is far from any refit result.
+    const tag = { ...text('t', 'o1', 100, 800, 300, 100, 'Sale today'), details: { text: 'Sale today', fontFamily: 'Roboto-Bold', fontFamilyDisplay: 'Roboto', name: 't', element: element('label-tag', { slot: 'text' }) } };
+    await open(page, doc([tag])); await choose(page, ['t']); const g = await geo(page);
+    const before = { fontSize: await pv(page, 't', 'fontSize'), width: await pv(page, 't', 'width'), height: await pv(page, 't', 'height'), text: (await item(page, 't')).details.text };
+    expect(before).toEqual({ fontSize: 100, width: 300, height: 100, text: 'Sale today' });
+    await drag(page, await knob(page, 'se'), g.at(250, 850));
+    await closeTo(() => pv(page, 't', 'scale'), 0.5, 0.02);
+    expect({ fontSize: await pv(page, 't', 'fontSize'), width: await pv(page, 't', 'width'), height: await pv(page, 't', 'height'), text: (await item(page, 't')).details.text }, 'no refit ran').toEqual(before);
+    expect(await undoLabels(page)).toEqual(['Edit items']); expect(await transforms(page)).toHaveLength(1);
+  });
+});
