@@ -11,23 +11,22 @@ import { frameMasks } from '../masks/model';
 import { rasterPlane } from '../masks/raster';
 import { maskCanvas } from '../masks/render';
 import { item as itemOf } from '../timeline/model';
-import { invert } from '../timeline/shapes';
+import { invert, segments } from '../timeline/shapes';
 import type { Pt } from '../timeline/shapes';
 import { dispatch } from './commands';
 import { useMaskUi } from './mask-state';
 import { useShapeUi } from './shape-ui';
 import { select, useView, view } from './view';
 import { atPlayhead, boundsOf, cornerDrag, corners, frameOf, handleAt, handles, HANDLE_PX, itemLocal, LINE_PX, MARQUEE_MIN, marqueeHits, moveDrag, pickAt, rotationDrag, screenPx, shownItems, writeEdits } from './selection-box';
-import type { AlphaAt, Corner, PreviewEdit } from './selection-box';
+import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from './selection-box';
 
 /** The live drag's draft document, the only place it is kept: the preview draws it, the box follows it, release drops it. */
 export const useSelectionDraft = create<{ doc: ProjectDocument | null }>(() => ({ doc: null }));
 type Drag = { kind: 'move' | 'corner' | 'rotate' | 'marquee'; corner?: Corner; ids: string[]; from: Pt; to?: Pt; base: ProjectDocument; t: number; zoom: number; edits?: PreviewEdit[]; prior?: string[] };
 
-/** Lane A's Q6: the item's combined mask alpha at p (one read for 7.1's mask test and alpha test). No enabled mask: 255. A raster
- *  mask with no frame yet: null (combinedPlane would count it as covering nothing). Same W × H as the compositor, so its cache is shared. */
+/** The raster branch's read: the item's combined mask alpha at p (Author's ruling e; background removal is a mask). No enabled mask: 255.
+ *  A raster mask with no frame yet: null (combinedPlane would count it as covering nothing). Same W × H as the compositor, so its cache is shared. */
 const maskAlpha = (doc: ProjectDocument, t: number): AlphaAt => (item, p) => {
-  if (item.type !== 'video' && item.type !== 'image') return 255;
   const local = itemLocal(item, t), masks = frameMasks(item, local, fpsOf(doc));
   if (!masks.length) return 255;
   if (masks.some(m => m.raster && !rasterPlane(m.raster.ref, m.raster.timeUs))) return null;
@@ -36,6 +35,21 @@ const maskAlpha = (doc: ProjectDocument, t: number): AlphaAt => (item, p) => {
   const [u, v] = apply(inv, p.x, p.y), x = Math.min(W - 1, Math.max(0, Math.floor(u))), y = Math.min(H - 1, Math.max(0, Math.floor(v)));
   return maskCanvas(item.id, masks, W, H).getContext('2d')!.getImageData(x, y, 1, 1).data[3];
 };
+/** The vector branch's read: inside the bare path by the non-zero rule. The path is a copy of masks/render.ts `trace` (0 points empty,
+ *  1 point a circle of radius 3, coordinates rounded to 0.01 px), which is not exported; the follow-up ticket exports it and imports it here. */
+let probe: OffscreenCanvasRenderingContext2D | null = null;
+const insidePath: InsidePath = (path, p) => {
+  const { points } = path, r = (v: number) => Math.round(v * 100) / 100, q = new Path2D();
+  if (!points.length) return false;
+  if (points.length === 1) q.arc(r(points[0].anchor.x), r(points[0].anchor.y), 3, 0, 2 * Math.PI);
+  else {
+    q.moveTo(r(points[0].anchor.x), r(points[0].anchor.y));
+    for (const g of segments(path)) if (g.c1 && g.c2) q.bezierCurveTo(r(g.c1.x), r(g.c1.y), r(g.c2.x), r(g.c2.y), r(g.to.x), r(g.to.y)); else q.lineTo(r(g.to.x), r(g.to.y));
+    if (path.closed && points.length >= 3) q.closePath();
+  }
+  return (probe ??= new OffscreenCanvas(1, 1).getContext('2d')!).isPointInPath(q, p.x, p.y, 'nonzero');
+};
+const reads = (doc: ProjectDocument, t: number): MaskReads => ({ alpha: maskAlpha(doc, t), inside: insidePath });
 
 export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
   const v = useView(), draft = useSelectionDraft(s => s.doc), mask = useMaskUi(s => s.itemId), shape = useShapeUi(s => !!s.mode || !!s.editing);
@@ -66,23 +80,22 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       writeEdits(next, edits, d.t);
       useSelectionDraft.setState({ doc: next });
     };
-    // Release and pointer cancel both commit (7.1 point 5); Escape does not cancel a drag. Window blur drops the draft and writes
-    // nothing: not from Xapp, needed because the drag uses window listeners, not pointer capture (lane A; open with Author).
-    const end = (commit: boolean) => {
+    // Release and pointer cancel both commit (7.1 point 5); Escape does not cancel a drag. Window blur commits too: not from Xapp,
+    // needed because the drag uses window listeners, not pointer capture (relay R9; Author may overrule).
+    const end = () => {
       const d = drag.current; if (!d) return;
       drag.current = null; listen(false);
       if (d.kind === 'marquee') {
         setMarquee(null);
-        if (commit && d.to && Math.hypot(d.to.x - d.from.x, d.to.y - d.from.y) > MARQUEE_MIN) select([...new Set([...d.prior!, ...marqueeHits(d.base, d.t, d.from, d.to)])]);
+        if (d.to && Math.hypot(d.to.x - d.from.x, d.to.y - d.from.y) > MARQUEE_MIN) select([...new Set([...d.prior!, ...marqueeHits(d.base, d.t, d.from, d.to)])]);
         return;
       }
-      if (commit && d.edits) dispatch({ type: 'transformOnPreview', edits: d.edits, atMs: d.t });
+      if (d.edits) dispatch({ type: 'transformOnPreview', edits: d.edits, atMs: d.t });
       useSelectionDraft.setState({ doc: null }); setGuides({ x: false, y: false });
     };
-    const release = () => end(true), cancel = () => end(false);
     // Window listeners, not pointer capture: a captured press would retarget the click and double-click to the stage, and the
     // text hit box would never see its double-click.
-    const listen = (on: boolean) => { for (const [type, f] of [['pointermove', move], ['pointerup', release], ['pointercancel', release], ['blur', cancel]] as const) window[on ? 'addEventListener' : 'removeEventListener'](type, f as EventListener); };
+    const listen = (on: boolean) => { for (const [type, f] of [['pointermove', move], ['pointerup', end], ['pointercancel', end], ['blur', end]] as const) window[on ? 'addEventListener' : 'removeEventListener'](type, f as EventListener); };
     const start = (d: Drag) => { drag.current = d; listen(true); if (d.kind === 'marquee') setMarquee({ a: d.from, b: d.from }); };
     const down = (e: PointerEvent) => {
       const { doc: base, t: now, off: hidden } = live.current;
@@ -93,7 +106,7 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
         const h = handleAt(frameOf(base, shown[0], now), z, p);
         if (h) { start({ ...common, kind: h === 'rotate' ? 'rotate' : 'corner', corner: h === 'rotate' ? undefined : h, ids: [shown[0].id] }); return; }
       }
-      const hit = pickAt(base, now, p, maskAlpha(base, now));
+      const hit = pickAt(base, now, p, reads(base, now));
       if (hit) {
         // A Shift press that takes the item out does not select it, so it starts no move.
         if (e.shiftKey && sel.includes(hit.id)) { select(sel.filter(id => id !== hit.id)); return; }
@@ -111,7 +124,7 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       if (hidden || !ours(e.target)) return;
       const sel = view().selection, only = sel.length === 1 ? itemOf(base, sel[0]) : undefined;
       if (only?.type === 'shape' && atPlayhead(only, now)) { e.stopPropagation(); useShapeUi.setState({ editing: only.id, mode: null }); return; }
-      if (pickAt(base, now, at(e), maskAlpha(base, now))?.type !== 'text') e.stopPropagation();
+      if (pickAt(base, now, at(e), reads(base, now))?.type !== 'text') e.stopPropagation();
     };
     stage.addEventListener('pointerdown', down);
     stage.addEventListener('dblclick', dbl, true);

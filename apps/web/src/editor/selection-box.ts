@@ -3,16 +3,19 @@
 // four corner handles and rotation handle, the corner, rotation and move drags with the centre snap, the click pick, the marquee
 // and the write (keyframe rule, locked track). Canvas px, y down. No DOM: selection-overlay.tsx reads the pointer and the alpha.
 import type { ProjectDocument, RecordData } from '../store/model';
-import { field, itemBox, projectSize, trackItems } from '../render/model';
+import { apply, boxMatrix, field, fpsOf, itemBox, projectSize, trackItems } from '../render/model';
 import type { Box } from '../render/model';
+import { frameMasks, masksOf } from '../masks/model';
+import type { FrameMask } from '../masks/model';
 import { ensureProp, keyframeId, prop, propertyTime, setStatic } from '../timeline/properties';
 import { fail, item as itemOf, stack, trackLocked } from '../timeline/model';
-import type { Pt } from '../timeline/shapes';
+import { invert } from '../timeline/shapes';
+import type { Pt, ShapePath } from '../timeline/shapes';
 
 /** 7.1 point 7 (screen px unless named), point 1 (canvas px, factor), point 3, point 6 (ms), point 8. */
 export const HANDLE_PX = 10, ROTATE_GAP_PX = 28, LINE_PX = 1.5, SNAP_PX = 8, MIN_EDGE = 16, MIN_FACTOR = 0.05, MARQUEE_MIN = 2, KEYFRAME_WINDOW_MS = 100;
-/** Lane A's Q6: one alpha (of 255) for 7.1's mask test and alpha test; 32 is 7.1's number for background removal. */
-export const PICK_ALPHA_MIN = 32;
+/** Author's ruling e (12 Nov; §54.10 point 8): with a raster mask, the mask test passes when the combined alpha is above 4 of 255. */
+export const PICK_ALPHA_ABOVE = 4;
 export type Corner = 'nw' | 'ne' | 'se' | 'sw';
 export type Handle = Corner | 'rotate';
 export type TransformKey = 'positionX' | 'positionY' | 'scale' | 'rotation';
@@ -22,6 +25,10 @@ export type Frame = { cx: number; cy: number; w: number; h: number; rotation: nu
 export type Rect = { x: number; y: number; w: number; h: number };
 /** (item, canvas point) → the item's combined mask alpha there, 0 to 255; null when it cannot be read. */
 export type AlphaAt = (item: RecordData, p: Pt) => number | null;
+/** (bare mask path in item px, item-local point) → inside it, by the canvas fill rule. */
+export type InsidePath = (path: ShapePath, p: Pt) => boolean;
+/** The two reads of the mask test; selection-overlay.tsx passes the real ones, tests pass stubs. */
+export type MaskReads = { alpha: AlphaAt; inside: InsidePath };
 
 const SIGN: Record<Corner, [number, number]> = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1] };
 const DEFAULT: Record<TransformKey, number> = { positionX: 0, positionY: 0, scale: 1, rotation: 0 };
@@ -100,9 +107,34 @@ export function candidates(doc: ProjectDocument, t: number, p: Pt): RecordData[]
   const z = (i: RecordData) => Number(field(i, 'zIndex', itemLocal(i, t), 0)) || 0, drawn = (i: RecordData) => trackItems(doc, i.trackId).indexOf(i);
   return doc.items.filter(i => atPlayhead(i, t) && contains(frameOf(doc, i, t), p)).sort((a, b) => rank(a) - rank(b) || z(b) - z(a) || drawn(b) - drawn(a));
 }
-/** The first candidate whose alpha at p is at least PICK_ALPHA_MIN, or cannot be read. */
-export const pickAt = (doc: ProjectDocument, t: number, p: Pt, alphaAt: AlphaAt): RecordData | null =>
-  candidates(doc, t, p).find(i => { const a = alphaAt(i, p); return a === null || a >= PICK_ALPHA_MIN; }) ?? null;
+/** Findings part 5 §54.10 point 8, vector-only items: one boolean per mask, in frameMasks' order (enabled, by `order`); feather
+ *  and expansion are ignored (the bare path). A mask with opacity < 50 is dropped before the first-mask rule, and one with 50 to
+ *  100 counts as fully opaque: both lane A's reading of l.898, for Author. Then §54.5 and §54.6 as booleans (the boolean reading
+ *  of each mode is lane A's, open for Author, O6): invert, Subtract negates, the first mask is acc, then add OR, subtract and
+ *  intersect AND, difference XOR. null: no mask left. */
+export function vectorHit(masks: FrameMask[], p: Pt, inside: InsidePath): boolean | null {
+  let acc: boolean | null = null;
+  for (const m of masks) {
+    if (m.opacity < 0.5) continue;
+    const g = (!!m.path && inside(m.path, p)) !== m.inverted, b = m.mode === 'subtract' ? !g : g;
+    acc = acc === null ? b : m.mode === 'add' ? acc || b : m.mode === 'difference' ? acc !== b : acc && b;
+  }
+  return acc;
+}
+/** 7.1 point 8's mask test (§54.10 point 8, Author's ruling e). Only video and image items carry masks (render/model.ts). An item
+ *  with an enabled raster mask: the combined alpha, a hit above 4 of 255, null passes. All vector: the booleans. No mask left: the
+ *  box decides. */
+export function maskHit(doc: ProjectDocument, item: RecordData, t: number, p: Pt, reads: MaskReads): boolean {
+  if (item.type !== 'video' && item.type !== 'image') return true;
+  if (masksOf(item).some(m => m && m.enabled !== false && m.raster)) { const a = reads.alpha(item, p); return a === null || a > PICK_ALPHA_ABOVE; }
+  const local = itemLocal(item, t), inv = invert(boxMatrix(itemBox(doc, item, local)));
+  if (!inv) return true;
+  const [x, y] = apply(inv, p.x, p.y);
+  return vectorHit(frameMasks(item, local, fpsOf(doc)), { x, y }, reads.inside) ?? true;
+}
+/** The first candidate that passes the mask test. */
+export const pickAt = (doc: ProjectDocument, t: number, p: Pt, reads: MaskReads): RecordData | null =>
+  candidates(doc, t, p).find(i => maskHit(doc, i, t, p, reads)) ?? null;
 /** The items at the playhead whose turned box lies fully inside the marquee from a to b. */
 export function marqueeHits(doc: ProjectDocument, t: number, a: Pt, b: Pt): string[] {
   const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);

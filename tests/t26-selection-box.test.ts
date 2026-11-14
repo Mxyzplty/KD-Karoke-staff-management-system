@@ -7,10 +7,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProjectDocument, RecordData } from '../apps/web/src/store/model';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import {
-  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, marqueeHits, moveDrag, pickAt, PICK_ALPHA_MIN,
-  rotationDrag, screenPx, shownItems, writeEdits,
+  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
+  rotationDrag, screenPx, shownItems, vectorHit, writeEdits,
 } from '../apps/web/src/editor/selection-box';
-import type { Corner, PreviewEdit } from '../apps/web/src/editor/selection-box';
+import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from '../apps/web/src/editor/selection-box';
+import type { FrameMask } from '../apps/web/src/masks/model';
+import type { ShapePath } from '../apps/web/src/timeline/shapes';
 import { assets, build, fixture, itemOf, links, mkItem, mkTrack, resetIds, useIds } from './t03-fixtures';
 
 beforeEach(() => useIds()); afterEach(() => resetIds());
@@ -39,6 +41,19 @@ const cornerAt = (x: number, y: number, w: number, h: number, s: number, rot: nu
 const near = (got: Pt, want: Pt, digits = 6) => { expect(got.x).toBeCloseTo(want.x, digits); expect(got.y).toBeCloseTo(want.y, digits); };
 const SIGNS: Record<Corner, [number, number]> = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1] };
 const OPPOSITE: Record<Corner, Corner> = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' };
+/** The two mask reads of the pick; the defaults let everything through. */
+const reads = (alpha: AlphaAt = () => 255, inside: InsidePath = () => true): MaskReads => ({ alpha, inside });
+/** A stored raster mask (masks/model.ts StoredMask) over the item box; only its presence and `enabled` matter to the pick. */
+const rasterMask = (extra: RecordData = {}) => ({ id: 'r1', name: 'Smart', enabled: true, points: [], closed: true, mode: 'add', order: 0, colorIndex: 0, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'smart',
+  raster: { file: 'r1.bin', sourceStartUs: 0, sourceEndUs: 4_000_000_000, frameCount: 1, width: 1, height: 1, space: { kind: 'item', width: 1, height: 1 }, version: 1 }, ...extra });
+/** A stored vector mask: the rectangle x0..x1, y0..y1 in item px (four anchors), defaults of a fresh mask; `extra` overrides any field. */
+const rectMask = (x0: number, y0: number, x1: number, y1: number, extra: RecordData = {}) => ({ id: 'v', name: 'Mask', enabled: true, closed: true, mode: 'add', order: 0, colorIndex: 0, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'shape',
+  points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => ({ anchor: { x, y } })), ...extra });
+/** inside = the point is within the bounds of the path's anchors (item-local px). */
+const inRect: InsidePath = (path, p) => {
+  const xs = path.points.map(q => q.anchor.x), ys = path.points.map(q => q.anchor.y);
+  return p.x >= Math.min(...xs) && p.x <= Math.max(...xs) && p.y >= Math.min(...ys) && p.y <= Math.max(...ys);
+};
 
 describe('row 1, 7.1 point 4: which items show the box (both ends of the time range count, lane A\'s Q8)', () => {
   it('every visual type shows it at the playhead; audio never, also when selected', () => {
@@ -48,7 +63,7 @@ describe('row 1, 7.1 point 4: which items show the box (both ends of the time ra
   });
   it('Q8: display.from and display.to both show the box and are pickable; one ms either side does not', () => {
     const doc = docOf([box('a', 0, 0, 100, 100, { display: { from: 1000, to: 3000 } })]), a = doc.items[0], inside = { x: 50, y: 50 };
-    for (const t of [1000, 2000, 3000]) { expect(atPlayhead(a, t), `t=${t}`).toBe(true); expect(shownItems(doc, ['a'], t)).toHaveLength(1); expect(pickAt(doc, t, inside, () => 255)?.id, `t=${t}`).toBe('a'); }
+    for (const t of [1000, 2000, 3000]) { expect(atPlayhead(a, t), `t=${t}`).toBe(true); expect(shownItems(doc, ['a'], t)).toHaveLength(1); expect(pickAt(doc, t, inside, reads())?.id, `t=${t}`).toBe('a'); }
     for (const t of [999, 3001]) { expect(atPlayhead(a, t), `t=${t}`).toBe(false); expect(shownItems(doc, ['a'], t)).toEqual([]); expect(candidates(doc, t, inside)).toEqual([]); }
   });
   it('a selected item outside the playhead time shows no box; the item stays in the selection list given', () => {
@@ -68,7 +83,7 @@ describe('row 1, 7.1 point 4: which items show the box (both ends of the time ra
   });
   it('row 14: a hidden track still shows the box, is picked and can be edited', () => {
     const doc = docOf([box('a', 0, 0, 200, 200)], [mkTrack('V1', 'video', { hidden: true })]);
-    expect(shownItems(doc, ['a'], 1000)).toHaveLength(1); expect(pickAt(doc, 1000, { x: 10, y: 10 }, () => 255)?.id).toBe('a');
+    expect(shownItems(doc, ['a'], 1000)).toHaveLength(1); expect(pickAt(doc, 1000, { x: 10, y: 10 }, reads())?.id).toBe('a');
     const e = editor(doc); expect(draft(e, [{ itemId: 'a', values: { positionX: 40 } }])).toMatchObject({ ok: true }); expect(val(e.doc, 'a', 'positionX')).toBe(40);
   });
   it('the box is the item\'s turned frame: base size x |scale|, left = positionX, top = positionY, turned about its centre', () => {
@@ -275,18 +290,26 @@ describe('row 11, 7.1 point 8: the pick, the marquee', () => {
     expect(candidates(doc, 1000, { x: 160, y: 540 }).map(i => i.id)).toEqual(['a']); expect(candidates(doc, 1000, { x: 110, y: 210 })).toEqual([]);
     expect(contains(frameOf(doc, doc.items[0], 1000), { x: 300, y: 350 })).toBe(true);
   });
-  it('Q6: the first candidate whose alpha is at least 32 wins; 31 fails, 32 passes, null (cannot be read) passes', () => {
-    const doc = docOf([box('under', 0, 0, 100, 100, {}, 'V1'), box('over', 0, 0, 100, 100, {}, 'V2')], [mkTrack('V1', 'video'), mkTrack('V2', 'video')]), p = { x: 50, y: 50 };
-    expect(PICK_ALPHA_MIN).toBe(32);
-    const with_ = (a: number | null) => pickAt(doc, 1000, p, i => i.id === 'over' ? a : 255)?.id;
-    expect(with_(31)).toBe('under'); expect(with_(32)).toBe('over'); expect(with_(null)).toBe('over'); expect(with_(255)).toBe('over'); expect(with_(0)).toBe('under');
+  it('ruling e: for an item with a raster mask the first candidate whose alpha is above 4 wins; 4 fails, 5 passes, null (cannot be read) passes', () => {
+    const doc = docOf([box('under', 0, 0, 100, 100, {}, 'V1'), box('over', 0, 0, 100, 100, { masks: [rasterMask()] }, 'V2')], [mkTrack('V1', 'video'), mkTrack('V2', 'video')]), p = { x: 50, y: 50 };
+    expect(PICK_ALPHA_ABOVE).toBe(4);
+    const with_ = (a: number | null) => pickAt(doc, 1000, p, reads(i => i.id === 'over' ? a : 255))?.id;
+    expect(with_(4)).toBe('under'); expect(with_(5)).toBe('over'); expect(with_(null)).toBe('over'); expect(with_(255)).toBe('over'); expect(with_(0)).toBe('under');
   });
-  it('Q6: every candidate failing the alpha test picks nothing; the read gets the item and the point, and only candidates are read', () => {
-    const doc = docOf([box('a', 0, 0, 100, 100), box('far', 500, 500, 100, 100)]), calls: string[] = [];
-    expect(pickAt(doc, 1000, { x: 50, y: 50 }, (i, p) => { calls.push(`${i.id}@${p.x},${p.y}`); return 0; })).toBeNull();
+  it('the same for a video item with a raster mask', () => {
+    const doc = docOf([box('v', 0, 0, 100, 100, { type: 'video', masks: [rasterMask()] })]), p = { x: 50, y: 50 };
+    expect(pickAt(doc, 1000, p, reads(() => 4))).toBeNull(); expect(pickAt(doc, 1000, p, reads(() => 5))?.id).toBe('v');
+  });
+  it('Q6: every candidate with a raster mask failing the alpha test picks nothing; the read gets the item and the point, and only candidates are read', () => {
+    const doc = docOf([box('a', 0, 0, 100, 100, { masks: [rasterMask()] }), box('far', 500, 500, 100, 100, { masks: [rasterMask()] })]), calls: string[] = [];
+    expect(pickAt(doc, 1000, { x: 50, y: 50 }, reads((i, p) => { calls.push(`${i.id}@${p.x},${p.y}`); return 0; }))).toBeNull();
     expect(calls).toEqual(['a@50,50']);
   });
-  it('a point on no item picks nothing', () => { expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 500, y: 500 }, () => 255)).toBeNull(); });
+  it('an item with no mask is not alpha-read: it passes whatever the read says', () => {
+    const calls: string[] = [];
+    expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 50, y: 50 }, reads(i => { calls.push(i.id); return 0; }))?.id).toBe('a'); expect(calls).toEqual([]);
+  });
+  it('a point on no item picks nothing', () => { expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 500, y: 500 }, reads())).toBeNull(); });
   it('marquee: the items at the playhead whose box lies fully inside, in either corner order', () => {
     const doc = docOf([box('a', 10, 10, 100, 100), box('b', 200, 10, 100, 100), box('gone', 20, 20, 50, 50, { display: { from: 5000, to: 6000 } }), mkItem('s', 'V1', 0, 4000, { type: 'audio' })]);
     expect(marqueeHits(doc, 1000, { x: 0, y: 0 }, { x: 150, y: 150 })).toEqual(['a']);
@@ -298,6 +321,175 @@ describe('row 11, 7.1 point 8: the pick, the marquee', () => {
     expect(marqueeHits(doc, 1000, { x: 0, y: 0 }, { x: 105, y: 200 })).toEqual([]);
     expect(marqueeHits(doc, 1000, { x: 100, y: 100 }, { x: 460, y: 560 })).toEqual(['t']); // the unturned box (y 200..500) would fit in a smaller marquee
     expect(marqueeHits(doc, 1000, { x: 100, y: 190 }, { x: 460, y: 510 })).toEqual([]); // fits the unturned box, not the turned one
+  });
+});
+
+describe('ruling e, §54.10 point 8: the mask test of the pick', () => {
+  // vectorHit on hand-built FrameMasks. The stub reads a path as inside when it is IN; the point is never looked at.
+  const IN: ShapePath = { points: [], closed: true }, OUT: ShapePath = { points: [], closed: true }, anyPt = { x: 0, y: 0 }, isIn: InsidePath = path => path === IN;
+  const fm = (mode: FrameMask['mode'], path: ShapePath | null, extra: Partial<FrameMask> = {}): FrameMask => ({ id: mode, mode, inverted: false, opacity: 1, feather: 0, expansion: 0, path, raster: null, ...extra });
+  const hitOf = (...masks: FrameMask[]) => vectorHit(masks, anyPt, isIn);
+  const sides = (a: boolean) => (a ? IN : OUT);
+  describe('vectorHit: each mode after a first add (a = inside the first mask, b = inside the second)', () => {
+    it.each([[true, true, true], [true, false, true], [false, true, true], [false, false, false]])('add is OR: a %s, b %s -> %s', (a, b, want) => {
+      expect(hitOf(fm('add', sides(a)), fm('add', sides(b)))).toBe(want);
+    });
+    it.each([[true, true, false], [true, false, true], [false, true, false], [false, false, false]])('subtract is AND NOT: a %s, b %s -> %s', (a, b, want) => {
+      expect(hitOf(fm('add', sides(a)), fm('subtract', sides(b)))).toBe(want);
+    });
+    it.each([[true, true, true], [true, false, false], [false, true, false], [false, false, false]])('intersect is AND: a %s, b %s -> %s', (a, b, want) => {
+      expect(hitOf(fm('add', sides(a)), fm('intersect', sides(b)))).toBe(want);
+    });
+    it.each([[true, true, false], [true, false, true], [false, true, true], [false, false, false]])('difference is XOR: a %s, b %s -> %s', (a, b, want) => {
+      expect(hitOf(fm('add', sides(a)), fm('difference', sides(b)))).toBe(want);
+    });
+    it('the masks combine in the order given, left to right: (A add B) subtract C, not A add (B subtract C)', () => {
+      expect(hitOf(fm('add', IN), fm('add', OUT), fm('subtract', IN))).toBe(false); // (true or false) and not true
+      expect(hitOf(fm('add', OUT), fm('add', IN), fm('subtract', OUT))).toBe(true);
+    });
+  });
+  describe('vectorHit: the first mask', () => {
+    it('a lone subtract is a hole: inside -> false, outside -> true', () => {
+      expect(hitOf(fm('subtract', IN))).toBe(false); expect(hitOf(fm('subtract', OUT))).toBe(true);
+    });
+    it('a lone intersect acts as add: inside -> true, outside -> false', () => {
+      expect(hitOf(fm('intersect', IN))).toBe(true); expect(hitOf(fm('intersect', OUT))).toBe(false);
+    });
+    it('a lone difference acts as add: inside -> true, outside -> false', () => {
+      expect(hitOf(fm('difference', IN))).toBe(true); expect(hitOf(fm('difference', OUT))).toBe(false);
+    });
+    it('a lone add: inside -> true, outside -> false; a mask with no path (a raster slot) counts as outside', () => {
+      expect(hitOf(fm('add', IN))).toBe(true); expect(hitOf(fm('add', OUT))).toBe(false); expect(hitOf(fm('add', null))).toBe(false);
+    });
+    it('no masks: null, the box decides', () => { expect(hitOf()).toBeNull(); });
+  });
+  describe('vectorHit: inverted', () => {
+    it('inverted alone flips the inside: inside -> false, outside -> true', () => {
+      expect(hitOf(fm('add', IN, { inverted: true }))).toBe(false); expect(hitOf(fm('add', OUT, { inverted: true }))).toBe(true);
+    });
+    it('inverted and subtract: inverted first, then negated, so inside -> true, outside -> false', () => {
+      expect(hitOf(fm('subtract', IN, { inverted: true }))).toBe(true); expect(hitOf(fm('subtract', OUT, { inverted: true }))).toBe(false);
+    });
+    it('an inverted second mask changes only its own boolean: add IN, intersect inverted IN -> false; add IN, intersect inverted OUT -> true', () => {
+      expect(hitOf(fm('add', IN), fm('intersect', IN, { inverted: true }))).toBe(false); expect(hitOf(fm('add', IN), fm('intersect', OUT, { inverted: true }))).toBe(true);
+    });
+    it('a mask with no path is outside, so inverted it is inside', () => { expect(hitOf(fm('add', null, { inverted: true }))).toBe(true); });
+  });
+  describe('vectorHit: opacity below 50 is ignored, before the first-mask rule', () => {
+    it('opacity 0.49 (stored 49) is dropped, 0.5 (stored 50) is kept', () => {
+      expect(hitOf(fm('add', IN, { opacity: 0.49 }))).toBeNull(); expect(hitOf(fm('add', IN, { opacity: 0.5 }))).toBe(true);
+      expect(hitOf(fm('add', IN, { opacity: 0 }))).toBeNull(); expect(hitOf(fm('add', OUT, { opacity: 1 }))).toBe(false);
+    });
+    it('a 49% subtract first, then an add, behaves as the lone add (the add is the first mask)', () => {
+      expect(hitOf(fm('subtract', OUT, { opacity: 0.49 }), fm('add', OUT))).toBe(false); // were the subtract kept: true (a subtract of an outside mask is a hit)
+      expect(hitOf(fm('subtract', IN, { opacity: 0.49 }), fm('add', IN))).toBe(true);
+    });
+    it('a 50% subtract first is kept: subtract OUT then add OUT -> true', () => { expect(hitOf(fm('subtract', OUT, { opacity: 0.5 }), fm('add', OUT))).toBe(true); });
+    it('a dropped mask in the middle is skipped: add IN, subtract IN at 0.49 -> still true', () => { expect(hitOf(fm('add', IN), fm('subtract', IN, { opacity: 0.49 }))).toBe(true); });
+    it('a kept mask counts as fully opaque: 50 and 100 give the same hit', () => {
+      for (const o of [0.5, 0.75, 1]) expect(hitOf(fm('subtract', IN, { opacity: o }))).toBe(false);
+    });
+    it('every mask below 50: null', () => { expect(hitOf(fm('add', IN, { opacity: 0.1 }), fm('subtract', IN, { opacity: 0.49 }))).toBeNull(); });
+  });
+  describe('vectorHit: feather and expansion are never read', () => {
+    it('the same hit with feather 50 and expansion -50, 0 and 50, in every mode', () => {
+      for (const mode of ['add', 'subtract', 'intersect', 'difference'] as const) for (const a of [true, false]) for (const b of [true, false]) {
+        const plain = hitOf(fm('add', sides(a)), fm(mode, sides(b)));
+        for (const expansion of [-50, 0, 50]) expect(hitOf(fm('add', sides(a), { feather: 50, expansion }), fm(mode, sides(b), { feather: 50, expansion })), `${mode} ${a} ${b} expansion ${expansion}`).toBe(plain);
+      }
+    });
+  });
+
+  // maskHit and pickAt on real documents: a 100 x 100 image at (0, 0), scale 1, so an item-local point is the canvas point. The alpha read answers 0
+  // everywhere, so any use of the raster branch fails the test.
+  const noAlpha = reads(() => 0, inRect), p = (x: number, y = 50) => ({ x, y });
+  const masked = (masks: RecordData[], extra: RecordData = {}) => docOf([box('a', 0, 0, 100, 100, { masks, ...extra })]);
+  const hit = (doc: ProjectDocument, x: number, r: MaskReads = noAlpha) => maskHit(doc, doc.items[0], 1000, p(x), r);
+  describe('maskHit: vector-only items', () => {
+    it('add, add: a hit in either rectangle, a miss between them', () => {
+      const d = masked([rectMask(0, 0, 40, 100, { id: 'l' }), rectMask(60, 0, 100, 100, { id: 'r', order: 1 })]);
+      expect([20, 50, 80].map(x => hit(d, x))).toEqual([true, false, true]);
+    });
+    it('add, then subtract: a hole in the middle', () => {
+      const d = masked([rectMask(0, 0, 100, 100, { id: 'all' }), rectMask(40, 0, 60, 100, { id: 'hole', mode: 'subtract', order: 1 })]);
+      expect([10, 50, 90].map(x => hit(d, x))).toEqual([true, false, true]);
+    });
+    it('add, then intersect: only where both hold', () => {
+      const d = masked([rectMask(0, 0, 60, 100, { id: 'l' }), rectMask(40, 0, 100, 100, { id: 'r', mode: 'intersect', order: 1 })]);
+      expect([20, 50, 80].map(x => hit(d, x))).toEqual([false, true, false]);
+    });
+    it('add, then difference: where exactly one holds', () => {
+      const d = masked([rectMask(0, 0, 60, 100, { id: 'l' }), rectMask(40, 0, 100, 100, { id: 'r', mode: 'difference', order: 1 })]);
+      expect([20, 50, 80].map(x => hit(d, x))).toEqual([true, false, true]);
+    });
+    it('a lone subtract is a hole, a lone intersect and a lone difference act as add', () => {
+      expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { mode: 'subtract' })]), x))).toEqual([true, false]);
+      for (const mode of ['intersect', 'difference']) expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { mode })]), x)), mode).toEqual([false, true]);
+    });
+    it('the masks combine by their `order`, not by their place in the array', () => {
+      const d = masked([rectMask(0, 0, 100, 100, { id: 'late', mode: 'subtract', order: 1 }), rectMask(0, 0, 100, 100, { id: 'early', order: 0 })]);
+      expect(hit(d, 50)).toBe(false); // add first, subtract after; in array order the subtract would be first, then an add -> true
+    });
+    it('inverted: alone the outside hits; inverted subtract hits the inside', () => {
+      expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { inverted: true })]), x))).toEqual([true, false]);
+      expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { inverted: true, mode: 'subtract' })]), x))).toEqual([false, true]);
+    });
+    it('stored opacity 49 is ignored (no mask left: the box decides, a hit anywhere), 50 is kept (a miss outside)', () => {
+      expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { opacity: 49 })]), x))).toEqual([true, true]);
+      expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { opacity: 50 })]), x))).toEqual([false, true]);
+    });
+    it('a stored 49 subtract first, then an add: the add alone, so a miss outside it and a hit inside', () => {
+      const d = masked([rectMask(0, 0, 100, 100, { id: 's', mode: 'subtract', opacity: 49 }), rectMask(40, 0, 60, 100, { id: 'a', order: 1 })]);
+      expect([10, 50].map(x => hit(d, x))).toEqual([false, true]);
+    });
+    it('a disabled mask is not combined: with only a disabled one the box decides', () => {
+      expect([10, 50].map(x => hit(masked([rectMask(40, 0, 60, 100, { enabled: false })]), x))).toEqual([true, true]);
+    });
+    it('no masks at all: the box decides, and the inside read is not called', () => {
+      const calls: number[] = []; expect(hit(masked([]), 50, reads(() => 0, () => { calls.push(1); return false; }))).toBe(true); expect(calls).toEqual([]);
+    });
+    it('feather 50 and expansion -50 or 50 do not change the hit', () => {
+      for (const expansion of [-50, 0, 50]) { const d = masked([rectMask(40, 0, 60, 100, { feather: 50, expansion })]); expect([10, 50, 90].map(x => hit(d, x)), `expansion ${expansion}`).toEqual([false, true, false]); }
+    });
+    it('the inside read gets the bare path in item px and the item-local point (not the canvas point)', () => {
+      const doc = docOf([box('a', 200, 300, 100, 100, { masks: [rectMask(10, 20, 30, 40)] })]), seen: string[] = [];
+      maskHit(doc, doc.items[0], 1000, { x: 250, y: 350 }, reads(() => 0, (path, q) => { seen.push(`${path.points.map(z => `${z.anchor.x},${z.anchor.y}`).join(' ')}@${Math.round(q.x * 1e6) / 1e6},${Math.round(q.y * 1e6) / 1e6}`); return true; }));
+      expect(seen).toEqual(['10,20 30,20 30,40 10,40@50,50']);
+    });
+    it('only video and image items carry masks: a text item with a mask passes whatever the read says', () => {
+      const d = docOf([box('a', 0, 0, 100, 100, { type: 'text', masks: [rectMask(40, 0, 60, 100)] })]);
+      expect(hit(d, 10, reads(() => 0, () => false))).toBe(true);
+    });
+  });
+  describe('maskHit: the raster branch', () => {
+    it('a video item with a raster mask and a vector mask takes the alpha branch: alpha 4 -> not hit, 5 -> hit, and `inside` is never called', () => {
+      const d = docOf([box('v', 0, 0, 100, 100, { type: 'video', masks: [rectMask(40, 0, 60, 100, { id: 'vec' }), rasterMask({ order: 1 })] })]), calls: number[] = [];
+      const r = (a: number | null) => reads(() => a, () => { calls.push(1); return false; });
+      expect(hit(d, 10, r(4))).toBe(false); expect(hit(d, 10, r(5))).toBe(true); expect(hit(d, 10, r(null))).toBe(true); expect(hit(d, 10, r(0))).toBe(false); expect(hit(d, 50, r(255))).toBe(true);
+      expect(calls).toEqual([]);
+    });
+    it('the alpha read gets the item and the canvas point (not the item-local one)', () => {
+      const d = docOf([box('v', 200, 300, 100, 100, { type: 'video', masks: [rasterMask()] })]), seen: string[] = [];
+      maskHit(d, d.items[0], 1000, { x: 250, y: 350 }, reads((i, q) => { seen.push(`${i.id}@${q.x},${q.y}`); return 255; })); expect(seen).toEqual(['v@250,350']);
+    });
+    it('a disabled raster mask does not choose the raster branch: the vector masks decide and the alpha read is not called', () => {
+      const calls: number[] = [], d = masked([rasterMask({ enabled: false }), rectMask(40, 0, 60, 100, { order: 1 })], { type: 'video' });
+      const r = reads(() => { calls.push(1); return 0; }, inRect);
+      expect([10, 50].map(x => hit(d, x, r))).toEqual([false, true]); expect(calls).toEqual([]);
+    });
+    it('only a disabled raster mask: no mask left, the box decides and nothing is read', () => {
+      const calls: number[] = [], d = masked([rasterMask({ enabled: false })], { type: 'video' });
+      expect(hit(d, 50, reads(() => { calls.push(1); return 0; }, () => { calls.push(2); return false; }))).toBe(true); expect(calls).toEqual([]);
+    });
+  });
+  describe('pickAt with the mask test', () => {
+    it('a point in a hole of the top item picks the item below; a point on the mask picks the top item', () => {
+      const doc = docOf([box('under', 0, 0, 100, 100, {}, 'V1'), box('over', 0, 0, 100, 100, { masks: [rectMask(0, 0, 100, 100, { id: 'all' }), rectMask(40, 0, 60, 100, { id: 'hole', mode: 'subtract', order: 1 })] }, 'V2')], [mkTrack('V1', 'video'), mkTrack('V2', 'video')]);
+      expect(pickAt(doc, 1000, p(50), noAlpha)?.id).toBe('under'); expect(pickAt(doc, 1000, p(10), noAlpha)?.id).toBe('over');
+    });
+    it('every candidate outside its vector masks picks nothing', () => {
+      expect(pickAt(masked([rectMask(40, 0, 60, 100)]), 1000, p(10), noAlpha)).toBeNull();
+    });
   });
 });
 

@@ -399,7 +399,16 @@ test.describe('T26 Q6: the mask test of the pick', () => {
     await click(page, g.at(250, 600)); expect(await selection(page), 'left half is kept').toEqual(['masked']);
     await click(page, g.at(150, 350)); expect(await selection(page)).toEqual(['masked']);
   });
-  // The raster case (background removal, alpha 31 and 32, a raster with no frame yet) is unit level only: no .dmk helper in tests/ui/t12-support.ts is importable
+  test('a lone subtract vector mask is a hole: a click inside the hole picks the item below, a click on the visible part picks the masked item', async ({ page }) => {
+    // masked: 600 x 600 at (100, 300), hole = item-local (150,150)-(450,450), canvas (250,450)-(550,750). base lies under it.
+    const hole = presetPoints('rectangle', 300, 300).map(p => ({ anchor: { x: p.anchor.x + 150, y: p.anchor.y + 150 } }));
+    const mask = { id: 'mk1', name: 'Mask 1', enabled: true, points: hole, closed: true, mode: 'subtract', order: 0, colorIndex: 0, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'shape' };
+    await open(page, doc([image('base', 'v1', 100, 300, 600, 600), image('masked', 'o2', 100, 300, 600, 600, { masks: [mask] })])); const g = await geo(page);
+    await click(page, g.at(400, 600)); expect(await selection(page), 'inside the hole').toEqual(['base']);
+    await click(page, g.at(150, 350)); expect(await selection(page), 'visible part, top left').toEqual(['masked']);
+    await click(page, g.at(650, 850)); expect(await selection(page), 'visible part, bottom right').toEqual(['masked']);
+  });
+  // The raster case (background removal, alpha 4 and 5, a raster with no frame yet) is unit level only: no .dmk helper in tests/ui/t12-support.ts is importable
   // without a T12 file; the pick's alpha rule is pinned with a stub in tests/t26-selection-box.test.ts.
 });
 
@@ -428,8 +437,8 @@ test.describe('T26 row 9: the export draws the stored values and never the box',
   });
 });
 
-test.describe('T26 window listeners: pointercancel commits (7.1 l.1802), window blur drops the draft (not from Xapp)', () => {
-  // pointercancel commits like a release: research 7.1 l.1802 ("A pointer cancel commits too. Escape does not cancel a drag."). Window blur drops the draft and writes nothing:
+test.describe('T26 window listeners: pointercancel commits (7.1 l.1802), window blur commits too (not from Xapp; relay R9)', () => {
+  // pointercancel commits like a release: research 7.1 l.1802 ("A pointer cancel commits too. Escape does not cancel a drag."). Window blur commits the same way (relay R9; Author may overrule):
   // not from Xapp: needed because the drag uses window listeners, not pointer capture (lane A's words).
   // c: 200 x 100 at (340, 700), centre (440, 750); a move to centre x 530 snaps to the canvas centre (540) and shows guide-x.
   const one = () => doc([shape('c', 'o1', 340, 700, 200, 100)]);
@@ -449,27 +458,31 @@ test.describe('T26 window listeners: pointercancel commits (7.1 l.1802), window 
     expect(await draftLive(page)).toBe(false); await settled(); await expect(guideX).toHaveCount(0);
   });
 
-  test('window blur ends a move with the draft dropped and no write', async ({ page }) => {
-    await open(page, one()); const g = await geo(page), grab = g.at(440, 750), before = JSON.stringify((await liveDoc(page)).items);
-    const { x: guideX, y: guideY } = guides(page);
+  test('window blur commits a move as one "Edit items" step', async ({ page }) => {
+    await open(page, one()); const g = await geo(page), grab = g.at(440, 750), { x: guideX, y: guideY } = guides(page);
     await hold(page, grab, g.at(530, 750));
     expect(await draftLive(page)).toBe(true); await expect(guideX).toHaveCount(1);
+    const wantX = await draftValue(page, 'c', 'positionX') ?? NaN, wantY = await draftValue(page, 'c', 'positionY') ?? NaN; // the committed (snapped) values
     await clearIntents(page); await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     expect(await draftLive(page)).toBe(false); await expect(guideX).toHaveCount(0); await expect(guideY).toHaveCount(0);
-    const none = async () => { expect(await pv(page, 'c', 'positionX')).toBe(340); expect(await pv(page, 'c', 'positionY')).toBe(700); expect(JSON.stringify((await liveDoc(page)).items)).toBe(before); expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0); };
-    await none();
+    await expect.poll(async () => (await transforms(page)).length).toBe(1);
+    const settled = async () => { near(await pv(page, 'c', 'positionX'), wantX, 0.001, 'positionX'); near(await pv(page, 'c', 'positionY'), wantY, 0.001, 'positionY'); expect(await transforms(page)).toHaveLength(1); expect(await undoLabels(page)).toEqual(['Edit items']); };
+    await settled();
     await page.mouse.up(); await page.mouse.move(g.at(700, 900).x, g.at(700, 900).y, { steps: 6 }); // the window listeners are gone: nothing follows the pointer
-    expect(await draftLive(page)).toBe(false); await none(); await expect(guideX).toHaveCount(0);
+    expect(await draftLive(page)).toBe(false); await settled(); await expect(guideX).toHaveCount(0);
   });
 
-  test('a corner drag cancelled by window blur leaves the scale and position unchanged and writes nothing', async ({ page }) => {
-    await open(page, A()); await choose(page, ['a']); const g = await geo(page), before = JSON.stringify((await liveDoc(page)).items);
+  test('window blur commits a corner drag as one "Edit items" step', async ({ page }) => {
+    await open(page, A()); await choose(page, ['a']); const g = await geo(page);
     await hold(page, await knob(page, 'se'), g.at(400, 550)); expect(await draftLive(page)).toBe(true); near(await draftValue(page, 'a', 'scale') ?? 0, 0.5, 0.02, 'the draft scale');
+    const wantS = await draftValue(page, 'a', 'scale') ?? NaN, wantX = await draftValue(page, 'a', 'positionX') ?? NaN, wantY = await draftValue(page, 'a', 'positionY') ?? NaN;
     await clearIntents(page); await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     expect(await draftLive(page)).toBe(false);
+    await expect.poll(async () => (await transforms(page)).length).toBe(1);
+    const settled = async () => { near(await pv(page, 'a', 'scale'), wantS, 0.001, 'scale'); near(await pv(page, 'a', 'positionX'), wantX, 0.001, 'positionX'); near(await pv(page, 'a', 'positionY'), wantY, 0.001, 'positionY'); expect(await transforms(page)).toHaveLength(1); expect(await undoLabels(page)).toEqual(['Edit items']); };
+    await settled();
     await page.mouse.up(); await page.mouse.move(g.at(300, 500).x, g.at(300, 500).y, { steps: 4 });
-    expect(await draftLive(page)).toBe(false); expect(await pv(page, 'a', 'scale')).toBe(1); expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
-    expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
+    expect(await draftLive(page)).toBe(false); await settled();
   });
 
   test('a marquee ended by pointercancel selects the items fully inside, as a release does', async ({ page }) => {
