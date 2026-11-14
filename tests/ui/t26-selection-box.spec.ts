@@ -184,8 +184,9 @@ test.describe('T26 row 10: press selects and moves, the centre snap, the guides'
   test('a press on an unselected item selects it and moves it in the same press, by the pointer movement, one step', async ({ page }) => {
     await open(page, doc([shape('a', 'o1', 200, 400, 400, 300), shape('b', 'o2', 700, 1200, 200, 100)])); const g = await geo(page);
     expect(await selection(page)).toEqual([]);
-    await drag(page, g.at(400, 550), g.at(500, 610));
-    expect(await selection(page)).toEqual(['a']); await closeTo(() => pv(page, 'a', 'positionX'), 300); await closeTo(() => pv(page, 'a', 'positionY'), 460);
+    // Centre to (300, 610): 240 and 350 px from the canvas centre (540, 960), far outside the snap (8 screen px is about 44 canvas px at k 0.18).
+    await drag(page, g.at(400, 550), g.at(300, 610));
+    expect(await selection(page)).toEqual(['a']); await closeTo(() => pv(page, 'a', 'positionX'), 100); await closeTo(() => pv(page, 'a', 'positionY'), 460);
     expect(await pv(page, 'b', 'positionX')).toBe(700); expect(await undoLabels(page)).toEqual(['Edit items']);
   });
   test('there is no drag threshold: the first pointer move already shows the draft; the document is written on release only', async ({ page }) => {
@@ -213,6 +214,16 @@ test.describe('T26 row 10: press selects and moves, the centre snap, the guides'
     await page.mouse.move(g.at(440 + 90, 750 + 210).x, g.at(440 + 90, 750 + 210).y, { steps: 6 }); await expect(guideX).toHaveCount(1);
     await page.mouse.up(); await expect(guideX).toHaveCount(0); await expect(guideY).toHaveCount(0);
     await closeTo(() => pv(page, 'c', 'positionX'), 440, 0.01); await closeTo(() => pv(page, 'c', 'positionY'), 910, 0.01);
+  });
+  // a's centre (400, 550); the canvas centre x is 540. The limit is 8 screen px at the stage's own zoom k (lane A, 13 Nov: pin it at the real zoom).
+  // 6 and 10 screen px leave 2 screen px to the limit on each side, room for the pointer's rounding to whole screen px.
+  test('the snap limit is 8 screen px at the stage zoom: 6 screen px off snaps, 10 screen px off does not', async ({ page }) => {
+    await open(page, A()); const g = await geo(page), grab = g.at(400, 550), guideX = page.locator('[data-testid="selection-guide-x"]');
+    near(Number(await overlay(page).getAttribute('data-zoom')), g.k, 0.001, 'the overlay zoom is the stage width over the canvas width');
+    const off = (screen: number) => ({ x: grab.x + 140 * g.k - screen, y: grab.y }); // centre x at 540 minus `screen` screen px
+    await hold(page, grab, off(10)); await expect(guideX).toHaveCount(0); near(await draftValue(page, 'a', 'positionX') ?? 0, 340 - 10 / g.k, 1.5 / g.k, '10 screen px off: no snap');
+    await page.mouse.move(off(6).x, off(6).y, { steps: 2 }); await expect(guideX).toHaveCount(1); expect(await draftValue(page, 'a', 'positionX')).toBeCloseTo(340, 6);
+    await page.mouse.up(); await closeTo(() => pv(page, 'a', 'positionX'), 340, 0.01); expect(await undoLabels(page)).toEqual(['Edit items']);
   });
 });
 
@@ -260,7 +271,8 @@ test.describe('T26 rows 12 and A1: several selected items', () => {
   test('row 12: 2 or more selected items at the playhead show one plain box around them and no handles', async ({ page }) => {
     await open(page, doc([shape('a', 'o1', 200, 400, 400, 300), shape('b', 'o2', 700, 1200, 200, 100)])); await choose(page, ['a', 'b']);
     await expect(groupBox(page)).toHaveCount(1); await expect(boxOf(page)).toHaveCount(0); await expect(knobs(page)).toHaveCount(0);
-    const g = await geo(page), r = (await groupBox(page).boundingBox())!, a = g.canvas({ x: r.x, y: r.y }), b = g.canvas({ x: r.x + r.width, y: r.y + r.height });
+    // The rect's own canvas-px geometry: its screen box would include half the 1.5 screen px stroke (about 4 canvas px at k 0.18).
+    const r = await groupBox(page).evaluate(e => ['x', 'y', 'width', 'height'].map(k => Number(e.getAttribute(k)))), a = { x: r[0], y: r[1] }, b = { x: r[0] + r[2], y: r[1] + r[3] };
     near(a.x, 200, 2, 'left'); near(a.y, 400, 2, 'top'); near(b.x, 900, 2, 'right'); near(b.y, 1300, 2, 'bottom'); // the union of the two boxes
     await choose(page, ['a']); await expect(groupBox(page)).toHaveCount(0); await expect(boxOf(page)).toHaveCount(1);
   });
