@@ -387,7 +387,7 @@ export function transform(doc: ProjectDocument, id: string, args: RecordData): {
     if (args.x === undefined) p.positionX = (p.positionX ?? 0) - (after.rw - before.rw) / 2;
     if (args.y === undefined) p.positionY = (p.positionY ?? 0) - (after.rh - before.rh) / 2;
   }
-  if (typeof args.rotation === 'number') p.rotation = args.rotation;
+  if (typeof args.rotation === 'number') p.rotation = ((args.rotation % 360) + 360) % 360;
   if (typeof args.x === 'number') p.positionX = args.x;
   if (typeof args.y === 'number') p.positionY = args.y;
   const { rw, rh } = size();
