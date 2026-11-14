@@ -24,7 +24,7 @@ import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from './sele
 export const useSelectionDraft = create<{ doc: ProjectDocument | null }>(() => ({ doc: null }));
 type Drag = { kind: 'move' | 'corner' | 'rotate' | 'marquee'; corner?: Corner; ids: string[]; from: Pt; to?: Pt; base: ProjectDocument; t: number; zoom: number; edits?: PreviewEdit[]; prior?: string[] };
 
-/** The raster branch's read: the item's combined mask alpha at p (Author's ruling e; background removal is a mask). No enabled mask: 255.
+/** The raster branch's read: the item's combined mask alpha at p (Author's ruling e; background removal is a mask). No mask left at the playhead: 255.
  *  A raster mask with no frame yet: null (combinedPlane would count it as covering nothing). Same W × H as the compositor, so its cache is shared. */
 const maskAlpha = (doc: ProjectDocument, t: number): AlphaAt => (item, p) => {
   const local = itemLocal(item, t), masks = frameMasks(item, local, fpsOf(doc));
@@ -81,7 +81,7 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       useSelectionDraft.setState({ doc: next });
     };
     // Release and pointer cancel both commit (7.1 point 5); Escape does not cancel a drag. Window blur commits too: not from Xapp,
-    // needed because the drag uses window listeners, not pointer capture (relay R9; Author may overrule).
+    // needed because the drag uses window listeners, not pointer capture (relay R9, confirmed by Author).
     const end = () => {
       const d = drag.current; if (!d) return;
       drag.current = null; listen(false);

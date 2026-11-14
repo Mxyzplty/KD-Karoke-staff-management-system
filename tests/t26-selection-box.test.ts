@@ -472,20 +472,79 @@ describe('ruling e, §54.10 point 8: the mask test of the pick', () => {
       const d = docOf([box('v', 200, 300, 100, 100, { type: 'video', masks: [rasterMask()] })]), seen: string[] = [];
       maskHit(d, d.items[0], 1000, { x: 250, y: 350 }, reads((i, q) => { seen.push(`${i.id}@${q.x},${q.y}`); return 255; })); expect(seen).toEqual(['v@250,350']);
     });
-    it('a disabled raster mask does not choose the raster branch: the vector masks decide and the alpha read is not called', () => {
-      const calls: number[] = [], d = masked([rasterMask({ enabled: false }), rectMask(40, 0, 60, 100, { order: 1 })], { type: 'video' });
-      const r = reads(() => { calls.push(1); return 0; }, inRect);
-      expect([10, 50].map(x => hit(d, x, r))).toEqual([false, true]); expect(calls).toEqual([]);
+    it('lane A\'s reading of Author\'s step 1 (13 Nov): a disabled raster mask plus a path mask still takes the alpha branch: alpha 4 -> not hit, 5 -> hit, `inside` never called', () => {
+      const alphaCalls: number[] = [], insideCalls: number[] = [], d = masked([rasterMask({ enabled: false }), rectMask(40, 0, 60, 100, { order: 1 })], { type: 'video' });
+      const r = (a: number) => reads(() => { alphaCalls.push(1); return a; }, () => { insideCalls.push(1); return false; });
+      expect(hit(d, 10, r(4))).toBe(false); expect(hit(d, 10, r(5))).toBe(true); expect(alphaCalls).toHaveLength(2); expect(insideCalls).toEqual([]);
     });
     it('only a disabled raster mask: no mask left, the box decides and nothing is read', () => {
       const calls: number[] = [], d = masked([rasterMask({ enabled: false })], { type: 'video' });
       expect(hit(d, 50, reads(() => { calls.push(1); return 0; }, () => { calls.push(2); return false; }))).toBe(true); expect(calls).toEqual([]);
     });
   });
+  // Author's answer of 13 Nov on l.746. The playhead is 1000 ms, the item starts at 0 with trim.from 0 and rate 1, so the source time is 1000 ms = 1_000_000 us
+  // (frameMasks: [sourceStartUs, sourceEndUs), the end exclusive). A path keyframe `time` is in the same source ms.
+  describe('maskHit: masks that count at the playhead (13 Nov, step 2 and 3)', () => {
+    const counted = () => { const c = { alpha: 0, inside: 0 }; return { c, r: reads(() => { c.alpha++; return 0; }, () => { c.inside++; return false; }) }; };
+    const outBefore = (extra: RecordData = {}) => rasterMask({ raster: { ...rasterMask().raster, sourceStartUs: 2_000_000, sourceEndUs: 3_000_000 }, ...extra }); // source time 1_000_000 < start
+    const outAtEnd = (extra: RecordData = {}) => rasterMask({ raster: { ...rasterMask().raster, sourceStartUs: 0, sourceEndUs: 1_000_000 }, ...extra }); // source time = end: out
+    const inRange = (extra: RecordData = {}) => rasterMask({ raster: { ...rasterMask().raster, sourceStartUs: 1_000_000, sourceEndUs: 2_000_000 }, ...extra }); // source time = start: in
+    /** A legacy smart path mask (source 'smart', no raster) whose path keyframes span a..b ms; the rectangle x0..x1 at both ends. */
+    const smart = (a: number, b: number, x0: number, x1: number, extra: RecordData = {}) => {
+      const points = [[x0, 0], [x1, 0], [x1, 100], [x0, 100]].map(([x, y]) => ({ anchor: { x, y } }));
+      return rectMask(x0, 0, x1, 100, { id: 's', source: 'smart', keyframes: { path: { keyframes: [{ id: 'p1', time: a, points, closed: true, easing: 'linear' }, { id: 'p2', time: b, points, closed: true, easing: 'linear' }] } }, ...extra });
+    };
+    it('(a) only a raster mask out of range (before its start, or at its exclusive end): the item passes at every point and nothing is read', () => {
+      for (const [name, m] of [['before start', outBefore()], ['at end', outAtEnd()]] as const) {
+        const { c, r } = counted(), d = masked([m], { type: 'video' });
+        expect([0, 10, 50, 99].map(x => hit(d, x, r)), name).toEqual([true, true, true, true]); expect(c, name).toEqual({ alpha: 0, inside: 0 });
+      }
+    });
+    it('a raster mask in range at its start time (source time = sourceStartUs) counts: the alpha read decides', () => {
+      const { c, r } = counted(), d = masked([inRange()], { type: 'video' });
+      expect(hit(d, 10, r)).toBe(false); expect(c).toEqual({ alpha: 1, inside: 0 });
+    });
+    it('(b) a raster mask out of range plus a path mask: the alpha branch; alpha 0 (outside the path) -> not hit, 5 -> hit, `inside` never called', () => {
+      for (const m of [outBefore(), outAtEnd()]) {
+        const c = { alpha: 0, inside: 0 }, d = masked([m, rectMask(40, 0, 60, 100, { order: 1 })], { type: 'video' });
+        const r = (a: number) => reads(() => { c.alpha++; return a; }, () => { c.inside++; return false; });
+        expect(hit(d, 10, r(0))).toBe(false); expect(hit(d, 50, r(5))).toBe(true); expect(hit(d, 10, r(4))).toBe(false);
+        expect(c).toEqual({ alpha: 3, inside: 0 });
+      }
+    });
+    it('a disabled raster mask plus an out-of-range one and no other mask: no mask left, the item passes and nothing is read', () => {
+      const { c, r } = counted(); expect(hit(masked([rasterMask({ enabled: false }), outBefore({ id: 'r2', order: 1 })], { type: 'video' }), 10, r)).toBe(true); expect(c).toEqual({ alpha: 0, inside: 0 });
+    });
+    it('a smart path mask outside its first-to-last keyframe span (source 1000 ms, span 2000..3000) alone: the item passes and nothing is read', () => {
+      const { c, r } = counted(), d = masked([smart(2000, 3000, 40, 60)]);
+      expect([10, 50].map(x => hit(d, x, r))).toEqual([true, true]); expect(c).toEqual({ alpha: 0, inside: 0 });
+      const after = counted(); expect(hit(masked([smart(0, 500, 40, 60)]), 10, after.r)).toBe(true); expect(after.c).toEqual({ alpha: 0, inside: 0 }); // after the span
+    });
+    it('a smart path mask inside its span (both ends count) alone: no raster stored, the boolean branch (`inside` called), a miss outside the path', () => {
+      for (const [a, b] of [[500, 1500], [1000, 2000], [0, 1000]]) {
+        const c = { alpha: 0, inside: 0 }, d = masked([smart(a, b, 40, 60)]);
+        const r = reads(() => { c.alpha++; return 0; }, (path, q) => { c.inside++; return inRect(path, q); });
+        expect([10, 50].map(x => hit(d, x, r)), `${a}..${b}`).toEqual([false, true]); expect(c, `${a}..${b}`).toEqual({ alpha: 0, inside: 2 });
+      }
+    });
+    it('an out-of-span smart path mask plus an out-of-range raster: no mask left, the item passes and nothing is read', () => {
+      const { c, r } = counted(); expect(hit(masked([smart(2000, 3000, 40, 60), outBefore({ id: 'r2', order: 1 })], { type: 'video' }), 10, r)).toBe(true); expect(c).toEqual({ alpha: 0, inside: 0 });
+    });
+    it('an out-of-span smart path mask plus an in-range raster: the alpha branch (alpha 0 -> not hit, 5 -> hit), `inside` never called', () => {
+      const c = { alpha: 0, inside: 0 }, d = masked([smart(2000, 3000, 40, 60), inRange({ id: 'r2', order: 1 })], { type: 'video' });
+      const r = (a: number) => reads(() => { c.alpha++; return a; }, () => { c.inside++; return false; });
+      expect(hit(d, 10, r(0))).toBe(false); expect(hit(d, 10, r(5))).toBe(true); expect(c).toEqual({ alpha: 2, inside: 0 });
+    });
+  });
   describe('pickAt with the mask test', () => {
     it('a point in a hole of the top item picks the item below; a point on the mask picks the top item', () => {
       const doc = docOf([box('under', 0, 0, 100, 100, {}, 'V1'), box('over', 0, 0, 100, 100, { masks: [rectMask(0, 0, 100, 100, { id: 'all' }), rectMask(40, 0, 60, 100, { id: 'hole', mode: 'subtract', order: 1 })] }, 'V2')], [mkTrack('V1', 'video'), mkTrack('V2', 'video')]);
       expect(pickAt(doc, 1000, p(50), noAlpha)?.id).toBe('under'); expect(pickAt(doc, 1000, p(10), noAlpha)?.id).toBe('over');
+    });
+    it('13 Nov (a): the top item with only an out-of-range raster mask is picked anywhere in its box, also with an alpha read of 0', () => {
+      const out = rasterMask({ raster: { ...rasterMask().raster, sourceStartUs: 2_000_000, sourceEndUs: 3_000_000 } });
+      const doc = docOf([box('under', 0, 0, 100, 100, {}, 'V1'), box('over', 0, 0, 100, 100, { type: 'video', masks: [out] }, 'V2')], [mkTrack('V1', 'video'), mkTrack('V2', 'video')]);
+      for (const x of [5, 50, 95]) expect(pickAt(doc, 1000, p(x), reads(() => 0, () => false))?.id, `x=${x}`).toBe('over');
     });
     it('every candidate outside its vector masks picks nothing', () => {
       expect(pickAt(masked([rectMask(40, 0, 60, 100)]), 1000, p(10), noAlpha)).toBeNull();

@@ -109,8 +109,8 @@ export function candidates(doc: ProjectDocument, t: number, p: Pt): RecordData[]
 }
 /** Findings part 5 §54.10 point 8, vector-only items: one boolean per mask, in frameMasks' order (enabled, by `order`); feather
  *  and expansion are ignored (the bare path). A mask with opacity < 50 is dropped before the first-mask rule, and one with 50 to
- *  100 counts as fully opaque: both lane A's reading of l.898, for Author. Then §54.5 and §54.6 as booleans (the boolean reading
- *  of each mode is lane A's, open for Author, O6): invert, Subtract negates, the first mask is acc, then add OR, subtract and
+ *  100 counts as fully opaque: both lane A's reading of l.898, confirmed by Author. Then §54.5 and §54.6 as booleans (the boolean
+ *  reading of each mode is lane A's, confirmed by Author, O6): invert, Subtract negates, the first mask is acc, then add OR, subtract and
  *  intersect AND, difference XOR. null: no mask left. */
 export function vectorHit(masks: FrameMask[], p: Pt, inside: InsidePath): boolean | null {
   let acc: boolean | null = null;
@@ -121,16 +121,19 @@ export function vectorHit(masks: FrameMask[], p: Pt, inside: InsidePath): boolea
   }
   return acc;
 }
-/** 7.1 point 8's mask test (§54.10 point 8, Author's ruling e). Only video and image items carry masks (render/model.ts). An item
- *  with an enabled raster mask: the combined alpha, a hit above 4 of 255, null passes. All vector: the booleans. No mask left: the
- *  box decides. */
+/** 7.1 point 8's mask test (§54.10 point 8, Author's ruling e and his answer of 13 Nov on l.746). Only video and image items carry
+ *  masks (render/model.ts). The masks that count are frameMasks' (§54.6 5.1): none left, the item passes. The rule comes from the
+ *  stored list: any raster mask, in range or not (disabled too: lane A's reading, for Author), means the combined alpha of the
+ *  masks that count, a hit above 4 of 255, null passes. No raster stored: the booleans. */
 export function maskHit(doc: ProjectDocument, item: RecordData, t: number, p: Pt, reads: MaskReads): boolean {
   if (item.type !== 'video' && item.type !== 'image') return true;
-  if (masksOf(item).some(m => m && m.enabled !== false && m.raster)) { const a = reads.alpha(item, p); return a === null || a > PICK_ALPHA_ABOVE; }
-  const local = itemLocal(item, t), inv = invert(boxMatrix(itemBox(doc, item, local)));
+  const local = itemLocal(item, t), masks = frameMasks(item, local, fpsOf(doc));
+  if (!masks.length) return true;
+  if (masksOf(item).some(m => m && m.raster)) { const a = reads.alpha(item, p); return a === null || a > PICK_ALPHA_ABOVE; }
+  const inv = invert(boxMatrix(itemBox(doc, item, local)));
   if (!inv) return true;
   const [x, y] = apply(inv, p.x, p.y);
-  return vectorHit(frameMasks(item, local, fpsOf(doc)), { x, y }, reads.inside) ?? true;
+  return vectorHit(masks, { x, y }, reads.inside) ?? true;
 }
 /** The first candidate that passes the mask test. */
 export const pickAt = (doc: ProjectDocument, t: number, p: Pt, reads: MaskReads): RecordData | null =>

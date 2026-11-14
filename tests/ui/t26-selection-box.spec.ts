@@ -454,6 +454,37 @@ test.describe('T26 Q6: the mask test of the pick', () => {
   });
   // The raster case (background removal, alpha 4 and 5, a raster with no frame yet) is unit level only: no .dmk helper in tests/ui/t12-support.ts is importable
   // without a T12 file; the pick's alpha rule is pinned with a stub in tests/t26-selection-box.test.ts.
+  // Author's answer of 13 Nov on l.746. A raster ref whose `file` does not exist is never loaded when frameMasks drops it (out of range or disabled): the
+  // preview reads rasterPlane only for the masks that count (masks/render.ts l.83, selection-overlay.tsx l.32), and the inspector card reads only the ref's numbers.
+  // The playhead is 500 ms, trim.from 0, rate 1: source time 500 ms = 500_000 us. Item (100, 300), 600 x 600; the rectangle is item-local (150,150)-(450,450).
+  const rasterRef = (extra: Record<string, unknown> = {}) => ({ file: 'made-up.dmk', sourceStartUs: 2_000_000, sourceEndUs: 3_000_000, frameCount: 1, width: 1, height: 1, space: { kind: 'item', width: 1, height: 1 }, version: 1, ...extra });
+  const rasterMask = (extra: Record<string, unknown> = {}) => ({ id: 'rm', name: 'Smart', enabled: true, points: [], closed: true, mode: 'add', order: 0, colorIndex: 0, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'smart', raster: rasterRef(), ...extra });
+  const rectPath = (extra: Record<string, unknown> = {}) => ({ id: 'rp', name: 'Rect', enabled: true, points: presetPoints('rectangle', 300, 300).map(q => ({ anchor: { x: q.anchor.x + 150, y: q.anchor.y + 150 } })), closed: true, mode: 'add', order: 1, colorIndex: 1, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'shape', ...extra });
+  const pair = (masks: unknown[]) => doc([image('base', 'v1', 100, 300, 600, 600), image('masked', 'o2', 100, 300, 600, 600, { masks })]);
+  test('13 Nov (a): only a raster mask out of range at the playhead: a click anywhere in the box picks the item', async ({ page }) => {
+    await open(page, pair([rasterMask()])); const g = await geo(page);
+    for (const [x, y] of [[150, 350], [400, 600], [650, 850]]) { await click(page, g.at(x, y)); expect(await selection(page), `(${x}, ${y})`).toEqual(['masked']); }
+  });
+  test('13 Nov (b): an out-of-range raster plus a path mask: inside the path picks the item, inside the box but outside the path picks the item below', async ({ page }) => {
+    await open(page, pair([rasterMask(), rectPath()])); const g = await geo(page);
+    await click(page, g.at(400, 600)); expect(await selection(page), 'inside the rectangle').toEqual(['masked']);
+    await click(page, g.at(150, 350)); expect(await selection(page), 'in the box, outside the rectangle').toEqual(['base']);
+  });
+  test('lane A\'s reading of step 1: a disabled raster ref plus a path mask of opacity 30 takes the above-4 rule (alpha about 76 inside, 0 outside), not the boolean branch that would drop it', async ({ page }) => {
+    await open(page, pair([rasterMask({ enabled: false }), rectPath({ opacity: 30 })])); const g = await geo(page);
+    await click(page, g.at(400, 600)); expect(await selection(page), 'inside the rectangle').toEqual(['masked']);
+    await click(page, g.at(150, 350)); expect(await selection(page), 'outside the rectangle: the boolean branch would drop the mask and pick the item here').toEqual(['base']);
+  });
+  test('the same path mask of opacity 30 with no raster stored: the boolean branch drops it, so the item passes everywhere in its box', async ({ page }) => {
+    await open(page, pair([rectPath({ opacity: 30 })])); const g = await geo(page);
+    await click(page, g.at(150, 350)); expect(await selection(page)).toEqual(['masked']);
+  });
+  test('a smart path mask outside its first-to-last keyframe span (playhead 500 ms, span 2000..3000 ms) alone: a click anywhere in the box picks the item', async ({ page }) => {
+    const points = rectPath().points, keyframes = { path: { keyframes: [{ id: 'p1', time: 2000, points, closed: true, easing: 'linear' }, { id: 'p2', time: 3000, points, closed: true, easing: 'linear' }] } };
+    await open(page, pair([rectPath({ source: 'smart', keyframes })])); const g = await geo(page);
+    await click(page, g.at(150, 350)); expect(await selection(page), 'outside the rectangle').toEqual(['masked']);
+    await click(page, g.at(400, 600)); expect(await selection(page), 'inside the rectangle').toEqual(['masked']);
+  });
 });
 
 test.describe('T26 row 9: the export draws the stored values and never the box', () => {
