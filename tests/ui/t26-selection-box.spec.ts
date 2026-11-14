@@ -148,11 +148,20 @@ test.describe('T26 rows 2-4: the corner and rotation drags, one history step', (
     await undo(page); expect(JSON.stringify((await liveDoc(page)).items)).toBe(before); expect(await undoLabels(page)).toEqual([]);
   });
 
-  test('row 6: no edge handles; presses on the edges, between the handles, start no corner or rotation drag', async ({ page }) => {
+  // a: 400 x 300 at (200, 400). Each press is 20 canvas px inside an edge midpoint (about 3.6 screen px at k 0.18, clear of the item border and of every corner handle).
+  // The pointer moves by (-100, +60): the centre goes from (400, 550) to (300, 610), 240 and 350 canvas px from the canvas centre (540, 960), far outside the snap (8 screen px, about 44 canvas px).
+  // With no edge handle the press is a move of the item by that offset; an edge resize would change scale, and a rotation would change rotation.
+  test('row 6: no edge handles; a drag from each edge midpoint moves the item by the offset (position changes, scale stays 1, rotation stays 0)', async ({ page }) => {
     await open(page, A()); await choose(page, ['a']); await expect(knobs(page)).toHaveCount(5);
-    const g = await geo(page), before = JSON.stringify((await liveDoc(page)).items);
-    for (const mid of [{ x: 400, y: 400 }, { x: 600, y: 550 }, { x: 400, y: 700 }, { x: 200, y: 550 }]) { await page.mouse.move(g.at(mid.x, mid.y).x, g.at(mid.x, mid.y).y); await page.mouse.down(); await page.mouse.up(); }
-    expect(await pv(page, 'a', 'scale')).toBe(1); expect(await pv(page, 'a', 'rotation')).toBe(0); expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+    const g = await geo(page);
+    for (const [name, mid] of [['top', { x: 400, y: 420 }], ['right', { x: 580, y: 550 }], ['bottom', { x: 400, y: 680 }], ['left', { x: 220, y: 550 }]] as const) {
+      const from = g.at(mid.x, mid.y), to = g.at(mid.x - 100, mid.y + 60);
+      await drag(page, from, to);
+      await closeTo(() => pv(page, 'a', 'positionX'), 100); await closeTo(() => pv(page, 'a', 'positionY'), 460);
+      expect(await pv(page, 'a', 'scale'), `${name} edge: not a resize`).toBe(1); expect(await pv(page, 'a', 'rotation'), `${name} edge: not a rotation`).toBe(0);
+      expect(await undoLabels(page), `${name} edge: one move step`).toEqual(['Edit items']);
+      await undo(page); await expect.poll(() => undoLabels(page)).toEqual([]); await closeTo(() => pv(page, 'a', 'positionX'), 200, 0.01); await closeTo(() => pv(page, 'a', 'positionY'), 400, 0.01);
+    }
   });
 
   // Rotation about the centre (400, 550): the handle is straight above a start-0 item, at angle -90 degrees; the pointer goes round at radius 300.
@@ -246,6 +255,20 @@ test.describe('T26 row 11: the click pick, Shift, empty space, the marquee', () 
     await click(page, g.at(900, 1700), { shift: true }); expect(await selection(page), 'Shift on empty space keeps the selection').toEqual(['big', 'small']);
     await click(page, g.at(900, 1700)); expect(await selection(page)).toEqual([]);
     expect(await transforms(page)).toHaveLength(0); expect(await undoLabels(page)).toEqual([]);
+  });
+  test('a Shift press on an already selected item takes it out and starts no move: nothing is dragged, written or dispatched', async ({ page }) => {
+    await open(page, doc([shape('big', 'o1', 100, 300, 600, 600), shape('small', 'o2', 300, 500, 200, 200)])); await choose(page, ['big', 'small']); const g = await geo(page);
+    await clearIntents(page);
+    // (150, 350) lies on big only. The pointer then moves 300 canvas px right and 400 down, so a move that wrongly started would show.
+    await page.keyboard.down('Shift');
+    await page.mouse.move(g.at(150, 350).x, g.at(150, 350).y); await page.mouse.down();
+    await page.mouse.move(g.at(450, 750).x, g.at(450, 750).y, { steps: 8 });
+    expect(await draftLive(page), 'no draft while the button is down').toBe(false);
+    await page.mouse.up(); await page.keyboard.up('Shift');
+    expect(await selection(page)).toEqual(['small']);
+    expect(await pv(page, 'big', 'positionX')).toBe(100); expect(await pv(page, 'big', 'positionY')).toBe(300);
+    expect(await pv(page, 'small', 'positionX')).toBe(300); expect(await pv(page, 'small', 'positionY')).toBe(500);
+    expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
   });
   const ms = () => doc([shape('m1', 'o1', 100, 100, 100, 100), shape('m2', 'o1', 300, 100, 100, 100), shape('gone', 'o2', 120, 120, 40, 40, { display: { from: 3000, to: 4000 } })]);
   test('marquee: a press on empty space starts it; on release the items at the playhead lying fully inside are selected', async ({ page }) => {
@@ -342,6 +365,15 @@ test.describe('T26 row 16: no box and no press in the editing modes', () => {
     await page.evaluate(async () => { const m = '/src/editor/shape-ui.tsx'; (await import(m)).useShapeUi.setState({ mode: null }); });
     await expect(boxOf(page)).toHaveCount(1);
   });
+  test('a double-click while a mode is on does nothing from the overlay: with 1 shape selected, path editing is not entered (outside a mode it is, see Q7)', async ({ page }) => {
+    await open(page, modes()); await choose(page, ['a']); await expect(boxOf(page)).toHaveCount(1);
+    await page.evaluate(async () => { const m = '/src/editor/shape-ui.tsx'; (await import(m)).useShapeUi.setState({ mode: { kind: 'draw', type: 'rectangle' } }); });
+    await expect(boxOf(page)).toHaveCount(0); const g = await geo(page).then(x => x.at(400, 550));
+    await page.mouse.dblclick(g.x, g.y);
+    const editing = await page.evaluate(async () => { const m = '/src/editor/shape-ui.tsx'; return (await import(m)).useShapeUi.getState().editing as string | null; });
+    expect(editing, 'the overlay listener returns early while hidden').toBeNull();
+    expect(await transforms(page)).toHaveLength(0);
+  });
   test('shape path editing: the box is hidden and a press does not select or move', async ({ page }) => {
     await open(page, modes()); await choose(page, ['a']);
     await page.evaluate(async () => { const m = '/src/editor/shape-ui.tsx'; (await import(m)).useShapeUi.setState({ editing: 'a', mode: null }); });
@@ -392,7 +424,7 @@ test.describe('T26 row 11 and Q2: the text double-click', () => {
   });
   // Known difference, pinned (Q2's leftover case). Two overlapping texts on one track: the pick prefers the stored zIndex 5 (the earlier-drawn first),
   // the text hit boxes of text/edit.tsx are in draw order, so the topmost box is the later-drawn one. The listener lets the event go on (the pick is a text) and the
-  // existing hit box acts: it edits the later-drawn text and selects it. Observed here as predicted from the code reading, not yet run.
+  // existing hit box acts: it edits the later-drawn text and selects it. The outcome was predicted from the code reading and confirmed by the run.
   test('Q2 leftover (known difference, pinned): where the pick and the DOM hit box differ, the DOM hit box wins: its text opens and is selected', async ({ page }, info) => {
     await open(page, doc([text('first', 'o1', 240, 700, 600, 160, 'First', { props: { zIndex: 5 } }), text('second', 'o1', 240, 700, 600, 160, 'Second', { display: { from: 500, to: 4000 } })]), 1000);
     const g = await geo(page).then(x => x.at(540, 780));
