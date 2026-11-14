@@ -600,3 +600,113 @@ test.describe('T26 row 7: corner drags on T22 elements (RC 6.2, l.1612)', () => 
     expect(await undoLabels(page)).toEqual(['Edit items']); expect(await transforms(page)).toHaveLength(1);
   });
 });
+
+// ---- review round 2
+/** RGBA of what the preview shows at a point in project canvas px (as t06-shapes.spec.ts): the `canvas.run` layers composited in DOM order, then read. */
+const pixel = (page: Page, x: number, y: number, W = SIZE.width) => page.evaluate(([x, y, W]) => {
+  const runs = [...document.querySelectorAll<HTMLCanvasElement>('canvas.run')], o = document.createElement('canvas');
+  o.width = runs[0].width; o.height = runs[0].height; const g = o.getContext('2d')!;
+  for (const c of runs) g.drawImage(c, 0, 0);
+  return Array.from(g.getImageData(Math.floor(x * o.width / W), Math.floor(y * o.width / W), 1, 1).data);
+}, [x, y, W]);
+const isRed = (px: number[]) => px[0] > 200 && px[1] < 60 && px[2] < 60 && px[3] > 200; // rectShape's fill #ff0000
+const wheel = async (page: Page, steps: number, deltaY: number) => { const preview = page.locator('[aria-label="Preview"]'); for (let n = 0; n < steps; n++) await preview.dispatchEvent('wheel', { deltaY, ctrlKey: true }); };
+
+test.describe('T26 T1 (7.1 point 5): during the drag the preview shows the real item at its new place', () => {
+  test('a move held down (no release): the preview draws the item itself at the new place and not at the old one; the document is unwritten until release; undo brings it back', async ({ page }) => {
+    // a: red 400 x 300 at (200, 400). The centre goes from (400, 550) to (700, 550): 160 canvas px from the canvas centre x (540), outside the snap (8 screen px). New box x 500..900, old 200..600.
+    await open(page, A()); const g = await geo(page), before = JSON.stringify((await liveDoc(page)).items);
+    await expect.poll(async () => isRed(await pixel(page, 300, 550)), { message: 'start: red at the old place' }).toBe(true);
+    await expect.poll(async () => isRed(await pixel(page, 800, 550)), { message: 'start: nothing at the new place' }).toBe(false);
+    await hold(page, g.at(400, 550), g.at(700, 550)); expect(await draftLive(page)).toBe(true);
+    await expect.poll(async () => isRed(await pixel(page, 800, 550)), { message: 'held: the item is drawn at the new place' }).toBe(true);
+    await expect.poll(async () => isRed(await pixel(page, 300, 550)), { message: 'held: the old place no longer shows the item' }).toBe(false);
+    expect(JSON.stringify((await liveDoc(page)).items), 'no document write while held').toBe(before); expect(await undoLabels(page)).toEqual([]);
+    await page.mouse.up(); await expect.poll(() => draftLive(page)).toBe(false);
+    await closeTo(() => pv(page, 'a', 'positionX'), 500); expect(await undoLabels(page)).toEqual(['Edit items']);
+    await expect.poll(async () => isRed(await pixel(page, 800, 550)), { message: 'released: red at the new place' }).toBe(true);
+    await undo(page); expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+    await expect.poll(async () => isRed(await pixel(page, 300, 550)), { message: 'undone: red at the old place again' }).toBe(true);
+    await expect.poll(async () => isRed(await pixel(page, 800, 550)), { message: 'undone: nothing at the new place' }).toBe(false);
+  });
+});
+
+test.describe('T26 C2: the snap limit reads the zoom at each move, not at the press', () => {
+  test('the stage is zoomed out during a held move: a centre 6 screen px off at the new zoom (10.6 at the press zoom) snaps', async ({ page }) => {
+    // a's centre x is 400 and the canvas centre x is 540. Zooming out 6 wheel steps (factor 1.1 each, shell.tsx l.149) divides the zoom by 1.77.
+    // At the new zoom the centre is put 6 screen px (6 / k canvas px) short of 540: that is 10.6 screen px at the press zoom (limit 8), so only a limit read at the move snaps.
+    await open(page, A()); const g = await geo(page), guideX = page.locator('[data-testid="selection-guide-x"]');
+    await hold(page, g.at(400, 550), g.at(450, 550)); expect(await draftLive(page)).toBe(true); await expect(guideX).toHaveCount(0); // 90 canvas px off: no snap
+    const k0 = g.k; await wheel(page, 6, 100);
+    await expect.poll(async () => Number(await overlay(page).getAttribute('data-zoom')), { message: 'the overlay zoom follows the zoom out' }).toBeLessThan(k0 * 0.7);
+    const g2 = await geo(page); expect(g2.k).toBeLessThan(k0 * 0.7);
+    const short = 6 / g2.k; // canvas px
+    expect(short * k0, 'the same distance is outside the limit at the press zoom').toBeGreaterThan(9);
+    const to = g2.at(400 + 140 - short, 550); await page.mouse.move(to.x, to.y, { steps: 4 });
+    await expect(guideX).toHaveCount(1); near(await draftValue(page, 'a', 'positionX') ?? 0, 340, 0.001, 'the centre is on the canvas centre');
+    await page.mouse.up(); await closeTo(() => pv(page, 'a', 'positionX'), 340, 0.01); expect(await undoLabels(page)).toEqual(['Edit items']);
+  });
+});
+
+test.describe('T26 C4: presses are read on the preview area; outside the stage only a handle answers', () => {
+  // A wide canvas (1920 x 400) leaves room above the stage in the 1440 x 900 viewport: the stage is as wide as the preview allows and low,
+  // so a handle 28 screen px above the top edge of an item at positionY 0 lies above the stage and still inside the preview area (checked by geometry in `setup`).
+  const WIDE = { width: 1920, height: 400 };
+  const area = (page: Page) => page.locator('section[data-zone="preview"]');
+  async function setup(page: Page) {
+    await open(page, doc([shape('a', 'o1', 760, 0, 400, 100)], TRACKS, { size: WIDE })); await choose(page, ['a']); await expect(boxOf(page)).toHaveCount(1);
+    const g = await geo(page, WIDE), a = (await area(page).boundingBox())!, rot = await knob(page, 'rotate'), c = g.at(960, 50); // the item centre (760 + 200, 0 + 50)
+    expect(rot.y + 5, 'the rotation handle lies wholly above the stage top edge').toBeLessThan(g.r.y); expect(rot.y - 5, 'and inside the preview area').toBeGreaterThan(a.y);
+    const angle = (q: Pt) => Math.atan2(q.y - c.y, q.x - c.x) * 180 / Math.PI;
+    return { g, a, rot, c, angle, before: JSON.stringify((await liveDoc(page)).items) };
+  }
+  test('a press on the rotation handle past the stage top edge, a move and a release rotate the item: one "Edit items"', async ({ page }) => {
+    const { g, rot, angle } = await setup(page), end = g.at(1260, 50); // the pointer goes round to the right of the centre
+    await drag(page, rot, end);
+    const want = angle(end) - angle(rot); near(want, 90, 1, 'the turn is a quarter turn');
+    await closeTo(() => pv(page, 'a', 'rotation'), want); expect(await undoLabels(page)).toEqual(['Edit items']); expect(await transforms(page)).toHaveLength(1);
+  });
+  test('7.1 point 7: a press inside the handle square of 10 screen px but outside the drawn circle (a square corner), past the stage edge, also starts the drag', async ({ page }) => {
+    const { g, rot, angle } = await setup(page), from = { x: rot.x + 4, y: rot.y - 4 }, end = g.at(1260, 50); // 5.66 px from the centre: outside the circle (radius 5), inside the square (half side 5)
+    expect(from.y + 5, 'the pressed point is above the stage too').toBeLessThan(g.r.y);
+    await drag(page, from, end);
+    await closeTo(() => pv(page, 'a', 'rotation'), angle(end) - angle(from)); expect(await undoLabels(page)).toEqual(['Edit items']); expect(await transforms(page)).toHaveLength(1);
+  });
+  test('a press on the empty preview area outside the stage, off every handle: the selection stays, no marquee, nothing is written', async ({ page }) => {
+    const { g, a, before } = await setup(page), y = (a.y + g.r.y) / 2, from = { x: g.r.x + 100, y };
+    expect(g.r.y - a.y, 'room above the stage for the press').toBeGreaterThan(12); await clearIntents(page);
+    await hold(page, from, { x: from.x + 200, y: g.r.y + 150 });
+    await expect(page.locator('[data-testid="selection-marquee"]')).toHaveCount(0); expect(await draftLive(page)).toBe(false);
+    await page.mouse.up();
+    expect(await selection(page)).toEqual(['a']); await expect(boxOf(page)).toHaveCount(1); expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
+    expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+  });
+  test('a press on the "Reset view (fit)" button with an item selected: the selection stays and no drag starts', async ({ page }) => {
+    const { before } = await setup(page), b = (await page.getByRole('button', { name: 'Reset view (fit)' }).boundingBox())!, from = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    await clearIntents(page); await hold(page, from, { x: from.x - 200, y: from.y + 250 });
+    expect(await draftLive(page)).toBe(false); await expect(page.locator('[data-testid="selection-marquee"]')).toHaveCount(0);
+    await page.mouse.up();
+    expect(await selection(page)).toEqual(['a']); await expect(boxOf(page)).toHaveCount(1); expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
+    expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+  });
+});
+
+test.describe('T26 T2 (D90, row 11): the marquee threshold is 2 canvas px, not screen px', () => {
+  // A 160 x 90 canvas gives a high zoom; zoomed in to the limit (scale 8) one canvas px is far more than 2 screen px. The item is 0.4 x 0.4 canvas px at (80, 45) (the stage centre,
+  // which a zoom keeps in place). The press is 0.2 canvas px outside its top left corner (empty space); the marquee then covers the whole item, so the distance alone decides.
+  // 1.8 canvas px is under the threshold (3 screen px or more: a screen-px threshold of 2 would select), 2.2 is over it.
+  const TINY = { width: 160, height: 90 };
+  const tiny = () => doc([shape('s', 'o1', 80, 45, 0.4, 0.4)], TRACKS, { size: TINY });
+  const run = async (page: Page, dist: number) => {
+    const g = await geo(page, TINY), from = g.at(79.8, 44.8), d = dist / Math.SQRT2, to = g.at(79.8 + d, 44.8 + d);
+    await drag(page, from, to, 6); return selection(page);
+  };
+  test('at the zoom limit: a marquee of 1.8 canvas px covering the item selects nothing, one of 2.2 canvas px selects it', async ({ page }) => {
+    await open(page, tiny()); await wheel(page, 25, -100);
+    await expect.poll(async () => Number(await overlay(page).getAttribute('data-zoom')), { message: 'zoomed in: well over 5 screen px per canvas px' }).toBeGreaterThan(5);
+    expect(await selection(page)).toEqual([]);
+    expect(await run(page, 1.8), '1.8 canvas px: under the threshold').toEqual([]);
+    expect(await run(page, 2.2), '2.2 canvas px: over the threshold').toEqual(['s']);
+    expect(await undoLabels(page)).toEqual([]);
+  });
+});

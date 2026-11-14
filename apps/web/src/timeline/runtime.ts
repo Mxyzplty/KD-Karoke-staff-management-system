@@ -278,7 +278,7 @@ export function createRuntime(host: Host, options: RuntimeOptions = {}) {
       }
       case 'editCaptionTransform': return run('Edit items', doc => { editCaptionTransform(doc, intent.itemIds, intent.properties); });
       // T26 (research 7.1 point 5): one preview drag is one "Edit items"; a drag that ends on its start values makes no entry.
-      case 'transformOnPreview': return run('Edit items', doc => applyPreviewEdit(doc, intent.edits, intent.atMs));
+      case 'transformOnPreview': return run('Edit items', (doc, tx) => { tx.noop = !applyPreviewEdit(doc, intent.edits, intent.atMs); });
       default: return undefined; // T15 / later owners keep their visible stubs.
     }
   };

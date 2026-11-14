@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProjectDocument, RecordData } from '../apps/web/src/store/model';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import {
-  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
+  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, MARQUEE_MIN, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
   rotationDrag, screenPx, shownItems, vectorHit, writeEdits,
 } from '../apps/web/src/editor/selection-box';
 import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from '../apps/web/src/editor/selection-box';
@@ -31,6 +31,9 @@ type Editor = ReturnType<typeof editor>;
 const json = (d: unknown) => JSON.stringify(d);
 const val = (doc: ProjectDocument, id: string, key: string) => itemOf(doc, id).properties[key].defaultValue;
 const draft = (e: Editor, edits: PreviewEdit[], atMs = 1000) => e.intent({ type: 'transformOnPreview', edits, atMs });
+/** An editor whose bus decides a no-op by the command's own tx.noop (the app's option, t03-bus.test.ts), not by comparing documents. */
+const refEditor = (doc: ProjectDocument) => createEditor(doc, { assets: assets(), links: links(), options: { noOp: 'reference' } });
+const finite = (r: Record<string, number>) => { for (const k of ['scale', 'positionX', 'positionY']) expect(Number.isFinite(r[k]), k).toBe(true); };
 /** The stored values a drag result writes, applied to a copy of the document (what the committed edit does for static properties). */
 const applied = (doc: ProjectDocument, id: string, values: Record<string, number>) => { const d = structuredClone(doc); writeEdits(d, [{ itemId: id, values }], 1000); return d; };
 /** Corner (sx, sy = ±1) of a turned box worked by hand: centre ± half the shown size along the item's own axes. */
@@ -191,6 +194,28 @@ describe('row 2, 7.1 point 1: corner drag', () => {
     const after = applied(doc, 'a', r), f1 = frameOf(after, itemOf(after, 'a'), 1000);
     expect([f1.w, f1.h]).toEqual([50, 50]); // scale now wins over scaleX / scaleY: 2:1 became 1:1
   });
+  // C1 (review round 2): row 2 multiplies scale by one factor for both axes; a start scale of 0 has no factor to apply.
+  it('C1: start scale 0 -> scale 0 and the current position come back, all finite (the item is left as it is)', () => {
+    const doc = docOf([box('a', 100, 200, 400, 300, { properties: { scale: P(0) } })]), r = cornerDrag(doc, doc.items[0], 1000, 'se', { x: 300, y: 350 });
+    finite(r); expect(r).toEqual({ scale: 0, positionX: 100, positionY: 200 });
+  });
+  it('C1: a box with no shown size on both axes (scale 1, scaleX = scaleY = 0) -> the item is left as it is, all finite', () => {
+    const doc = docOf([box('a', 100, 200, 400, 300, { properties: { scaleX: P(0), scaleY: P(0) } })]), r = cornerDrag(doc, doc.items[0], 1000, 'se', { x: 300, y: 350 });
+    finite(r); expect(r).toEqual({ scale: 1, positionX: 100, positionY: 200 });
+  });
+  it('C1: one axis of size 0 (scale 1, scaleX 0, scaleY 1): a finite scale from the other axis\'s factor, finite positions', () => {
+    // shown 0 x 300 at (100, 200): the se corner is (100, 500), the fixed nw corner (100, 200); the pointer at y 350 is half the height -> factor 0.5.
+    const doc = docOf([box('a', 100, 200, 400, 300, { properties: { scaleX: P(0), scaleY: P(1) } })]), r = cornerDrag(doc, doc.items[0], 1000, 'se', { x: 100, y: 350 });
+    finite(r); expect(r.scale).toBeCloseTo(0.5, 9);
+  });
+  it('C1: through the intent, a corner-drag edit on a scale-0 item adds no history entry and the values stay the start values', () => {
+    const doc = docOf([box('a', 100, 200, 400, 300, { properties: { scale: P(0) } })]);
+    for (const e of [editor(doc), refEditor(doc)]) {
+      const before = json(e.doc), r = cornerDrag(e.doc, e.doc.items[0], 1000, 'se', { x: 300, y: 350 });
+      expect(draft(e, [{ itemId: 'a', values: r }])).toMatchObject({ ok: true });
+      expect(e.bus.undoStack).toHaveLength(0); expect(json(e.doc)).toBe(before); expect(val(e.doc, 'a', 'scale')).toBe(0);
+    }
+  });
 });
 
 describe('row 3, 7.1 point 2: rotation drag', () => {
@@ -309,6 +334,7 @@ describe('row 11, 7.1 point 8: the pick, the marquee', () => {
     const calls: string[] = [];
     expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 50, y: 50 }, reads(i => { calls.push(i.id); return 0; }))?.id).toBe('a'); expect(calls).toEqual([]);
   });
+  it('T2, D90: the marquee threshold is 2 (canvas px: the overlay compares the canvas-px distance, not screen px)', () => { expect(MARQUEE_MIN).toBe(2); });
   it('a point on no item picks nothing', () => { expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 500, y: 500 }, reads())).toBeNull(); });
   it('marquee: the items at the playhead whose box lies fully inside, in either corner order', () => {
     const doc = docOf([box('a', 10, 10, 100, 100), box('b', 200, 10, 100, 100), box('gone', 20, 20, 50, 50, { display: { from: 5000, to: 6000 } }), mkItem('s', 'V1', 0, 4000, { type: 'audio' })]);
@@ -581,6 +607,29 @@ describe('rows 4 and 5, 7.1 points 5 and 6: the write through the intent', () =>
   it('row 4: a drag that ends on its start values with keyframes makes no step (the value at the playhead is the start value)', () => {
     const e = editor(docOf([box('a', 0, 0, 100, 100, { properties: { positionX: P(0, [kf(0, 0), kf(1000, 100)]) } })])), before = json(e.doc);
     draft(e, [{ itemId: 'a', values: { positionX: 50 } }], 500); expect(e.bus.undoStack).toHaveLength(0); expect(json(e.doc)).toBe(before);
+  });
+  it('C5: writeEdits returns false for edits equal to the playhead values and true otherwise', () => {
+    const doc = two(), same = [{ itemId: 'a', values: { positionX: 100, positionY: 200, scale: 1, rotation: 0 } }, { itemId: 'b', values: { positionX: 600 } }];
+    expect(writeEdits(doc, same, 1000)).toBe(false); expect(writeEdits(doc, [], 1000)).toBe(false);
+    expect(writeEdits(doc, [...same, { itemId: 'b', values: { positionY: 701 } }], 1000)).toBe(true); expect(val(doc, 'b', 'positionY')).toBe(701);
+    expect(writeEdits(doc, [{ itemId: 'a', values: { positionX: 100, rotation: 0.5 } }], 1000)).toBe(true); // one changed value among equal ones
+  });
+  it('C5: writeEdits returns true when it replaces a nearby keyframe (the keyframe count stays)', () => {
+    const doc = docOf([box('a', 0, 0, 100, 100, { properties: { positionX: P(0, [kf(0, 0), kf(1000, 100)]) } })]);
+    expect(writeEdits(doc, [{ itemId: 'a', values: { positionX: 99 } }], 1050)).toBe(true); // within 100 ms of the keyframe at 1000; 99 differs from the value there
+    const k = itemOf(doc, 'a').properties.positionX.keyframes; expect(k).toHaveLength(2); expect(k.find((x: RecordData) => x.id === 'k1000')).toMatchObject({ time: 1000, value: 99 });
+  });
+  it('C5: under the bus option noOp \'reference\', a transformOnPreview with the start values adds no undo entry and one with new values adds exactly one', () => {
+    const e = refEditor(two()), before = json(e.doc);
+    expect(draft(e, [{ itemId: 'a', values: { positionX: 100, positionY: 200, scale: 1, rotation: 0 } }])).toMatchObject({ ok: true });
+    expect(e.bus.undoStack).toHaveLength(0); expect(json(e.doc)).toBe(before); expect(e.journal).toHaveLength(0);
+    expect(draft(e, [{ itemId: 'a', values: { positionX: 120 } }])).toMatchObject({ ok: true });
+    expect(e.bus.undoStack).toHaveLength(1); expect(e.bus.undoStack[0]).toMatchObject({ label: 'Edit items', source: 'user' }); expect(val(e.doc, 'a', 'positionX')).toBe(120);
+    e.intent({ type: 'undo' }); expect(json(e.doc)).toBe(before);
+  });
+  it('C5: under noOp \'reference\', an empty edit list and a keyframed drag that ends on the start value add no entry', () => {
+    const e = refEditor(docOf([box('a', 0, 0, 100, 100, { properties: { positionX: P(0, [kf(0, 0), kf(1000, 100)]) } })])), before = json(e.doc);
+    draft(e, []); draft(e, [{ itemId: 'a', values: { positionX: 50 } }], 500); expect(e.bus.undoStack).toHaveLength(0); expect(json(e.doc)).toBe(before);
   });
   it('row 5: with no keyframes and a rotation in 0..360 the stored values equal a transformItem call with the same numbers', () => {
     const doc = () => docOf([box('im', 100, 200, 400, 300, { properties: { rotation: P(30) } })]), a = editor(doc()), b = editor(doc());

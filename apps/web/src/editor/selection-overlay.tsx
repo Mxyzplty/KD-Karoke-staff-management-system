@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T26 preview selection box (research 7.1; D90): one overlay draws the box, the 5 handles, the centre guides and the marquee, and
-// holds all press handling. Presses are read from the stage (native listeners), and every hit test is geometry in canvas px
+// holds all press handling. Presses are read from the preview area around the stage (native listeners; outside the stage only a
+// handle answers, so a handle past the stage edge can be pressed), and every hit test is geometry in canvas px
 // (selection-box.ts), so a press on a text hit box above it in the DOM still reaches it. A drag shows a draft document on the
 // preview (PreviewFrames reads useSelectionDraft) and commits one "Edit items" on release (lane A's Q3, kept by Author).
 import { useEffect, useRef, useState } from 'react';
@@ -22,7 +23,7 @@ import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from './sele
 
 /** The live drag's draft document, the only place it is kept: the preview draws it, the box follows it, release drops it. */
 export const useSelectionDraft = create<{ doc: ProjectDocument | null }>(() => ({ doc: null }));
-type Drag = { kind: 'move' | 'corner' | 'rotate' | 'marquee'; corner?: Corner; ids: string[]; from: Pt; to?: Pt; base: ProjectDocument; t: number; zoom: number; edits?: PreviewEdit[]; prior?: string[] };
+type Drag = { kind: 'move' | 'corner' | 'rotate' | 'marquee'; corner?: Corner; ids: string[]; from: Pt; to?: Pt; base: ProjectDocument; t: number; edits?: PreviewEdit[]; prior?: string[] };
 
 /** The raster branch's read: the item's combined mask alpha at p (Author's ruling e; background removal is a mask). No mask left at the playhead: 255.
  *  A raster mask with no frame yet: null (combinedPlane would count it as covering nothing). Same W × H as the compositor, so its cache is shared. */
@@ -59,6 +60,8 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
   const live = useRef({ doc, t, off }); live.current = { doc, t, off };
   useEffect(() => {
     const stage = root.current?.parentElement; if (!stage) return;
+    // The preview area that holds the stage (shell.tsx); a bare stage (no area) reads its own presses.
+    const area = stage.closest<HTMLElement>('[data-zone="preview"]') ?? stage;
     // Zoom = screen px per canvas px: the stage's drawn width (its CSS scale included) over the canvas width.
     const zoomNow = () => stage.getBoundingClientRect().width / projectSize(live.current.doc).width;
     const measure = () => { const z = zoomNow(); if (z > 0) setZoom(z); };
@@ -73,7 +76,7 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       const p = at(e);
       if (d.kind === 'marquee') { d.to = p; setMarquee({ a: d.from, b: p }); return; }
       let edits: PreviewEdit[];
-      if (d.kind === 'move') { const r = moveDrag(d.base, d.ids, d.t, { x: p.x - d.from.x, y: p.y - d.from.y }, d.zoom); edits = r.edits; setGuides(r.snap); }
+      if (d.kind === 'move') { const r = moveDrag(d.base, d.ids, d.t, { x: p.x - d.from.x, y: p.y - d.from.y }, zoomNow()); edits = r.edits; setGuides(r.snap); }
       else { const i = itemOf(d.base, d.ids[0])!; edits = [{ itemId: i.id, values: d.kind === 'corner' ? cornerDrag(d.base, i, d.t, d.corner!, p) : rotationDrag(d.base, i, d.t, d.from, p) }]; }
       d.edits = edits;
       const next = { ...d.base, items: d.base.items.map(i => edits.some(x => x.itemId === i.id) ? structuredClone(i) : i) };
@@ -99,13 +102,17 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
     const start = (d: Drag) => { drag.current = d; listen(true); if (d.kind === 'marquee') setMarquee({ a: d.from, b: d.from }); };
     const down = (e: PointerEvent) => {
       const { doc: base, t: now, off: hidden } = live.current;
-      if (e.button !== 0 || hidden || drag.current || !ours(e.target)) return;
-      const p = at(e), z = zoomNow(), sel = view().selection, shown = shownItems(base, sel, now), common = { from: p, base, t: now, zoom: z };
+      // The area's own empty surface counts only for the handles; its buttons, menus and panels keep their presses.
+      const inside = ours(e.target);
+      if (e.button !== 0 || hidden || drag.current || (!inside && e.target !== area)) return;
+      const p = at(e), z = zoomNow(), sel = view().selection, shown = shownItems(base, sel, now), common = { from: p, base, t: now };
       // The handles answer only when exactly 1 item is selected (7.1 point 4; lane A's A1).
       if (sel.length === 1 && shown.length === 1) {
         const h = handleAt(frameOf(base, shown[0], now), z, p);
         if (h) { start({ ...common, kind: h === 'rotate' ? 'rotate' : 'corner', corner: h === 'rotate' ? undefined : h, ids: [shown[0].id] }); return; }
       }
+      // Outside the stage nothing else happens: 7.1 point 8 does not say a press there picks, clears or starts a marquee.
+      if (!inside) return;
       const hit = pickAt(base, now, p, reads(base, now));
       if (hit) {
         // A Shift press that takes the item out does not select it, so it starts no move.
@@ -126,11 +133,11 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       if (only?.type === 'shape' && atPlayhead(only, now)) { e.stopPropagation(); useShapeUi.setState({ editing: only.id, mode: null }); return; }
       if (pickAt(base, now, at(e), reads(base, now))?.type !== 'text') e.stopPropagation();
     };
-    stage.addEventListener('pointerdown', down);
+    area.addEventListener('pointerdown', down);
     stage.addEventListener('dblclick', dbl, true);
     return () => {
       resize.disconnect(); scale.disconnect(); listen(false); drag.current = null; useSelectionDraft.setState({ doc: null });
-      stage.removeEventListener('pointerdown', down); stage.removeEventListener('dblclick', dbl, true);
+      area.removeEventListener('pointerdown', down); stage.removeEventListener('dblclick', dbl, true);
     };
   }, []);
 

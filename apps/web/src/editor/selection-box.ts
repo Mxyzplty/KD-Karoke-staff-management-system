@@ -76,7 +76,11 @@ export function cornerDrag(doc: ProjectDocument, item: RecordData, t: number, co
   const local = itemLocal(item, t), b = itemBox(doc, item, local), f = frameFrom(b), [sx, sy] = SIGN[corner], { ux, uy } = axes(f.rotation);
   const o = point(f, -sx, -sy), dx = p.x - o.x, dy = p.y - o.y;
   const ex = Math.max(MIN_EDGE, sx * (dx * ux.x + dy * ux.y)), ey = Math.max(MIN_EDGE, sy * (dx * uy.x + dy * uy.y));
-  const scale = valueOf(item, 'scale', t) * Math.max(MIN_FACTOR, Math.min(ex / f.w, ey / f.h));
+  // Row 2 multiplies scale by one factor: a start scale of 0 stays 0, and a box with no shown size on either axis has no factor;
+  // both leave the item as it is. One axis of size 0 gives Infinity there, so min takes the other axis.
+  const s0 = valueOf(item, 'scale', t), k = Math.min(ex / f.w, ey / f.h);
+  if (!s0 || !Number.isFinite(k)) return { scale: s0, positionX: valueOf(item, 'positionX', t), positionY: valueOf(item, 'positionY', t) };
+  const scale = s0 * Math.max(MIN_FACTOR, k);
   // The new box as itemBox will draw it: an item with scale 1 and unequal scaleX, scaleY changes shape here (lane A's Q5).
   const w = Math.abs(b.W * (scale !== 1 ? scale : Number(field(item, 'scaleX', local, 1)))), h = Math.abs(b.H * (scale !== 1 ? scale : Number(field(item, 'scaleY', local, 1))));
   const dw = w - f.w, dh = h - f.h, ax = sx * dw / 2, ay = sy * dh / 2;
@@ -147,14 +151,17 @@ export function marqueeHits(doc: ProjectDocument, t: number, a: Pt, b: Pt): stri
 // ---- The write (7.1 points 5 and 6). One function for the live draft and the committed edit.
 /** Per property: a value equal to the one at the playhead is not written (a drag that ends on its start values makes no step);
  *  no keyframes: the static value, as transformItem; keyframes: the one within 100 ms of the item's playhead time (property
- *  time) takes the value and keeps its time, else one is added there with easing "linear". The base value stays. */
-export function writeEdits(doc: ProjectDocument, edits: PreviewEdit[], t: number) {
+ *  time) takes the value and keeps its time, else one is added there with easing "linear". The base value stays. Returns whether
+ *  anything was written (the bus's noOp 'reference' reads it, row 4). */
+export function writeEdits(doc: ProjectDocument, edits: PreviewEdit[], t: number): boolean {
+  let wrote = false;
   for (const { itemId, values } of edits) {
     const i = itemOf(doc, itemId);
     if (!i) fail('ITEM_NOT_FOUND', 'Item not found', { message: `Item '${itemId}' not found on timeline.` });
     const at = propertyTime(i, itemLocal(i, t));
     for (const [key, value] of Object.entries(values) as [TransformKey, number][]) {
       if (value === valueOf(i, key, t)) continue;
+      wrote = true;
       if (!prop(i, key)?.keyframes.length) { setStatic(i, key, value); continue; }
       const list = ensureProp(i, key).keyframes;
       let near: (typeof list)[number] | undefined;
@@ -162,13 +169,14 @@ export function writeEdits(doc: ProjectDocument, edits: PreviewEdit[], t: number
       if (near) list[list.indexOf(near)] = { ...near, value }; else list.push({ id: keyframeId(), time: at, value, easing: 'linear' });
     }
   }
+  return wrote;
 }
 /** The committed edit (intent transformOnPreview, "Edit items"): an item on a locked track refuses the whole edit with
  *  TRACK_LOCKED, as transformItem does (timeline/items.ts), so every item goes back (lane A's A2). */
-export function applyPreviewEdit(doc: ProjectDocument, edits: PreviewEdit[], t: number) {
+export function applyPreviewEdit(doc: ProjectDocument, edits: PreviewEdit[], t: number): boolean {
   for (const { itemId } of edits) {
     const i = itemOf(doc, itemId);
     if (i && trackLocked(doc, i.trackId)) fail('TRACK_LOCKED', `Track ${i.trackId} is locked`);
   }
-  writeEdits(doc, edits, t);
+  return writeEdits(doc, edits, t);
 }
