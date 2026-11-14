@@ -689,6 +689,35 @@ test.describe('T26 C4: presses are read on the preview area; outside the stage o
     expect(await selection(page)).toEqual(['a']); await expect(boxOf(page)).toHaveCount(1); expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
     expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
   });
+
+  // Research 7.2: an item may sit partly past the canvas edge. o: 400 x 200 at (760, -100), so its top half (y -100..0) lies above the stage, on the grey preview area.
+  // Its handles are far from (820, -50): the nw corner (760, -100) is 60 canvas px away and the rotation handle (960, ...) 140 px to the right.
+  async function setupOut(page: Page) {
+    await open(page, doc([shape('o', 'o1', 760, -100, 400, 200)], TRACKS, { size: WIDE }));
+    const g = await geo(page, WIDE), a = (await area(page).boundingBox())!, out = g.at(820, -50);
+    expect(out.y + 5, 'the pressed point lies above the stage').toBeLessThan(g.r.y); expect(out.y - 5, 'and inside the preview area').toBeGreaterThan(a.y);
+    return { g, a, out, before: JSON.stringify((await liveDoc(page)).items) };
+  }
+  test('7.2: the marquee is not clamped to the canvas: dragged from empty canvas out onto the grey area it selects an item that sits partly outside the canvas', async ({ page }) => {
+    const { g, a, before } = await setupOut(page), to = g.at(1200, -130); // the rectangle (700, -130)..(1200, 200) holds o (760..1160, -100..100) fully
+    expect(to.y - 3, 'the release point is inside the preview area').toBeGreaterThan(a.y); expect(await selection(page)).toEqual([]);
+    await hold(page, g.at(700, 200), to); await expect(page.locator('[data-testid="selection-marquee"]')).toHaveCount(1);
+    await page.mouse.up(); await expect(page.locator('[data-testid="selection-marquee"]')).toHaveCount(0);
+    expect(await selection(page)).toEqual(['o']); expect(await undoLabels(page)).toEqual([]); expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+  });
+  test('7.2: a press and release on the part of an item past the canvas edge, off every handle, with nothing selected: nothing is selected, nothing is written', async ({ page }) => {
+    const { out, before } = await setupOut(page); await clearIntents(page);
+    await click(page, out);
+    expect(await selection(page)).toEqual([]); await expect(boxOf(page)).toHaveCount(0); expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
+    expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+  });
+  test('7.2: the same press with the item selected: the selection stays, no drag starts, no edit', async ({ page }) => {
+    const { out, before } = await setupOut(page); await choose(page, ['o']); await expect(boxOf(page)).toHaveCount(1); await clearIntents(page);
+    await hold(page, out, { x: out.x + 60, y: out.y + 10 }); expect(await draftLive(page)).toBe(false); await expect(page.locator('[data-testid="selection-marquee"]')).toHaveCount(0);
+    await page.mouse.up(); await click(page, out);
+    expect(await selection(page)).toEqual(['o']); await expect(boxOf(page)).toHaveCount(1); expect(await undoLabels(page)).toEqual([]); expect(await transforms(page)).toHaveLength(0);
+    expect(JSON.stringify((await liveDoc(page)).items)).toBe(before);
+  });
 });
 
 test.describe('T26 T2 (D90, row 11): the marquee threshold is 2 canvas px, not screen px', () => {
