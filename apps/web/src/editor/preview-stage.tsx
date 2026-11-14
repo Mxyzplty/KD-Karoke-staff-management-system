@@ -16,6 +16,7 @@ import { onRasterFrame } from '../masks/raster';
 import { GraphicErrorPanel } from '../mg/repair-panel';
 import { onFontChange } from '../text/font-registry';
 import { useView, view } from './view';
+import { SelectionOverlay, useSelectionDraft } from './selection-overlay';
 
 /** §53.8.3: the on-screen size is re-read at most every 500 ms while playing. */
 const ONSCREEN_MS = 500;
@@ -25,7 +26,9 @@ export function stageBackground(doc: ProjectDocument): CSSProperties {
   if (bg?.type === 'image' && value) return { background: `#000 url(${JSON.stringify(value)}) center / cover no-repeat` };
   return { background: bg?.type === 'color' && value && value !== 'transparent' ? value : '#000' };
 }
-export function PreviewFrames({ doc, assets }: { doc: ProjectDocument; assets: Asset[] }) {
+export function PreviewFrames({ doc: stored, assets }: { doc: ProjectDocument; assets: Asset[] }) {
+  // T26: while a preview drag is live the frames show its draft document; the overlay draws the box over them.
+  const doc = useSelectionDraft(s => s.doc) ?? stored;
   const v = useView(), playing = usePlayback(p => p.playing), runs = useMemo(() => previewRuns(doc), [doc]), fps = fpsOf(doc), t = snapTime(v.playheadMs, fps);
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]), live = useRef({ doc, runs, assets: new Map<string, Asset>() }), generation = useRef(0);
   live.current = { doc, runs, assets: new Map(assets.map(a => [a.id, a])) };
@@ -98,5 +101,6 @@ export function PreviewFrames({ doc, assets }: { doc: ProjectDocument; assets: A
     {pending.length > 0 && <p className="unavailable pending-render" role="note">Not rendered yet: {pending.join(', ')}.</p>}
     {errors && <p className="unavailable render-error" role="alert">{errors}</p>}
     <GraphicErrorPanel doc={doc} t={t} />
+    <SelectionOverlay doc={stored} />
   </>;
 }

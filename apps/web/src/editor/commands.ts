@@ -14,6 +14,7 @@ import type { Patch as TransitionPatch } from '../timeline/transitions';
 import type { SourceButton, SourceData } from '../captions/generation';
 import { notify } from '../ui';
 import type { DragPayload } from './dnd';
+import type { PreviewEdit } from './selection-box';
 
 export type TrackFlag = 'hidden' | 'muted' | 'solo' | 'locked';
 export type Intent =
@@ -106,6 +107,8 @@ export type Intent =
   | { type: 'addFade'; itemId: string; edge: 'in' | 'out' }
   | { type: 'removeBackground'; itemId: string }
   | { type: 'setKeepPitch'; itemId: string; on: boolean }
+  /** T26: a corner, rotation or move drag of the preview selection box, released (selection-box.ts applyPreviewEdit). Not an agent tool. */
+  | { type: 'transformOnPreview'; edits: PreviewEdit[]; atMs: number }
   | { type: 'feature'; owner: string; label: string };
 
 /** Owner ticket and visible name of each intent type (labels of T03's undo entries where one exists, part 3 §45.1). */
@@ -144,6 +147,7 @@ export const INTENTS: Record<Exclude<Intent['type'], 'editProperty' | 'feature' 
   addTransition: { owner: 'T11', label: 'Add transition' }, editTransition: { owner: 'T11', label: 'Edit transition' }, removeTransition: { owner: 'T11', label: 'Remove transition' },
   addVoiceover: { owner: 'T13', label: 'Adding a voice-over' }, addFade: { owner: 'T13', label: 'Adding a fade' },
   setKeepPitch: { owner: 'T13', label: 'Keep pitch' },
+  transformOnPreview: { owner: 'T26', label: 'Edit items' },
 };
 export function describe(intent: Intent): { owner: string; label: string } {
   switch (intent.type) {

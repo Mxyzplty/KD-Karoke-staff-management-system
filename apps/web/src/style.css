@@ -194,3 +194,8 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); tex
 .template-swatches { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } .template-swatches li, .template-colours li { display: flex; gap: .5rem; align-items: center; } .template-colours input[type="color"] { padding: 2px; min-width: 2.4rem; }
 .template-preview { padding: .5rem 0; } .template-preview img, .template-preview video { max-width: 100%; max-height: 220px; } .template-sample { font-size: 1.6rem; margin: 0; } .template-notes { white-space: pre-wrap; }
 .template-export { flex-basis: 100%; border: 1px solid var(--line); border-radius: 10px; padding: .7rem; } .template-refs li[data-locked="true"] { color: var(--muted); }
+
+/* T26 preview selection box (research 7.1). Presses are read from the stage; only the handles take the pointer for their cursors. */
+.selection-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 1; }
+.selection-line { fill: none; stroke: #60a5fa; } .selection-marquee { fill: rgb(96 165 250 / .1); stroke: #60a5fa; }
+.selection-handle { fill: #fff; stroke: #3b82f6; pointer-events: auto; } .selection-handle.nw, .selection-handle.se { cursor: nwse-resize; } .selection-handle.ne, .selection-handle.sw { cursor: nesw-resize; } .selection-handle.rotate { cursor: grab; }
