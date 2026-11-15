@@ -36,7 +36,7 @@ test.skip(!ffmpegAvailable(), 'ffmpeg generates the media and is the oracle');
 test.setTimeout(240_000);
 test.beforeEach(async ({ page }) => { await skipTour(page); });
 
-// MEASURED (T29 AC2, run 1, 15 Nov, at cdb4ca3, rebased as 602e9e3): each PSNR threshold sits in the gap between the lowest right value and the highest
+// MEASURED (T29 AC2, run 1, 15 Nov; the run's commit is in the notes): each PSNR threshold sits in the gap between the lowest right value and the highest
 // same-size wrong value of that run: preview 36.23 / 8.15 dB, capture 22.60 / 8.52, export 27.62 / 7.81. SSIM is logged, not
 // asserted (null): PSNR leaves a clean gap on every path (export order: PSNR first). A null metric skips both of its asserts.
 type Threshold = { psnr: number | null; ssim: number | null };
