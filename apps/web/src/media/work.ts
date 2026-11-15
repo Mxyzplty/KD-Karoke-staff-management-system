@@ -54,9 +54,9 @@ export async function* displayFrames(blob: Blob, info: MediaInfo, times: number[
 /**
  * Software still → display canvas. TIFF pixels arrive in stored order and get the probed EXIF Orientation here, once
  * (review F24): 2, 4, 5, 7 mirror left/right first, then 3/4 turn 180°, 5/8 turn 270° and 6/7 turn 90° clockwise.
- * HEIF arrives already displayed (irot/imir); its probed orientation is 1.
+ * HEIF arrives already displayed (irot/imir); its probed orientation is 1. Also called on the main thread by imageBitmap().
  */
-async function softwareImage(blob: Blob, orientation: number): Promise<OffscreenCanvas> {
+export async function softwareImage(blob: Blob, orientation: number): Promise<OffscreenCanvas> {
   const decoded = await (await import('./libav')).decodeImageLibav(blob);
   if ([2, 4, 5, 7].includes(orientation)) {
     const pixels = new Uint32Array(decoded.data.buffer, decoded.data.byteOffset, decoded.width * decoded.height);

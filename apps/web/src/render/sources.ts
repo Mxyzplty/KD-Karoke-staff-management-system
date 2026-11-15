@@ -61,6 +61,8 @@ export function imageBitmap(store: ProjectStore, item: RecordData): Promise<Imag
       const asset = await store.row<Asset>('assets', id);
       if (!asset) throw new Error('The image asset is missing.');
       const info = asset.media;
+      // TIFF and HEIC (decoder 'wasm') decode in software, orientation applied once there; every other still through the browser.
+      if (info?.decoder === 'wasm') return createImageBitmap(await (await import('../media/work')).softwareImage(blob, info.image?.orientation ?? 1));
       if (info?.container !== 'svg+xml') return createImageBitmap(blob);
       const { width, height } = info.image!;
       if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new Error('Invalid SVG dimensions.');
