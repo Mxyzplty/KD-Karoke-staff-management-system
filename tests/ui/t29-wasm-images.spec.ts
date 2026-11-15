@@ -36,7 +36,7 @@ test.skip(!ffmpegAvailable(), 'ffmpeg generates the media and is the oracle');
 test.setTimeout(240_000);
 test.beforeEach(async ({ page }) => { await skipTour(page); });
 
-// MEASURED (T29 AC2, run 1, 15 Nov, cdb4ca3): each PSNR threshold sits in the gap between the lowest right value and the highest
+// MEASURED (T29 AC2, run 1, 15 Nov, at cdb4ca3, rebased as 602e9e3): each PSNR threshold sits in the gap between the lowest right value and the highest
 // same-size wrong value of that run: preview 36.23 / 8.15 dB, capture 22.60 / 8.52, export 27.62 / 7.81. SSIM is logged, not
 // asserted (null): PSNR leaves a clean gap on every path (export order: PSNR first). A null metric skips both of its asserts.
 type Threshold = { psnr: number | null; ssim: number | null };
@@ -146,7 +146,7 @@ const BROKEN: { key: string; file: string; mime: string }[] = [
   { key: 'TIFF', file: 'pattern.tiff', mime: 'image/tiff' },
   { key: 'HEIC', file: 'pattern.heic', mime: 'image/heic' },
 ];
-// A copy cut to its first 64 bytes: the container header is intact, the image data and the index are gone.
+// A copy cut to its first 64 bytes: the file signature stays (TIFF header, HEIC ftyp), what the decoder needs after it is gone. For the HEIC that includes the meta box, so the parse stops before any HEVC decode (review round 2, R2-1; notes, Unspecified).
 const TRUNCATED_BYTES = 64;
 for (const entry of BROKEN) test(`T29 AC5 broken ${entry.key}: still the #374151 fill in preview, capture and export`, async ({ page }, testInfo) => {
   const bytes = readFileSync(media(entry.file)), shown = entry.file.endsWith('heic') ? ffmpegImageRgb('heic-single') : untagged(media(entry.file)), box = bounds(shown);
