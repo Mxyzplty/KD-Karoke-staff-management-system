@@ -12,8 +12,8 @@
 // parity/oracle/transfer outputCode first, as T25's export checks do. The raw (untransferred) scores are logged beside it.
 // Thresholds are MEASURED FIRST (Author, 14 Nov): every run scores the crop against the right orientation and against every wrong
 // orientation of the same size (PSNR over RGB and SSIM as T16a's export checks compute it, t10a-support.ssim), logs all of them
-// and writes t29-measurements.json. The constants below are PROVISIONAL starting candidates, one per path; the final values are
-// set in the gap between the right score and the closest wrong one after the measurement run.
+// and writes t29-measurements.json. The constants below are the measured PSNR thresholds, one per path, set in the gap between
+// the right score and the closest wrong one (run 1 numbers beside them); SSIM is logged, not asserted.
 // A second rotation (the o6 subjects turned again) or the probed orientation applied on top of the browser's (JPEG) gives
 // 96 × 64, not the displayed 64 × 96: the bitmap size and the oracle sizes fail it before any pixel is compared (AC4).
 // AC5 follows T25 AC4: ingest and place the good file, overwrite only that asset's stored bytes with a truncated copy, clear the
@@ -36,13 +36,14 @@ test.skip(!ffmpegAvailable(), 'ffmpeg generates the media and is the oracle');
 test.setTimeout(240_000);
 test.beforeEach(async ({ page }) => { await skipTour(page); });
 
-// PROVISIONAL (T29 AC2): starting candidates PSNR >= 25 dB (T14's) and SSIM >= 0.98 (T16a's). To be set per path from the measurements.
-// A metric set to null is not asserted (right >= T and closest wrong < T both skipped): a path may end up asserting only one.
+// MEASURED (T29 AC2, run 1, 15 Nov, cdb4ca3): each PSNR threshold sits in the gap between the lowest right value and the highest
+// same-size wrong value of that run: preview 36.23 / 8.15 dB, capture 22.60 / 8.52, export 27.62 / 7.81. SSIM is logged, not
+// asserted (null): PSNR leaves a clean gap on every path (export order: PSNR first). A null metric skips both of its asserts.
 type Threshold = { psnr: number | null; ssim: number | null };
-const PREVIEW: Threshold = { psnr: 25, ssim: 0.98 };
-const CAPTURE: Threshold = { psnr: 25, ssim: 0.98 };
-const EXPORT: Threshold = { psnr: 25, ssim: 0.98 };
-// PROVISIONAL: the most a good picture's box may share with the #374151 fill; to be set from the measured grey shares of the good subjects.
+const PREVIEW: Threshold = { psnr: 25, ssim: null };
+const CAPTURE: Threshold = { psnr: 16, ssim: null };
+const EXPORT: Threshold = { psnr: 18, ssim: null };
+// MEASURED (run 1): the most a good picture's box may share with the #374151 fill. Good subjects <= 0.015, broken files 1.0.
 const GREY_MAX_SHARE = 0.5;
 // The failed-image fill, per path: the preview is the exact fill; the capture JPEG and the H.264 export add their own error.
 const GREY_TOLERANCE = { preview: 1, capture: 24, export: 32 };
