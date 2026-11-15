@@ -104,7 +104,7 @@ for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright pi
     image: exported.image, greyShare: share(exportCrop, GREY_RGB.map(outputCode), GREY_TOLERANCE.export), size: exported.result.size,
   };
 
-  const all = { subject: subject.key, displayed: { width: shown.width, height: shown.height }, project: PROJECT, capture: cs, thresholds: { preview: PREVIEW, capture: CAPTURE, export: EXPORT, provisional: true },
+  const all = { subject: subject.key, displayed: { width: shown.width, height: shown.height }, project: PROJECT, capture: cs, thresholds: { preview: PREVIEW, capture: CAPTURE, export: EXPORT },
     preview, captureResult: capture, export: exportPath };
   writeFileSync(testInfo.outputPath('t29-measurements.json'), JSON.stringify(all, null, 2));
   for (const [label, p] of [['preview', preview], ['capture', capture], ['export', exportPath]] as const) {
