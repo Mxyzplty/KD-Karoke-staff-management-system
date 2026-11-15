@@ -63,7 +63,8 @@ const fmt = (m: Measured) => summary(m);
 const imageDims = (state: ImageState) => typeof state === 'string' ? state : [state.width, state.height];
 const bounds = (s: Rgb): Rect => ({ x: ORIGIN.x, y: ORIGIN.y, w: s.width, h: s.height });
 
-type PathMeasure = { measured: Measured; measuredRaw?: Measured; image: ImageState; greyShare: number; size?: unknown };
+// Sizes before scores: a path whose bitmap is not the displayed size is not scored (it would be stretched into the box); it carries sizeMismatch instead.
+type PathMeasure = { measured?: Measured; measuredRaw?: Measured; sizeMismatch?: unknown; image: ImageState; greyShare: number; size?: unknown };
 function record(testInfo: TestInfo, label: string, data: unknown) {
   testInfo.annotations.push({ type: 't29-measurement', description: `${label} ${JSON.stringify(data)}` });
   console.log(`T29 ${label}: ${JSON.stringify(data)}`);
@@ -71,6 +72,7 @@ function record(testInfo: TestInfo, label: string, data: unknown) {
 
 for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright picture in preview, capture and export, thresholds measured`, async ({ page }, testInfo) => {
   const subject = entry.make(), variants = orientations(subject.base), shown = variants[subject.orientation], box = bounds(shown);
+  const sizeOk = (state: ImageState) => typeof state !== 'string' && state.width === shown.width && state.height === shown.height;
   const projectId = await openSvgProject(page, PROJECT);
   const asset = await uploadImage(page, projectId, unique(subject.name), subject.mime, subject.bytes);
   expect(asset.processing_status, JSON.stringify({ code: asset.last_error_code, message: asset.last_error_message })).toBe('ready');
@@ -82,14 +84,14 @@ for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright pi
   // Preview: the paused canvas is project-sized, so the crop is 1:1 with the oracle.
   const previewRead = await settledPreview(page, asset.id, box, 'true');
   const previewCrop = crop(previewRead.rgba, 4, PROJECT.width, box);
-  const preview: PathMeasure = { measured: measure(variants, subject.orientation, previewCrop, img => img), image: previewRead.image, greyShare: share(previewCrop, GREY_RGB, GREY_TOLERANCE.preview), size: previewRead.canvas };
+  const preview: PathMeasure = { measured: sizeOk(previewRead.image) ? measure(variants, subject.orientation, previewCrop, img => img) : undefined, sizeMismatch: sizeOk(previewRead.image) ? undefined : imageDims(previewRead.image), image: previewRead.image, greyShare: share(previewCrop, GREY_RGB, GREY_TOLERANCE.preview), size: previewRead.canvas };
 
   // Capture: 144 × 144 JPEG (high); the crop is the box at 0.75, scored against the oracle resized to it.
   const cb = captureBox(box), cs = captureSize();
   const captured = await captureRead(page, asset.id, testInfo.outputPath('t29-capture.jpg'));
   expect(captured.size).toEqual(cs);
   const captureCrop = crop(captured.frame, 3, cs.width, cb);
-  const capture: PathMeasure = { measured: measure(variants, subject.orientation, captureCrop, img => resize(img, cb.w, cb.h)), image: captured.image, greyShare: share(captureCrop, GREY_RGB, GREY_TOLERANCE.capture), size: captured.size };
+  const capture: PathMeasure = { measured: sizeOk(captured.image) ? measure(variants, subject.orientation, captureCrop, img => resize(img, cb.w, cb.h)) : undefined, sizeMismatch: sizeOk(captured.image) ? undefined : imageDims(captured.image), image: captured.image, greyShare: share(captureCrop, GREY_RGB, GREY_TOLERANCE.capture), size: captured.size };
 
   // Export: the decoded first frame (original size, 192 × 192), against the oracle in the export's output domain.
   const exported = await exportRead(page, projectId, asset.id, testInfo.outputPath('t29-export.mp4'));
@@ -97,7 +99,8 @@ for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright pi
   const frames = decodeRgba(testInfo.outputPath('t29-export.mp4'), PROJECT.width, PROJECT.height); expect(frames).toHaveLength(exported.result.frames);
   const exportCrop = crop(frames[0], 4, PROJECT.width, box);
   const exportPath: PathMeasure = {
-    measured: measure(variants, subject.orientation, exportCrop, img => mapBytes(img, outputCode)), measuredRaw: measure(variants, subject.orientation, exportCrop, img => img),
+    measured: sizeOk(exported.image) ? measure(variants, subject.orientation, exportCrop, img => mapBytes(img, outputCode)) : undefined,
+    measuredRaw: sizeOk(exported.image) ? measure(variants, subject.orientation, exportCrop, img => img) : undefined, sizeMismatch: sizeOk(exported.image) ? undefined : imageDims(exported.image),
     image: exported.image, greyShare: share(exportCrop, GREY_RGB.map(outputCode), GREY_TOLERANCE.export), size: exported.result.size,
   };
 
@@ -105,16 +108,20 @@ for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright pi
     preview, captureResult: capture, export: exportPath };
   writeFileSync(testInfo.outputPath('t29-measurements.json'), JSON.stringify(all, null, 2));
   for (const [label, p] of [['preview', preview], ['capture', capture], ['export', exportPath]] as const) {
+    if (!p.measured) { console.log(`T29 ${subject.key} ${label}: not scored, bitmap ${JSON.stringify(p.sizeMismatch)}, displayed ${shown.width}×${shown.height}; grey share ${p.greyShare.toFixed(3)}`); record(testInfo, `${subject.key} ${label}`, { sizeMismatch: p.sizeMismatch, greyShare: p.greyShare }); continue; }
     console.log(`T29 ${subject.key} ${label}: ${fmt(p.measured)}; bitmap ${JSON.stringify(imageDims(p.image))}; grey share ${p.greyShare.toFixed(3)}`);
     record(testInfo, `${subject.key} ${label}`, { right: p.measured.right, wrong: p.measured.wrong, otherSize: p.measured.otherSize, bitmap: imageDims(p.image), greyShare: p.greyShare });
   }
-  console.log(`T29 ${subject.key} export, oracle without the output transfer: ${fmt(exportPath.measuredRaw!)}`);
-  record(testInfo, `${subject.key} export untransferred`, { right: exportPath.measuredRaw!.right, wrong: exportPath.measuredRaw!.wrong });
+  if (exportPath.measuredRaw) {
+    console.log(`T29 ${subject.key} export, oracle without the output transfer: ${fmt(exportPath.measuredRaw)}`);
+    record(testInfo, `${subject.key} export untransferred`, { right: exportPath.measuredRaw.right, wrong: exportPath.measuredRaw.wrong });
+  }
 
   // AC3: a bitmap of the displayed size, no failed fill, and the picture clears the threshold the wrong orientations do not.
   for (const [label, p, t] of [['preview', preview, PREVIEW], ['capture', capture, CAPTURE], ['export', exportPath, EXPORT]] as const) {
-    expect.soft(imageDims(p.image), `${subject.key} ${label}: imageBitmap() is a bitmap of the displayed size, not 'failed'`).toEqual([shown.width, shown.height]);
+    expect.soft(sizeOk(p.image), `${subject.key} ${label}: bitmap ${JSON.stringify(imageDims(p.image))}, displayed ${shown.width}×${shown.height}: not scored`).toBe(true);
     expect.soft(p.greyShare, `${subject.key} ${label}: the item's box is not the #374151 fill`).toBeLessThan(GREY_MAX_SHARE);
+    if (!p.measured) continue;
     if (t.psnr !== null) {
       expect.soft(p.measured.right.psnr, `${subject.key} ${label}: right orientation PSNR`).toBeGreaterThanOrEqual(t.psnr);
       expect.soft(Math.max(...p.measured.wrong.map(w => w.psnr)), `${subject.key} ${label}: closest wrong orientation PSNR`).toBeLessThan(t.psnr);
@@ -124,7 +131,7 @@ for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright pi
       expect.soft(Math.max(...p.measured.wrong.map(w => w.ssim)), `${subject.key} ${label}: closest wrong orientation SSIM`).toBeLessThan(t.ssim);
     }
   }
-  expect.soft(preview.measured.size, 'preview crop is the displayed size').toEqual({ width: shown.width, height: shown.height });
+  expect.soft(preview.measured?.size, 'preview crop is the displayed size').toEqual({ width: shown.width, height: shown.height });
   expect.soft(preview.size, 'paused preview backing = project size').toEqual(PROJECT);
   // AC4: the static size assert below only documents the sizes; the real guard is the bitmap-size check in AC3 above.
   // A second rotation (o6 on top of o6), or the probed orientation on top of the browser's, is 96 × 64: another size, so it fails.
