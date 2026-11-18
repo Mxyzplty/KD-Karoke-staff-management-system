@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { readBeats, subdivisions, snapCuts, planSilenceRemoval } from '../apps/web/src/analysis/helpers';
 import { syncOffset } from '../apps/web/src/analysis/sync';
@@ -63,6 +64,14 @@ describe('sync', () => {
   });
   it('refuses fewer than three consecutive matching words with typed confidence', () => {
     expect(() => syncOffset(transcript(['hello', 'world']), transcript(['hello', 'world']))).toThrowError(expect.objectContaining({ code: 'SYNC_LOW_CONFIDENCE', message: 'Low sync confidence (0%). Transcripts may not overlap enough.', details: { confidence: 0 } }));
+  });
+  // Audit F1 identity (landed-audit-t19 l.37-46; lane A 03:56): the bound must not change the first case's whole result (the
+  // refusal above is already pinned exactly). sha256 of the result + fields in clear; golden captured on a404e27.
+  it('the first case returns the a404e27 result, every field', () => {
+    const result = syncOffset(transcript(['Hello,', 'brave', 'world!', 'again'], 2), transcript(['hello', 'BRAVE', 'world', 'again'], 0.5));
+    const sha = createHash('sha256').update(JSON.stringify(result)).digest('hex');
+    console.log(`[T19 F1 golden] t19a-sync-1 ${sha} ${result.offset} ${result.confidence} ${result.matches.length}`);
+    expect({ sha, offset: result.offset, confidence: result.confidence, matches: result.matches.length }).toEqual({ sha: '0a561077ddcb5629f4dc4f43d85a4f6f03b2142e4c2ef111b35e9e0c3b0db6c0', offset: 1.5, confidence: 1, matches: 4 });
   });
 });
 
