@@ -129,6 +129,7 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
   const head = new Uint8Array(await blob.slice(0, 256 << 10).arrayBuffer());
   const mimeType = mimeFor(name, blob.type);
   let size: { width: number; height: number } | null = null, decoder: MediaInfo['decoder'] = 'native-image', container = mimeType.split('/')[1] ?? 'image', orientation: number | null = null;
+  let oriented = false;
   if (isHeif(head)) {
     const heif = parseHeif(new Uint8Array(await blob.arrayBuffer()));
     if (!heif) throw mediaError('UNSUPPORTED_INPUT', 'This HEIF image uses a layout Cutframe cannot read.');
@@ -136,11 +137,12 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
     size = { width: quarter ? heif.height : heif.width, height: quarter ? heif.width : heif.height }; decoder = 'wasm'; container = 'heic'; orientation = 1;
   } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) { size = await tiffSize(blob); decoder = 'wasm'; container = 'tiff'; }
   else if (/<svg[\s>]/i.test(new TextDecoder().decode(head.subarray(0, 4096)))) { size = typeof Image === 'function' ? await svgIntrinsicSize(blob) : svgSize(await blob.text()); container = 'svg+xml'; }
-  else size = imageSize(head) ?? await browserImageSize(blob);
+  else if (!(size = imageSize(head))) { size = await browserImageSize(blob); oriented = true; }
   if (!size) throw mediaError('UNSUPPORTED_INPUT', 'This image could not be read.');
   const exif = await readExif(blob);
   orientation ??= exif.orientation;
-  const quarter = orientation >= 5 && orientation <= 8;
+  // Header sizes (imageSize, tiffSize) are stored sizes; createImageBitmap applies EXIF orientation itself (audit F-05).
+  const quarter = !oriented && orientation >= 5 && orientation <= 8;
   return { container, mimeType, durationMs: null, video: null, audio: null,
     image: { width: quarter ? size.height : size.width, height: quarter ? size.width : size.height, orientation },
     capturedAt: exif.capturedAt, latitude: exif.latitude, longitude: exif.longitude, decoder };
