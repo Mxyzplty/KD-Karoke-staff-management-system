@@ -17,6 +17,7 @@ import { openVersions } from './versions/editor';
 import type { Checkpoints } from './versions/checkpoints';
 import { watchTitle } from './analysis/title';
 import { repairDefaults } from './templates/binding';
+import { prepareSave } from './export/prep';
 // The editor routes every document change through this session (T03's command bus installs its intent handler on top).
 export let activeSession: AutosaveSession | undefined;
 export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (path: string) => void; demo?: ReactNode }) {
@@ -32,7 +33,7 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
       if (!alive) return;
       if (!result) { setLoad('missing'); return; }
       const versions = openVersions(projectStore, id, mode, job => { restart.current = { job }; setRetry(n => n + 1); });
-      local = new AutosaveSession(versions.store, id, result.document, { beforeLargeDeletion: versions.beforeLargeDeletion }); activeSession = local;
+      local = new AutosaveSession(versions.store, id, result.document, { beforeLargeDeletion: versions.beforeLargeDeletion, prepareSave }); activeSession = local;
       detach = versions.attach(local); setCheckpoints(versions.checkpoints);
       let lastErrorToast = -Infinity;
       unsubscribe = local.subscribe(() => {
@@ -56,7 +57,10 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
     }).catch(e => { if (alive) { setLoad('error'); reportError(e); } });
-    return () => { alive = false; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.(); unsubscribe?.(); if (activeSession === local) activeSession = undefined; };
+    return () => { alive = false; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.();
+      // An in-app leave keeps the error notice until the last flush settles (T01 audit F3).
+      if (final) void final.finally(() => unsubscribe?.()); else unsubscribe?.();
+      if (activeSession === local) activeSession = undefined; };
   }, [id, retry]);
   if (load === 'loading') return <main><p>Opening project…</p></main>;
   if (load === 'missing' || load === 'error') return <main className="load-failure"><h1>Failed to load project</h1><p>{load === 'missing' ? 'Project not found.' : 'Couldn’t open this project. Browser storage could not be read.'}</p><button onClick={() => navigate('/')}>‹ Back to home</button>{load === 'error' && <button onClick={() => setRetry(n => n + 1)}>Retry</button>}</main>;
