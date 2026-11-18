@@ -86,7 +86,7 @@ function imageDecode(store: ProjectStore, item: RecordData): ImageDecode {
       const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
       canvas.getContext('2d')!.drawImage(img, 0, 0, W, H);
       return await createImageBitmap(canvas);
-    }).catch(e => { own.error = e; return 'failed' as const; }).then(b => { readyImages.set(id, b); return b; });
+    }).catch(e => { own.error = e; return 'failed' as const; }).then(b => { if (images.get(id) === own) readyImages.set(id, b); return b; }); // a decode orphaned by clearSources() writes nothing
     images.set(id, own);
   }
   return decode;
