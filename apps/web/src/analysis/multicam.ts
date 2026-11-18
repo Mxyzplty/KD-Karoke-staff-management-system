@@ -42,7 +42,8 @@ export const SWAP = {
 };
 
 /** The sync request's deadline (Cutframe addition; Xapp has none): below the helper's 60 s TOOL_TIMEOUT, so the agent gets
- *  syncAndSwap's own TOOL_TIMEOUT, not the helper's. On expiry the request is aborted, which drops the analysis worker. */
+ *  syncAndSwap's own TOOL_TIMEOUT, not the helper's. On expiry the request is aborted: a started sync drops the analysis
+ *  worker, a queued one is skipped (lane A ruling (c)). */
 export const SYNC_DEADLINE_MS = 30_000;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6;

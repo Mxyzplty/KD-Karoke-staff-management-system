@@ -3,7 +3,10 @@ import wasmModule from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url';
 import wasmBinary from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url';
 import { AnalysisError } from './types';
 import type { ModelOptions } from './models';
-import type { AnalysisReply, AnalysisRequest } from './protocol';
+import type { AnalysisMessage, AnalysisReply, AnalysisRequest } from './protocol';
+
+/** Filled by `run`: skip the request while it is still queued in the worker (true = the worker need not be ended). */
+export type QueueTicket = { cancelQueued?: () => boolean };
 
 /** Own one worker; terminate it to cancel inference and reject every pending request. */
 export class AnalysisWorker {
@@ -21,11 +24,19 @@ export class AnalysisWorker {
     this.worker.onmessageerror = () => this.close(new AnalysisError('ANALYSIS_WORKER_FAILED', 'The worker result could not be decoded.'));
   }
   init(options: Omit<ModelOptions, 'wasm'>) { return this.run({ task: 'init', options: { ...options, wasm: { mjs: new URL(wasmModule, location.href).href, wasm: new URL(wasmBinary, location.href).href } } }); }
-  run(request: AnalysisRequest, transfer: Transferable[] = []) {
+  /** `ticket.cancelQueued` (audit F1 (c)) skips the request if it has not started (every earlier request has replied): it
+   *  posts `{ cancel: id }`, rejects ANALYSIS_CANCELLED and returns true; also true once answered; false while it runs. */
+  run(request: AnalysisRequest, transfer: Transferable[] = [], ticket?: QueueTicket) {
     if (this.closed) return Promise.reject(new AnalysisError('ANALYSIS_CANCELLED', 'The analysis worker is closed.'));
     const id = ++this.nextId;
     return new Promise<AnalysisReply & { ok: true }>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
+      if (ticket) ticket.cancelQueued = () => {
+        if (!this.pending.has(id)) return true;
+        if (this.pending.keys().next().value === id) return false;
+        this.pending.delete(id); this.worker.postMessage({ cancel: id } satisfies AnalysisMessage);
+        reject(new AnalysisError('ANALYSIS_CANCELLED', 'Analysis was cancelled.')); return true;
+      };
       try { this.worker.postMessage({ id, request }, transfer); } catch (error) { this.pending.delete(id); reject(new AnalysisError('ANALYSIS_FAILED', error instanceof Error ? error.message : String(error))); }
     });
   }

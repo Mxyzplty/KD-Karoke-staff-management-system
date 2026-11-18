@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19: the main thread's one analysis worker. Models load from the same-origin model root; a capability without its
 // models is "unavailable" (C12), never faked. Cancelling a request terminates the worker and the next request starts a
-// fresh one (a cancelled search only drops its answer). The footage index lives in the worker and is kept per asset in `search_index`; before each search it is
+// fresh one (a cancelled search only drops its answer; a sync not started yet is only skipped, audit F1 (c)). The footage index lives in the worker and is kept per asset in `search_index`; before each search it is
 // brought in line with the stored rows, the current asset names and the project links (Footage search filters on them).
 import { AnalysisWorker } from './worker-client';
+import type { QueueTicket } from './worker-client';
 import { AnalysisError } from './types';
 import { unavailableError } from './availability';
 import type { Availability, Capability } from './availability';
@@ -45,14 +46,19 @@ export class AnalysisService {
   }
   /** C12: ANALYSIS_UNAVAILABLE when the capability's local models are not served. */
   async require(capability: Capability) { if (!(await this.available())[capability]) throw unavailableError(capability); }
-  /** One worker request. Aborting `signal` terminates the worker (ANALYSIS_CANCELLED for every pending request). */
-  async request<T>(request: AnalysisRequest, transfer: Transferable[] = [], signal?: AbortSignal): Promise<T> {
+  /** One worker request. Aborting `signal` terminates the worker (ANALYSIS_CANCELLED for every pending request).
+   *  `skipQueued` (audit F1 (c), the sync only): a request not posted or not started yet is skipped instead, the worker kept. */
+  async request<T>(request: AnalysisRequest, transfer: Transferable[] = [], signal?: AbortSignal, skipQueued = false): Promise<T> {
     signal?.throwIfAborted();
-    const current = this.open(), cancel = () => this.drop(current, new AnalysisError('ANALYSIS_CANCELLED', 'Analysis was cancelled.'));
+    const current = this.open(), ticket: QueueTicket = {};
+    let posted = false;
+    const cancel = () => { if (skipQueued && (!posted || ticket.cancelQueued?.())) return; this.drop(current, new AnalysisError('ANALYSIS_CANCELLED', 'Analysis was cancelled.')); };
     signal?.addEventListener('abort', cancel, { once: true });
     try {
       if (request.task !== 'available') await current.ready;
-      return (await current.worker.run(request, transfer)).value as T;
+      if (skipQueued) signal?.throwIfAborted();
+      posted = true;
+      return (await current.worker.run(request, transfer, ticket)).value as T;
     } catch (e) {
       if ((e as AnalysisError).code === 'ANALYSIS_WORKER_FAILED') this.drop(current, e as AnalysisError);
       throw signal?.aborted ? signal.reason : e;
@@ -61,8 +67,9 @@ export class AnalysisService {
   /** The footage search's text embedder on any texts (T21 help search); ANALYSIS_UNAVAILABLE without its model. */
   async embed(texts: string[]): Promise<number[][]> { await this.require('embeddings'); return this.request<number[][]>({ task: 'embed', texts }); }
   /** Multicam offset (sync.ts): `source` source time − `target` source time; SYNC_LOW_CONFIDENCE below 0.5 (C10).
-   *  Aborting `signal` drops the worker as any request's abort does (syncAndSwap's deadline, audit F1). */
-  syncOffset(source: Transcript, target: Transcript, signal?: AbortSignal): Promise<SyncResult> { return this.request<SyncResult>({ task: 'sync', source, target }, [], signal); }
+   *  Aborting `signal` (syncAndSwap's deadline, audit F1) drops the worker only once the sync has started; a sync still
+   *  queued behind another task is skipped and that task keeps its worker (lane A ruling (c)). */
+  syncOffset(source: Transcript, target: Transcript, signal?: AbortSignal): Promise<SyncResult> { return this.request<SyncResult>({ task: 'sync', source, target }, [], signal, true); }
   /** Index one asset in the worker and return the row that persists it. */
   async index(asset: AssetInput, analysis: VisualAnalysis | null, transcript: Transcript | null, signal?: AbortSignal): Promise<IndexRow> {
     const current = this.open();
