@@ -9,6 +9,7 @@
 // on. Chunk 0 still drops exactly LEAD_MS of its head (the export's 960-frame exclusion in t13-preview (b) stays).
 // This tests the design rule (a lead against a stated render position), not Chromium: the Linux gate is the evidence that
 // the fix works there.
+// F9 review L2: baseLatency 50 ms, render 80 ms ahead, fails if the lead ignores baseLatency; a NaN baseLatency counts as 0.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LEAD_MS, PreviewAudio } from '../apps/web/src/audio/preview';
 import { FS, mkClip, mkDoc, mkTrack, sine, synthSource } from './t13-support';
@@ -35,6 +36,8 @@ describe('the first chunk starts after the render position', () => {
     ['baseLatency missing, render 30 ms ahead of currentTime', {}, 30],
     ['baseLatency 10 ms, render 30 ms ahead of currentTime', { baseLatency: 0.01 }, 30],
     ['control: baseLatency 0, render at currentTime', { baseLatency: 0 }, 0],
+    ['baseLatency 50 ms, render 80 ms ahead of currentTime', { baseLatency: 0.05 }, 80],
+    ['baseLatency NaN, render 30 ms ahead of currentTime', { baseLatency: NaN }, 30],
   ] as const)('%s', async (_name, latency, aheadMs) => {
     const doc = mkDoc([mkTrack('a1')], [mkClip('c1', 'a1', 0, 1000, { sourceDuration: 2000 })]);
     const { ctx, starts } = stubContext(T, latency);
