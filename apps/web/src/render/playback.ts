@@ -78,15 +78,14 @@ type Anchor = { t: number; perf: number; ctx: number | null };
 let anchor: Anchor | null = null, ctxClock = false;
 const audioMs = () => ctxClock && audio?.state === 'running' ? audio.currentTime * 1000 : null;
 const setAnchor = (t: number) => { anchor = { t, perf: performance.now(), ctx: audioMs() }; };
-/** Never below the anchor's t: a context anchor ahead of the context's now holds the picture there (followContext). */
+/** Never below the anchor's t: a context anchor ahead of the context's now holds the picture there (start: the mapping's
+ *  time of t, which the main thread's currentTime may not have reached). */
 function clock() {
   const a = anchor!, c = audioMs();
   return a.ctx !== null && c !== null ? a.t + Math.max(0, c - a.ctx) : a.t + performance.now() - a.perf;
 }
 /** Switches the clock to the context when its sound starts, and back to performance.now when the sound stops, where the
- *  clock is (no step). While quiet the sound's mapping follows this clock M later (sound.follow), so on the switch the
- *  picture is anchored at the context time the mapping sounds it: it holds M after a mid-play start (at play start the
- *  picture held M already, and the two agree). */
+ *  clock is (no step). The sound starts where the picture is: while quiet its mapping follows this clock (sound.follow). */
 function followContext() {
   const loud = !!sound?.audible();
   if (loud === ctxClock) return;
@@ -94,7 +93,6 @@ function followContext() {
   ctxClock = loud;
   if (!anchor) return;
   setAnchor(t);
-  if (loud) anchor.ctx = sound!.at(t) ?? anchor.ctx;
   playbackStats.reanchors++;
 }
 
@@ -451,10 +449,10 @@ async function start(t: number, token: number) {
   for (;;) {
     const waiting = syncMedia(t, true);
     fillPool(t, Infinity);
-    if (Number.isNaN(held)) void run?.prime(t); else run?.pump();
+    void run?.prime(t);
     if (Number.isNaN(held) && (!(waiting > 0 || (run && !run.primed) || allElements().some(el => el.readyState < 1 && !el.error)) || performance.now() >= until)) held = performance.now() + (run?.begin() ?? 0) * 1000;
     if (performance.now() >= held) break;
-    await new Promise(r => setTimeout(r, 16));
+    await new Promise(r => setTimeout(r, Number.isNaN(held) ? 16 : Math.min(16, Math.max(0, held - performance.now()))));
     if (token !== startToken) return;
   }
   followContext(); setAnchor(t); anchor!.perf = held; if (ctxClock) anchor!.ctx = run!.at(t) ?? anchor!.ctx;

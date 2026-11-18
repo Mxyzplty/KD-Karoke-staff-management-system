@@ -71,13 +71,13 @@ export class PreviewAudio {
     for (const c of this.chunks) this.schedule(c);
   }
   /** The picture's clock is at timeline ms t: while no sound is playing or scheduled, the mapping moves to put frame t at
-   *  the context's now plus M (the picture holds M when the sound starts: playback.ts followContext), rounded to a frame so
-   *  the mapping stays on the grid (a node already made keeps its place, so chunks stay joined). */
+   *  the context's now, rounded to a frame so the mapping stays on the grid (a node already made keeps its place, so
+   *  chunks stay joined). */
   follow(t: number) {
     if (this.base === null || this.ctx.state !== 'running') return;
     const now = this.ctx.currentTime;
     if (this.chunks.some(c => c.node && c.when + c.frames / MIX_RATE > now)) return;
-    this.base = Math.round((now + this.margin - (Math.round(t * PER_MS) - this.first) / MIX_RATE) * MIX_RATE) / MIX_RATE;
+    this.base = now - (Math.round(t * PER_MS) - this.first) / MIX_RATE;
     for (const c of this.chunks) if (!c.node) c.when = this.base + (c.frame - this.first) / MIX_RATE;
   }
   /** Context ms at which the mapping sounds timeline ms t (null before it is fixed). */
