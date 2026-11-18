@@ -42,7 +42,7 @@ export const PREMOUNT_MS = 10_000, MAX_IDLE = 4;
 export const HANDOFF_SETTLE_MS = 250, POOL_AHEAD = 8;
 /** running: the clock runs (after the start-up wait; T13's voice-over starts recording then). */
 export const usePlayback = create<{ playing: boolean; running: boolean }>(() => ({ playing: false, running: false }));
-const zero = () => ({ starts: 0, painted: 0, skipped: 0, notReady: 0, stale: 0, failed: 0, resyncs: 0, seeks: 0, reanchors: 0, maxDriftMs: 0, elementMaxDriftMs: 0, driftMs: 0, poolDrawnFrames: 0, handoffs: 0, behindHandoffs: 0, handoffMs: [] as number[], unconverged: 0, droppedVideoFrames: 0, elements: 0, lateMounts: 0, sounds: 0, buffers: 0, lateChunks: 0, soundFailures: 0, firstFrame: -1, lastFrame: -1, maxRafGapMs: 0 });
+const zero = () => ({ starts: 0, painted: 0, skipped: 0, notReady: 0, stale: 0, failed: 0, resyncs: 0, seeks: 0, reanchors: 0, maxDriftMs: 0, elementMaxDriftMs: 0, driftMs: 0, poolDrawnFrames: 0, handoffs: 0, behindHandoffs: 0, handoffMs: [] as number[], unconverged: 0, droppedVideoFrames: 0, elements: 0, lateMounts: 0, sounds: 0, buffers: 0, lateChunks: 0, riskyStarts: 0, soundFailures: 0, firstFrame: -1, lastFrame: -1, maxRafGapMs: 0 });
 /** Counters for tests and the 60 s check. skipped: frame indices never painted; notReady: draws with no picture yet; stale:
  *  draws that showed an older pool / remap / motion-graphic frame; failed: draws that showed the grey failed picture (P16); maxDriftMs: since the reset, the worst offset of a painted video frame,
  *  whichever path drew it: the presented media time of the frame drawn (an element's currentTime, a pool frame's timestamp,
@@ -53,7 +53,8 @@ const zero = () => ({ starts: 0, painted: 0, skipped: 0, notReady: 0, stale: 0, 
  *  the element's first play() or the seek; behindHandoffs: those of them made early because the pool fell behind; unconverged: those still drawn from the pool when they unmounted; droppedVideoFrames: the elements' own
  *  counts, added when they park or are released; elements: <video> elements made; lateMounts: media elements made while the
  *  clock runs (after a paint); sounds: clips whose sound the mix read, once per clip per run; buffers: chunks with sound
- *  made; lateChunks: chunks that started after their time (cut short) or were dropped; soundFailures: source reads that
+ *  made; lateChunks: chunks that started after their time (cut short) or were dropped; riskyStarts: chunk nodes started
+ *  within the audio thread's possible render-ahead of the clock (audio/preview.ts renderAhead; information only); soundFailures: source reads that
  *  failed (that clip is silent); maxRafGapMs: the longest gap between two animation frames of one run (a stall). */
 export const playbackStats = zero();
 /** Diagnostics, kept apart from the counters: the latest DRIFT_LOG painted video frames since the reset, each with the paint's
@@ -77,12 +78,15 @@ type Anchor = { t: number; perf: number; ctx: number | null };
 let anchor: Anchor | null = null, ctxClock = false;
 const audioMs = () => ctxClock && audio?.state === 'running' ? audio.currentTime * 1000 : null;
 const setAnchor = (t: number) => { anchor = { t, perf: performance.now(), ctx: audioMs() }; };
+/** Never below the anchor's t: a context anchor ahead of the context's now holds the picture there (followContext). */
 function clock() {
   const a = anchor!, c = audioMs();
-  return a.ctx !== null && c !== null ? a.t + c - a.ctx : a.t + performance.now() - a.perf;
+  return a.ctx !== null && c !== null ? a.t + Math.max(0, c - a.ctx) : a.t + performance.now() - a.perf;
 }
 /** Switches the clock to the context when its sound starts, and back to performance.now when the sound stops, where the
- *  clock is (no step). The sound starts where the picture is: while quiet its mapping follows this clock (sound.follow). */
+ *  clock is (no step). While quiet the sound's mapping follows this clock M later (sound.follow), so on the switch the
+ *  picture is anchored at the context time the mapping sounds it: it holds M after a mid-play start (at play start the
+ *  picture held M already, and the two agree). */
 function followContext() {
   const loud = !!sound?.audible();
   if (loud === ctxClock) return;
@@ -90,6 +94,7 @@ function followContext() {
   ctxClock = loud;
   if (!anchor) return;
   setAnchor(t);
+  if (loud) anchor.ctx = sound!.at(t) ?? anchor.ctx;
   playbackStats.reanchors++;
 }
 
@@ -253,6 +258,7 @@ function makeSound(h: PlaybackHost): PreviewAudio | null {
     sound: id => { if (!heard.has(id)) { heard.add(id); playbackStats.sounds++; } },
     buffer: () => { playbackStats.buffers++; },
     late: () => { playbackStats.lateChunks++; },
+    risky: () => { playbackStats.riskyStarts++; },
     failed: () => { playbackStats.soundFailures++; },
   });
 }
@@ -437,18 +443,22 @@ async function play() {
 }
 /** The paused frame stays on screen while the visible clips load, the elements made for the next PREMOUNT_MS load their
  *  metadata (so their start-up stalls end before the clock runs) and the first sound chunk renders, at most START_WAIT_MS.
- *  A seek during the wait is taken by the first frame. */
+ *  The wait then goes on for M from the sound's begin (sound.begin: its mapping is M later), elements still held; the clock
+ *  runs from t at begin + M. A seek during the wait is taken by the first frame. */
 async function start(t: number, token: number) {
   const until = performance.now() + START_WAIT_MS, run = sound = makeSound(host!);
+  let held = NaN; // performance.now() at which the clock runs from t (NaN before the sound begins)
   for (;;) {
     const waiting = syncMedia(t, true);
     fillPool(t, Infinity);
-    void run?.prime(t);
-    if (!(waiting > 0 || (run && !run.primed) || allElements().some(el => el.readyState < 1 && !el.error)) || performance.now() >= until) break;
+    if (Number.isNaN(held)) void run?.prime(t); else run?.pump();
+    if (Number.isNaN(held) && (!(waiting > 0 || (run && !run.primed) || allElements().some(el => el.readyState < 1 && !el.error)) || performance.now() >= until)) held = performance.now() + (run?.begin() ?? 0) * 1000;
+    if (performance.now() >= held) break;
     await new Promise(r => setTimeout(r, 16));
     if (token !== startToken) return;
   }
-  run?.begin(); followContext(); setAnchor(t); lastIndex = null; lastSet = t; lastRaf = NaN;
+  followContext(); setAnchor(t); anchor!.perf = held; if (ctxClock) anchor!.ctx = run!.at(t) ?? anchor!.ctx;
+  lastIndex = null; lastSet = t; lastRaf = NaN;
   usePlayback.setState({ running: true });
   frame();
 }

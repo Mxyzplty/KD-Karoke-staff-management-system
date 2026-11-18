@@ -10,24 +10,33 @@
 // drift apart), so a sound that starts later is heard where the picture is. An edit while playing re-renders the chunks
 // not yet started. Silent chunks make no node; a chunk that fails is silent. Keep-pitch clips carry their chain from one
 // chunk to the next (mix.ts `chains`), so a chunk does not replay it from the restart.
-// Provisional, not Xapp parity: CHUNK_MS, AHEAD_MS, LEAD_MS, HOLD_MS; the output latency is not compensated.
+// The mapping sits a margin M later than the clock's start (startMargin; the picture holds its first frame as long): the
+// audio thread renders ahead of the main thread's reading of currentTime, and a node started at a time it has passed
+// sounds late from its given offset (F9: 448 frames on the Linux runner, the late hook silent).
+// Provisional, not Xapp parity: CHUNK_MS, AHEAD_MS, LEAD_MS, HOLD_MS, SLACK_QUANTA; the output latency is not compensated.
 import type { ProjectDocument } from '../store/model';
 import { Limiter } from './limiter';
 import { MIX_RATE, PER_MS, mixFrames } from './mix';
 import type { AudioSource } from './mix';
 import type { Chain } from './stretch';
 
-export const CHUNK_MS = 250, AHEAD_MS = 1000, LEAD_MS = 20, HOLD_MS = 10_000;
+export const CHUNK_MS = 250, AHEAD_MS = 1000, LEAD_MS = 20, HOLD_MS = 10_000, SLACK_QUANTA = 16;
 const N = CHUNK_MS * PER_MS;
+/** How far (context seconds) the audio thread may be ahead of currentTime: baseLatency (0 when absent) plus SLACK_QUANTA render
+ *  quanta for a graph change the audio thread applies late. */
+const renderAhead = (ctx: AudioContext) => (Number.isFinite(ctx.baseLatency) ? ctx.baseLatency : 0) + SLACK_QUANTA * 128 / ctx.sampleRate;
+/** M: renderAhead within [0, CHUNK_MS / 2]. */
+const startMargin = (ctx: AudioContext) => Math.min(Math.max(renderAhead(ctx), 0), CHUNK_MS / 2000);
 /** One rendered chunk: timeline frames [frame, frame + frames) (frames = N but at the end), sounding from context
  *  seconds `when`; buffer null when silent; g: the limiter's gain after it. */
 type Chunk = { k: number; frame: number; frames: number; buffer: AudioBuffer | null; g: number; node: AudioBufferSourceNode | null; when: number };
-export type PreviewHooks = { sound?: (itemId: string) => void; buffer?: () => void; late?: () => void; failed?: () => void };
+export type PreviewHooks = { sound?: (itemId: string) => void; buffer?: () => void; late?: () => void; risky?: () => void; failed?: () => void };
 
 export class PreviewAudio {
   private first = 0;
   private begun: number | null = null; // performance.now() when the clock started (null before)
   private base: number | null = null; // context seconds of frame `first` (null until the context runs after the start)
+  private margin = 0; // M (startMargin), fixed at begin()
   private chunks: Chunk[] = [];
   private heardEnd = -Infinity; // context seconds at which the latest forgotten chunk with sound ended
   private rendering: Promise<void> | null = null;
@@ -47,28 +56,33 @@ export class PreviewAudio {
     return this.rendering ?? Promise.resolve();
   }
   get primed() { return this.chunks.length > 0; }
-  /** The clock starts at timeline ms t (= frame `first`). */
-  begin() {
-    this.begun = performance.now();
+  /** The clock starts at timeline ms t (= frame `first`); returns M (seconds), the time the picture holds frame t. */
+  begin(): number {
+    this.begun = performance.now(); this.margin = startMargin(this.ctx);
     this.pump();
+    return this.margin;
   }
   /** The mapping is fixed once the context runs (a context made for this play is still starting): frame `first` at the
-   *  context time the clock started, counted back from now by the time since, on the context's frame grid (Chromium
+   *  context time the clock started plus M, counted back from now by the time since, on the context's frame grid (Chromium
    *  interpolates a buffer started between frames, and performance.now() steps by 0.1 ms = 4.8 frames). */
   private settle() {
     if (this.base !== null || this.begun === null || this.ctx.state !== 'running') return;
-    this.base = Math.round((this.ctx.currentTime - (performance.now() - this.begun) / 1000) * MIX_RATE) / MIX_RATE;
+    this.base = Math.round((this.ctx.currentTime - (performance.now() - this.begun) / 1000 + this.margin) * MIX_RATE) / MIX_RATE;
     for (const c of this.chunks) this.schedule(c);
   }
   /** The picture's clock is at timeline ms t: while no sound is playing or scheduled, the mapping moves to put frame t at
-   *  the context's now, rounded to a frame so the mapping stays on the grid (a node already made keeps its place, so
-   *  chunks stay joined). */
+   *  the context's now plus M (the picture holds M when the sound starts: playback.ts followContext), rounded to a frame so
+   *  the mapping stays on the grid (a node already made keeps its place, so chunks stay joined). */
   follow(t: number) {
     if (this.base === null || this.ctx.state !== 'running') return;
     const now = this.ctx.currentTime;
     if (this.chunks.some(c => c.node && c.when + c.frames / MIX_RATE > now)) return;
-    this.base = now - (Math.round(t * PER_MS) - this.first) / MIX_RATE;
+    this.base = Math.round((now + this.margin - (Math.round(t * PER_MS) - this.first) / MIX_RATE) * MIX_RATE) / MIX_RATE;
     for (const c of this.chunks) if (!c.node) c.when = this.base + (c.frame - this.first) / MIX_RATE;
+  }
+  /** Context ms at which the mapping sounds timeline ms t (null before it is fixed). */
+  at(t: number): number | null {
+    return this.base === null ? null : (this.base + (Math.round(t * PER_MS) - this.first) / MIX_RATE) * 1000;
   }
   /** Called on every animation frame while playing: re-renders after an edit, renders ahead. */
   pump() {
@@ -122,6 +136,7 @@ export class PreviewAudio {
     const lead = c.k === 0 ? LEAD_MS / 1000 : 0, now = this.ctx.currentTime, at = Math.max(c.when + lead, now), offset = at - c.when;
     if (offset >= c.buffer.duration) { this.hooks.late?.(); return; }
     if (offset > lead + 1e-6) this.hooks.late?.();
+    if (at < now + renderAhead(this.ctx)) this.hooks.risky?.(); // the audio thread may have passed `at` (diagnostic only)
     const node = this.ctx.createBufferSource();
     node.buffer = c.buffer; node.connect(this.ctx.destination); node.start(at, offset);
     c.node = node;
