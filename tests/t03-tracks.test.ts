@@ -160,15 +160,28 @@ describe('manageTrack delete / flags / volume / rename / reorder (results §2 ma
     const d = grouped(); d.groups.g1.locked = true; const e = editor(d); const b = json(e.doc);
     const r = call(e, 'manageTrack', { action: 'reorder', trackId: 'V1', position: 'top' }); expect(r).toMatchObject({ code: 'TRACK_LOCKED', error: 'Group is locked' }); refused(e, b, r);
   });
-  // T03 audit F1 (D115): a reorder to the place the track already holds leaves the stack as it is (results §2 manageTrack l.941:
-  // the message names where the track now is). The undo entry and the message for this case are not in the findings: stack only.
+  // T03 audit F1 (D115): a reorder to the place the track already holds leaves the stack as it is; the message is the l.941
+  // template (results §2 manageTrack). Xapp's undo entry and message for this case are unrecorded, so these pin Cutframe's
+  // documented default no-op rule (bus.ts; findings part 3 l.305): success, no entry, no journal record, no timelineChanges.
+  const noop = (e: Editor, args: Record<string, unknown>, message: string) => {
+    const r = call(e, 'manageTrack', { action: 'reorder', ...args });
+    expect(r.success).toBe(true); expect(r.message).toBe(message); expect(r.timelineChanges).toBeUndefined(); expect(e.bus.undoStack).toHaveLength(0); expect(e.journal).toHaveLength(0);
+  };
   it('reorder V2 above V1, the place it already holds, leaves the stack unchanged', () => {
-    const e = editor(); call(e, 'manageTrack', { action: 'reorder', trackId: 'V2', position: 'above', relativeToTrackId: 'V1' });
+    const e = editor(); noop(e, { trackId: 'V2', position: 'above', relativeToTrackId: 'V1' }, "Reordered track 'V2' above track 'V1'.");
     expect(stackOf(e)).toEqual(['A1', 'V1', 'V2', 'O1', 'C1']);
   });
   it('reorder the bottom track A1 to the bottom leaves the stack unchanged', () => {
-    const e = editor(); call(e, 'manageTrack', { action: 'reorder', trackId: 'A1', position: 'bottom' });
+    const e = editor(); noop(e, { trackId: 'A1', position: 'bottom' }, "Reordered track 'A1' to the bottom.");
     expect(stackOf(e)).toEqual(['A1', 'V1', 'V2', 'O1', 'C1']);
+  });
+  it('reorder the top track C1 above O1 (the moved track is the last entry) leaves the stack unchanged', () => {
+    const e = editor(); noop(e, { trackId: 'C1', position: 'above', relativeToTrackId: 'O1' }, "Reordered track 'C1' above track 'O1'.");
+    expect(stackOf(e)).toEqual(['A1', 'V1', 'V2', 'O1', 'C1']);
+  });
+  it('reorder V2 above V1 inside group g1 leaves the group children and the root unchanged', () => {
+    const e = editor(grouped()); noop(e, { trackId: 'V2', position: 'above', relativeToTrackId: 'V1' }, "Reordered track 'V2' above track 'V1'.");
+    expect(e.doc.groups.g1.children.map((c: { id: string }) => c.id)).toEqual(['V1', 'V2']); expect(stackOf(e)).toEqual(['A1', 'g1', 'O1']);
   });
 });
 
@@ -183,7 +196,7 @@ describe('track delete: locked track and locked group on both paths (D116)', () 
       expect(e.doc.tracks.some(t => t.id === 'V1')).toBe(false); expect(stackOf(e)).toEqual(['A1', 'V2', 'O1', 'C1']);
       expect(e.doc.items.some(i => ['v1', 'v2', 'v3'].includes(i.id))).toBe(false); expect(e.bus.undoStack).toHaveLength(1);
     }
-    expect(ui.bus.undoStack[0]).toMatchObject({ label: 'Delete track', source: 'user' }); only(tool, 'Delete track');
+    expect(ui.bus.undoStack[0]).toMatchObject({ label: 'Delete track', source: 'user' }); expect(ui.journal).toHaveLength(1); only(tool, 'Delete track');
   });
   it('a track inside a locked group is refused on both paths: TRACK_LOCKED "Group is locked", nothing changes', () => {
     const lockedGroup = () => { const d = grouped(); d.groups.g1.locked = true; return d; };
