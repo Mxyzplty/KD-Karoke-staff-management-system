@@ -26,6 +26,7 @@ import { ffmpegAvailable, ffmpegImageRgb, media } from '../media-fixtures';
 import { skipTour } from './t02-support';
 import { bigTiff, reference, rgba64Tiff, taggedJpeg, taggedTiff } from './t14-orientation-support';
 import { yaTiff } from './t14-orientation-support';
+import { alphaGradientTiff, ALPHA_BANDS, run } from './t14-orientation-support';
 import { decodeRgba } from './t16a-support';
 import { openSvgProject } from './t25-svg-support';
 import {
@@ -148,6 +149,37 @@ for (const entry of SUBJECTS) test(`T29 AC1 AC2 AC3 AC4 ${entry.key}: upright pi
     expect(again, 'a second rotation changes the size').not.toEqual({ width: shown.width, height: shown.height });
     for (const p of [preview, capture, exportPath]) expect.soft(imageDims(p.image), 'the bitmap is not the twice-rotated size').not.toEqual([again.width, again.height]);
   }
+});
+
+// T14 audit F-07 review #3c (lane A 05:08; audit l.137; T29 AC3, ticket l.626): RGBA64LE and YA16LE keep their own alpha. Each file
+// has an alpha gradient across x (ALPHA_BANDS). The paused preview composites over a clear backdrop (render/compositor.ts:141)
+// under the transparent project background (t25-svg-support.ts:104), and previewRead puts that canvas over #000000
+// (t29-support.ts:138), so a pixel shows ffmpeg's decode of the file blended over black: c · a / 255. Capture and export composite
+// over black too (compositor.ts:135), but their 0.75 resample + JPEG and H.264 4:2:0 blur testsrc2's sharp edges, so only the
+// preview, which holds the item 1:1, is asserted. Tolerance GREY_TOLERANCE.preview (1): canvas storage is exact at a = 0 and
+// a = 255, and libav.ts's 16 → 8-bit step (>> 8) differs from ffmpeg's by at most 1. Not red first: the fix exists. By reading,
+// alpha forced to 255 in libav.ts l.265–266 draws the picture in the clear band, which is checked non-black first, so it fails.
+for (const pixFmt of ['rgba64le', 'ya16le'] as const) test(`T29 AC3 T14 audit F-07 ${pixFmt} alpha gradient: the clear band shows black, the opaque band the picture (preview)`, async ({ page }) => {
+  const file = alphaGradientTiff(pixFmt), name = `pattern-alpha-${pixFmt}.tiff`, W = 96, H = 64, box: Rect = { x: ORIGIN.x, y: ORIGIN.y, w: W, h: H };
+  const rgba = run(['-i', file, '-frames:v', '1', '-pix_fmt', 'rgba', '-f', 'rawvideo', '-']);
+  expect(rgba.length, 'ffmpeg decodes the file at 96 × 64').toBe(W * H * 4);
+  const projectId = await openSvgProject(page, PROJECT);
+  const asset = await uploadImage(page, projectId, unique(name), 'image/tiff', readFileSync(file));
+  expect(asset.processing_status, JSON.stringify({ code: asset.last_error_code, message: asset.last_error_message })).toBe('ready');
+  expect(asset.media?.image).toMatchObject({ width: W, height: H, orientation: 1 });
+  expect(asset.media?.decoder).toBe('wasm');
+  await placeImage(page, asset);
+  const read = await settledPreview(page, asset.id, box, 'true');
+  // Points: every pixel of each band, 2 px in from the band and box edges.
+  const off: string[] = []; let clearPicture = 0;
+  for (const [band, [x0, x1], alpha] of [['clear', ALPHA_BANDS.clear, 0], ['opaque', ALPHA_BANDS.opaque, 255]] as const) for (let y = 2; y < H - 2; y++) for (let x = x0 + 2; x < x1 - 2; x++) {
+    const s = (y * W + x) * 4, p = ((box.y + y) * PROJECT.width + box.x + x) * 4;
+    expect(rgba[s + 3], `${band} band alpha at (${x}, ${y}) in ffmpeg's decode`).toBe(alpha);
+    if (band === 'clear') clearPicture = Math.max(clearPicture, rgba[s], rgba[s + 1], rgba[s + 2]);
+    for (let k = 0; k < 3; k++) { const want = Math.round(rgba[s + k] * rgba[s + 3] / 255); if (Math.abs(read.rgba[p + k] - want) > GREY_TOLERANCE.preview) off.push(`${band} (${x}, ${y})[${k}] ${read.rgba[p + k]} ≠ ${want}`); }
+  }
+  expect(clearPicture, 'the clear band hides a non-black picture, so alpha forced to 255 would show it').toBeGreaterThan(16);
+  expect(off.slice(0, 10), `${off.length} band pixels off by more than ${GREY_TOLERANCE.preview}`).toEqual([]);
 });
 
 const BROKEN: { key: string; file: string; mime: string }[] = [

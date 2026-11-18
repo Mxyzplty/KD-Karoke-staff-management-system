@@ -51,6 +51,15 @@ export function yaTiff(pixFmt: 'ya8' | 'ya16le') {
   const file = path.join(dir, pixFmt === 'ya8' ? 'pattern-ya8.tiff' : 'pattern-ya16.tiff');
   run(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=1:duration=1', '-frames:v', '1', '-pix_fmt', pixFmt, file]); return file;
 }
+/** T14 audit F-07 review #3c: alpha 0 for x in [0, 16), opaque for x in [80, 96), a ramp between (8-bit in geq, widened by ffmpeg). */
+export const ALPHA_BANDS = { clear: [0, 16], opaque: [80, 96] } as const;
+/** The same source frame as a 16-bit RGBA or grey + alpha TIFF with that alpha gradient across x. */
+export function alphaGradientTiff(pixFmt: 'rgba64le' | 'ya16le') {
+  const file = path.join(dir, `pattern-alpha-${pixFmt}.tiff`);
+  run(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=1:duration=1', '-frames:v', '1',
+    '-vf', "format=gbrap,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,16),0,if(gte(X,80),255,(X-16)*255/63))'", '-pix_fmt', pixFmt, file]);
+  return file;
+}
 /** T14 audit F-07: an uncoded RGB 8-bit BigTIFF (magic 43, 8-byte offsets, one strip) written from raw RGB24 pixels; ffmpeg
  *  writes no BigTIFF. Little-endian: header 16 bytes, pixels, then IFD0 (8-byte count, 20-byte entries, 8-byte next offset). */
 export function bigTiff(img: Ref) {
