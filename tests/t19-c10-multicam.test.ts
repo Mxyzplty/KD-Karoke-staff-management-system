@@ -5,6 +5,7 @@
 // on a seeded 3,000-word pair, each call in a worker killed at a hard cap; measurement only (time printed, offset asserted).
 // F1 fix, red-first (lane A 03:56): the 2 s bar, identity goldens of whole results, and the 30 s syncAndSwap deadline.
 // F1 review fixes, red-first (lane A 04:51): the fallback golden (F3), speech-like text measured (F2), a queued sync at the deadline (F1 (c)).
+// Lane A (after 04:52): a task cancelled while queued is skipped by analysis.worker.ts ({ cancel: id }, posted by the client).
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -18,6 +19,7 @@ import { SWAP, syncAndSwap } from '../apps/web/src/analysis/multicam';
 import type { SwapContext } from '../apps/web/src/analysis/multicam';
 import type { AnalysisReply, AnalysisRequest } from '../apps/web/src/analysis/protocol';
 import { AnalysisService } from '../apps/web/src/analysis/service';
+import { AnalysisWorker } from '../apps/web/src/analysis/worker-client';
 import { syncOffset } from '../apps/web/src/analysis/sync';
 import type { SyncResult } from '../apps/web/src/analysis/sync';
 import { AnalysisError } from '../apps/web/src/analysis/types';
@@ -629,8 +631,8 @@ describe('T19 audit F1 fix: syncAndSwap sync deadline 30 s (Cutframe addition; l
 // still queued behind another task (analysis.worker.ts:11 runs one task at a time, in arrival order) gets TOOL_TIMEOUT and is
 // never applied; the task ahead of it keeps its worker. The real AnalysisService and AnalysisWorker over a stubbed global
 // Worker that speaks today's wire protocol and replies in arrival order. Observed: terminate calls, replies, placements.
-// A message the fix may add towards the worker (a skip flag, say) is recorded and not acted on, so the queued sync still
-// "runs" when it reaches the head and the fix must ignore its reply; skipping it is the fix's choice, not pinned here.
+// The client's { cancel: id } towards the worker is recorded (`other`) and not acted on, so the queued sync still "runs" when
+// it reaches the head and the client must ignore that stray reply; the skip itself is pinned on the worker side below.
 describe('T19 audit F1 review: a sync queued behind another task at the 30 s deadline (lane A ruling (c))', () => {
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
   type Posted = { id: number; request: AnalysisRequest };
@@ -671,10 +673,62 @@ describe('T19 audit F1 review: a sync queued behind another task at the 30 s dea
     await vi.advanceTimersByTimeAsync(1);
     expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
     expect(natives[0].terminate).not.toHaveBeenCalled(); expect(natives).toHaveLength(1);
+    expect(natives[0].other).toEqual([{ cancel: 3 }]); // the client asks the worker to skip the queued sync (ids: init 1, transcribe 2, sync 3)
     natives[0].finishTranscribe();
     expect(await transcribed).toEqual({ value: TRANSCRIPT });
     await vi.advanceTimersByTimeAsync(0); // the queued sync reaches the head: skipped or run, its result is not used
     expect(r.place).not.toHaveBeenCalled(); expect(natives[0].terminate).not.toHaveBeenCalled(); expect(natives).toHaveLength(1);
     expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
+  });
+});
+
+// ---- Lane A (after 04:52): a queued sync cancelled at the deadline is SKIPPED when it reaches the head, not run with its
+// result ignored (a degenerate one would run unbounded later, with nobody left to drop the worker). Protocol pinned here:
+//   main -> worker  { cancel: id } (no `request`). AnalysisWorker posts it when a request it sent is aborted before it
+//                   started (the queued row above reads it from QueueWorker.other).
+//   worker          records the id synchronously in onmessage, outside `queue` (it must not wait behind the running task);
+//                   posts nothing for the cancel itself; a cancel for an id already run or never sent changes nothing.
+//   worker          a cancelled id reaching the head is not run and replies { id, ok: false, error: { code:
+//                   'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } } (the AnalysisReply error shape).
+//   main            a reply for an id the client no longer holds is ignored without throwing (worker-client.ts:16).
+// analysis.worker.ts is loaded fresh (vi.resetModules) with engine and models mocked (no model code) over a stubbed scope.
+describe('T19 audit F1 review: analysis.worker.ts skips a task cancelled while queued (lane A; { cancel: id })', () => {
+  const ENGINE = '../apps/web/src/analysis/engine', MODELS = '../apps/web/src/analysis/models';
+  afterEach(() => { vi.unstubAllGlobals(); vi.doUnmock(ENGINE); vi.doUnmock(MODELS); vi.resetModules(); });
+  it('a sync cancelled while a transcribe runs ahead of it is never run; the transcribe and the sync after it run and reply in order; the skipped one replies ANALYSIS_CANCELLED; a cancel posts nothing', async () => {
+    let finish!: (t: Transcript) => void;
+    const transcribing = new Promise<Transcript>(resolve => { finish = resolve; });
+    const sync = vi.fn((_source: Transcript, _target: Transcript): SyncResult => ({ offset: 0, confidence: 1, matches: [] }));
+    vi.doMock(ENGINE, () => ({ AnalysisError, syncOffset: sync, snapCuts: vi.fn(), planSilenceRemoval: vi.fn(),
+      AnalysisEngine: class { models = { backends: {} }; transcribe() { return transcribing; } } }));
+    vi.doMock(MODELS, () => ({ MODEL_IDS: { embedding: 'test-embedder' } }));
+    const posted: Rec[] = [];
+    vi.stubGlobal('postMessage', (m: Rec) => { posted.push(m); });
+    vi.stubGlobal('onmessage', null);
+    vi.resetModules(); await import('../apps/web/src/analysis/analysis.worker');
+    const send = (data: unknown) => (globalThis as unknown as { onmessage(e: { data: unknown }): void }).onmessage({ data });
+    const doc = (tag: string) => ({ language: 'en', languages: ['en'], total_duration: 0, segments: [], tag }) as unknown as Transcript;
+    const S3 = doc('sync 3'), S4 = doc('sync 4'), WORDS = doc('transcribed');
+    send({ id: 1, request: { task: 'init', options: {} } });
+    send({ id: 2, request: { task: 'transcribe', pcm: {} } });
+    send({ id: 3, request: { task: 'sync', source: S3, target: S3 } });
+    send({ id: 4, request: { task: 'sync', source: S4, target: S4 } });
+    send({ cancel: 3 }); send({ cancel: 99 }); // 3 while transcribe 2 still runs; 99 was never sent
+    await vi.waitFor(() => expect(posted.map(m => m.id)).toEqual([1]));
+    finish(WORDS);
+    await vi.waitFor(() => expect(posted.some(m => m.id === 4)).toBe(true));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(sync.mock.calls.map(c => c[0])).toEqual([S4]);
+    expect(posted).toEqual([expect.objectContaining({ id: 1, ok: true }), expect.objectContaining({ id: 2, ok: true, value: WORDS }),
+      { id: 3, ok: false, error: { code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } },
+      expect.objectContaining({ id: 4, ok: true, value: { offset: 0, confidence: 1, matches: [] } })]);
+  });
+  it('the client ignores a reply for an id it no longer holds (a skipped or dropped request) without throwing, and still settles the others', async () => {
+    const native = { onmessage: undefined as ((event: MessageEvent<AnalysisReply>) => void) | undefined, postMessage: vi.fn(), terminate: vi.fn() };
+    vi.stubGlobal('Worker', class { constructor() { return native; } });
+    const client = new AnalysisWorker(), pending = client.run({ task: 'remove', assetId: 'a' });
+    expect(() => native.onmessage!({ data: { id: 7, ok: false, error: { code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } } } as MessageEvent<AnalysisReply>)).not.toThrow();
+    native.onmessage!({ data: { id: 1, ok: true, value: true, elapsedMs: 0, backends: {} } } as MessageEvent<AnalysisReply>);
+    await expect(pending).resolves.toMatchObject({ id: 1, ok: true, value: true });
   });
 });
