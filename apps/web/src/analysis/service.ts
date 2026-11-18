@@ -60,8 +60,9 @@ export class AnalysisService {
   }
   /** The footage search's text embedder on any texts (T21 help search); ANALYSIS_UNAVAILABLE without its model. */
   async embed(texts: string[]): Promise<number[][]> { await this.require('embeddings'); return this.request<number[][]>({ task: 'embed', texts }); }
-  /** Multicam offset (sync.ts): `source` source time − `target` source time; SYNC_LOW_CONFIDENCE below 0.5 (C10). */
-  syncOffset(source: Transcript, target: Transcript): Promise<SyncResult> { return this.request<SyncResult>({ task: 'sync', source, target }); }
+  /** Multicam offset (sync.ts): `source` source time − `target` source time; SYNC_LOW_CONFIDENCE below 0.5 (C10).
+   *  Aborting `signal` drops the worker as any request's abort does (syncAndSwap's deadline, audit F1). */
+  syncOffset(source: Transcript, target: Transcript, signal?: AbortSignal): Promise<SyncResult> { return this.request<SyncResult>({ task: 'sync', source, target }, [], signal); }
   /** Index one asset in the worker and return the row that persists it. */
   async index(asset: AssetInput, analysis: VisualAnalysis | null, transcript: Transcript | null, signal?: AbortSignal): Promise<IndexRow> {
     const current = this.open();
