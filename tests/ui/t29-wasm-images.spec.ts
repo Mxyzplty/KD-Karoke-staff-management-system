@@ -24,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { outputCode } from '../../parity/oracle/transfer';
 import { ffmpegAvailable, ffmpegImageRgb, media } from '../media-fixtures';
 import { skipTour } from './t02-support';
-import { reference, taggedJpeg, taggedTiff } from './t14-orientation-support';
+import { bigTiff, reference, rgba64Tiff, taggedJpeg, taggedTiff } from './t14-orientation-support';
 import { decodeRgba } from './t16a-support';
 import { openSvgProject } from './t25-svg-support';
 import {
@@ -56,6 +56,10 @@ const SUBJECTS: { key: string; make: () => Subject }[] = [
   { key: 'pattern.tiff', make: () => ({ key: 'pattern.tiff', name: 'pattern.tiff', mime: 'image/tiff', bytes: readFileSync(media('pattern.tiff')), base: untagged(media('pattern.tiff')), orientation: 1, wasm: true }) },
   { key: 'o6 TIFF', make: () => ({ key: 'o6 TIFF', name: 'o6.tiff', mime: 'image/tiff', bytes: taggedTiff(6).bytes, base: untagged(media('pattern.tiff')), orientation: 6, wasm: true }) },
   { key: 'o6 JPEG', make: () => ({ key: 'o6 JPEG', name: 'o6.jpg', mime: 'image/jpeg', bytes: taggedJpeg(6), base: untagged(media('pattern.jpg')), orientation: 6, wasm: false }) },
+  // T14 audit F-07 (confirm first): TIFF variants a .tiff upload can hold (T14 ticket l.75, notes acceptance 1 l.320), drawn as T29
+  // AC3 asks (ticket l.626). The RGBA64 oracle is ffmpeg's decode of the file; the BigTIFF oracle is the raw pixels written into it.
+  { key: 'pattern-rgba64.tiff', make: () => { const file = rgba64Tiff(); return { key: 'pattern-rgba64.tiff', name: 'pattern-rgba64.tiff', mime: 'image/tiff', bytes: readFileSync(file), base: untagged(file), orientation: 1, wasm: true }; } },
+  { key: 'pattern-bigtiff.tiff', make: () => { const base = untagged(media('pattern.tiff')); return { key: 'pattern-bigtiff.tiff', name: 'pattern-bigtiff.tiff', mime: 'image/tiff', bytes: bigTiff(base), base, orientation: 1, wasm: true }; } },
 ];
 
 const unique = (name: string) => `${randomUUID()}-${name}`;

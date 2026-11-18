@@ -35,3 +35,29 @@ export function taggedJpeg(orientation: number) {
   const body = Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), tiff]), head = Buffer.from([0xff, 0xe1, 0, 0]); head.writeUInt16BE(body.length + 2, 2);
   return Buffer.concat([original.subarray(0, 2), head, body, original.subarray(2)]);
 }
+/** T14 audit F-05: taggedJpeg with 5 full APP15 segments (5 × 65,537 bytes) after its EXIF APP1, so SOF lies past the first 256 KB. */
+export function paddedJpeg(orientation: number) {
+  const tagged = taggedJpeg(orientation), end = 4 + tagged.readUInt16BE(4); // SOI, then APP1 marker + its length field and body
+  const pad = Array.from({ length: 5 }, () => { const s = Buffer.alloc(4 + 65_533); s.writeUInt16BE(0xffef, 0); s.writeUInt16BE(65_535, 2); return s; });
+  return Buffer.concat([tagged.subarray(0, end), ...pad, tagged.subarray(end)]);
+}
+/** T14 audit F-07: the pattern.tiff source frame as a 16-bit RGBA TIFF (rgba64le, testsrc2's alpha is opaque). */
+export function rgba64Tiff() {
+  const file = path.join(dir, 'pattern-rgba64.tiff');
+  run(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=1:duration=1', '-frames:v', '1', '-pix_fmt', 'rgba64le', file]); return file;
+}
+/** T14 audit F-07: an uncoded RGB 8-bit BigTIFF (magic 43, 8-byte offsets, one strip) written from raw RGB24 pixels; ffmpeg
+ *  writes no BigTIFF. Little-endian: header 16 bytes, pixels, then IFD0 (8-byte count, 20-byte entries, 8-byte next offset). */
+export function bigTiff(img: Ref) {
+  const pixels = 16, ifd = pixels + img.rgb.length, types: Record<number, number> = { 3: 2, 4: 4, 16: 8 };
+  // [tag, type, count, value]: SHORT 3, LONG 4, LONG8 16. BitsPerSample's three SHORTs fit in the 8-byte value field.
+  const entries: [number, number, number, number[]][] = [[256, 4, 1, [img.width]], [257, 4, 1, [img.height]], [258, 3, 3, [8, 8, 8]], [259, 3, 1, [1]], [262, 3, 1, [2]],
+    [273, 16, 1, [pixels]], [277, 3, 1, [3]], [278, 4, 1, [img.height]], [279, 16, 1, [img.rgb.length]], [284, 3, 1, [1]]];
+  const head = Buffer.alloc(16); head.write('II', 0, 'latin1'); head.writeUInt16LE(43, 2); head.writeUInt16LE(8, 4); head.writeBigUInt64LE(BigInt(ifd), 8);
+  const dirBytes = Buffer.alloc(8 + entries.length * 20 + 8); dirBytes.writeBigUInt64LE(BigInt(entries.length), 0);
+  entries.forEach(([tag, type, count, values], n) => {
+    const at = 8 + n * 20; dirBytes.writeUInt16LE(tag, at); dirBytes.writeUInt16LE(type, at + 2); dirBytes.writeBigUInt64LE(BigInt(count), at + 4);
+    values.forEach((v, i) => { const o = at + 12 + i * types[type]; if (type === 3) dirBytes.writeUInt16LE(v, o); else if (type === 4) dirBytes.writeUInt32LE(v, o); else dirBytes.writeBigUInt64LE(BigInt(v), o); });
+  });
+  return Buffer.concat([head, img.rgb, dirBytes]);
+}

@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { ffmpegAvailable, media } from '../media-fixtures';
 import { heifCase } from '../t14-round2-fixtures';
-import { dir, reference, run, taggedJpeg, taggedTiff, type Ref } from './t14-orientation-support';
+import { dir, paddedJpeg, reference, run, taggedJpeg, taggedTiff, type Ref } from './t14-orientation-support';
 
 test.skip(!ffmpegAvailable(), 'ffmpeg generates the media and is the oracle');
 test.setTimeout(240_000);
@@ -64,4 +64,10 @@ test('F24 orientation still applies exactly once on the browser (JPEG from-image
   for (const o of [2, 6, 7]) await check(page, `JPEG o${o}`, `o${o}.jpg`, 'image/jpeg', taggedJpeg(o), reference(media('pattern.jpg'), o), o);
   const heif = heifCase({ axis: 1, rotation: 1 });
   await check(page, 'HEIF irot 90° ccw + imir axis 1', 'turned.heic', 'image/heic', heif.bytes, { width: heif.width, height: heif.height, rgb: heif.rgb }, 1);
+});
+// T14 audit F-05 (confirm first): the probe reads only the first 256 KB for the JPEG size, then falls back to the browser's
+// bitmap, which is already displayed (from-image). The display size is the probe's job (T14 ticket l.79, notes l.271 and
+// acceptance 1 l.320); orientation applies exactly once (notes l.31, l.35; T29 ticket l.612, l.616).
+test('T14 audit F-05 a JPEG whose SOF lies past the first 256 KB keeps its displayed size at EXIF Orientation 5–8 (transformed once)', async ({ page }) => {
+  for (const o of [5, 6, 7, 8]) await check(page, `padded JPEG o${o}`, `padded-o${o}.jpg`, 'image/jpeg', paddedJpeg(o), reference(media('pattern.jpg'), o), o);
 });
