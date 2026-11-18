@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { AutosaveSession } from '../apps/web/src/store/autosave';
 import { emptyDocument, StoreError } from '../apps/web/src/store/model';
 import type { ProjectDocument } from '../apps/web/src/store/model';
+import { prepareSave } from '../apps/web/src/export/prep';
 
 afterEach(() => vi.useRealTimers());
 function fixture(count = 0) {
