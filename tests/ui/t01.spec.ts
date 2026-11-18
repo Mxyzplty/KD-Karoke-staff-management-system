@@ -189,6 +189,30 @@ test('T01 audit F1: a refused editor save carries the TRIM_TO_INVALID issue reco
   const issues = await page.evaluate(async () => { const editorPath = '/src/editor.tsx'; const { activeSession } = await import(editorPath); return (activeSession.error as { issues?: unknown }).issues ?? null; });
   expect(issues).toEqual([{ itemId: 'i1', code: 'TRIM_TO_INVALID', message: 'i1 has invalid trim.to (NaN)' }]);
 });
+// T01 fix review R1: the status line and the alert print session.error.message (shell.tsx:141, :143); a timing refusal shows
+// no issue text there (the records stay on error.issues, checked above).
+test('T01 review R1: a refused editor save shows no issue text in the status line or the alert', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  expect(await saveTrim(page, NaN)).toEqual({ state: 'error', rev: 0, storedTo: null });
+  await expect(page.getByRole('alert')).toBeVisible();
+  for (const role of ['status', 'alert'] as const) { await expect(page.getByRole(role)).not.toContainText('trim.to'); await expect(page.getByRole(role)).not.toContainText('i1'); }
+});
+// T01 fix review R3 (lane A ruling): findings part 3 §45.2 line 293 gives the refusal toast only "the latest change may not
+// be saved"; the retry sentence belongs to failed saves. The dismiss label repeats the toast text, so an exact name is an
+// exact text check.
+test('T01 review R3: a timing refusal toast reads exactly "The latest change may not be saved."', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  expect(await saveTrim(page, NaN)).toEqual({ state: 'error', rev: 0, storedTo: null });
+  const notices = page.getByRole('region', { name: 'Notifications' });
+  await expect(notices.getByRole('button', { name: 'Dismiss The latest change may not be saved.', exact: true })).toBeVisible();
+});
+test('T01 review R3: a failed save toast keeps the retry sentence', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  await page.evaluate(() => { const put = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function (...args) { if (this.name === 'documents') throw new DOMException('full', 'QuotaExceededError'); return put.apply(this, args); }; });
+  await edit(page, 60);
+  const notices = page.getByRole('region', { name: 'Notifications' });
+  await expect(notices).toContainText('STORAGE_QUOTA'); await expect(notices).toContainText('The latest change may not be saved. Saving will retry after the next change.');
+});
 test.describe('Library calendar date filters in America/New_York', () => {
   test.use({ timezoneId: 'America/New_York' });
   for (const fixture of [

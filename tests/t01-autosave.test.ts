@@ -237,3 +237,33 @@ it('retains a failed change, retries on next change and supports T03 save prepar
   const blocked = new AutosaveSession(f.port, 'p', s.document, { prepareSave: () => { throw new StoreError('INVALID_MEDIA_TIMING', 'Invalid timing.'); } });
   blocked.update({ ...blocked.document, fps: 24 }); await blocked.flush(); expect(blocked.error).toMatchObject({ code: 'INVALID_MEDIA_TIMING' }); expect(f.stored().fps).toBe(60);
 });
+// T01 fix review: the editor's real prepareSave (export/prep.ts) on one timed item whose trim.to is not finite.
+const badTrim = (id: string) => ({ id, type: 'video', trackId: 'v1', display: { from: 0, to: 1000 }, trim: { from: 0, to: NaN }, sourceDuration: 4000, playbackRate: 1 });
+// R1: shell.tsx prints session.error.message in the status line (and the alert), so a timing refusal's message carries no
+// issue text; the issue records stay on error.issues (error codes §12) and in the console.warn log.
+it('T01 review R1: a save refused for an unrepairable trim keeps the issue text out of the error message and keeps the issue record', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const f = fixture(), s = new AutosaveSession(f.port, 'p', emptyDocument(), { prepareSave });
+    s.update({ ...s.document, items: [badTrim('clip-7')] }); await s.flush();
+    expect(s.state).toBe('error'); expect(f.port.save).not.toHaveBeenCalled();
+    const issues = [{ itemId: 'clip-7', code: 'TRIM_TO_INVALID', message: 'clip-7 has invalid trim.to (NaN)' }];
+    expect(warn).toHaveBeenCalledWith(expect.any(String), issues);
+    expect(s.error!.message).not.toContain('trim.to'); expect(s.error!.message).not.toContain('clip-7');
+    expect((s.error as Error & { issues?: unknown }).issues).toEqual(issues);
+  } finally { warn.mockRestore(); }
+});
+// R2: repair, check and refuse come before any side effect. The hook stands in for T17's: in parity mode a recovery
+// checkpoint shares the 3-slot list with manual ones and evicts the oldest (findings part 3 §45.2, guard).
+it('T01 review R2: a ≥ 5-item drop refused for an unrepairable trim writes no recovery checkpoint and keeps the manual ones', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const f = fixture(6), manual = ['checkpoint_3', 'checkpoint_2', 'checkpoint_1'];
+    let list = [...manual];
+    const beforeLargeDeletion = vi.fn(async () => { list = ['recovery', ...list].slice(0, 3); });
+    const s = new AutosaveSession(f.port, 'p', f.stored(), { beforeLargeDeletion, prepareSave });
+    s.update({ ...s.document, items: [badTrim('i0')] }); await s.flush();
+    expect(s.state).toBe('error'); expect(f.port.save).not.toHaveBeenCalled(); expect(f.stored().items).toHaveLength(6);
+    expect(beforeLargeDeletion).not.toHaveBeenCalled(); expect(list).toEqual(manual);
+  } finally { warn.mockRestore(); }
+});
