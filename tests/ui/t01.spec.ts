@@ -182,6 +182,13 @@ test('T01 audit F3: a final save that fails with QuotaExceededError on in-app le
   await dirty(page, 60); await page.getByRole('button', { name: 'Back to home', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('STORAGE_QUOTA');
 });
+// T01 audit F1, stricter: the refused save carries the timing-check issue record (error codes §12 table after l.348).
+test('T01 audit F1: a refused editor save carries the TRIM_TO_INVALID issue record', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  expect(await saveTrim(page, NaN)).toEqual({ state: 'error', rev: 0, storedTo: null });
+  const issues = await page.evaluate(async () => { const editorPath = '/src/editor.tsx'; const { activeSession } = await import(editorPath); return (activeSession.error as { issues?: unknown }).issues ?? null; });
+  expect(issues).toEqual([{ itemId: 'i1', code: 'TRIM_TO_INVALID', message: 'i1 has invalid trim.to (NaN)' }]);
+});
 test.describe('Library calendar date filters in America/New_York', () => {
   test.use({ timezoneId: 'America/New_York' });
   for (const fixture of [
