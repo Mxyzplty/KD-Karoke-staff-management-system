@@ -152,6 +152,36 @@ test('Move menu stays clickable with a persistent upload notice and the notice c
   await expect(notices).toContainText('Media stored locally'); await menu.getByRole('button', { name: 'Cancel', exact: true }).click({ timeout: 3000 });
   await expect(menu).toHaveCount(0); await notices.getByRole('button').click(); await expect(notices.getByRole('button')).toHaveCount(0);
 });
+// T01 audit F1: media timing is repaired before each editor save and an unrepairable timeline is not saved (findings part 3
+// §45.2 line 293; error codes line 348). The repair is the export one: trim.to past sourceDuration is clamped to it
+// (apps/web/src/export/prep.ts:28). Both cases go through the session editor.tsx builds (activeSession), not a hand-made one.
+async function saveTrim(page: Page, to: number) {
+  return page.evaluate(async to => {
+    const editorPath = '/src/editor.tsx', storePath = '/src/store/database.ts';
+    const { activeSession } = await import(editorPath), { projectStore } = await import(storePath);
+    activeSession.update({ ...activeSession.document, tracks: [{ id: 'v1', kind: 'video', name: 'V1' }], layerOrder: [{ type: 'track', id: 'v1' }],
+      items: [{ id: 'i1', type: 'video', trackId: 'v1', display: { from: 0, to: 1000 }, trim: { from: 0, to }, sourceDuration: 4000, playbackRate: 1 }] });
+    await activeSession.flush();
+    const stored = (await projectStore.read(activeSession.projectId)).document;
+    return { state: activeSession.state as string, rev: stored.rev as number, storedTo: stored.items[0]?.trim.to ?? null };
+  }, to);
+}
+test('T01 audit F1: an editor save clamps trim.to past sourceDuration to sourceDuration before it is stored', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  expect(await saveTrim(page, 5000)).toEqual({ state: 'saved', rev: 1, storedTo: 4000 });
+});
+test('T01 audit F1: an editor save with a non-finite trim is refused with the error state and nothing is stored', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  expect(await saveTrim(page, NaN)).toEqual({ state: 'error', rev: 0, storedTo: null });
+});
+// T01 audit F3: a failed save shows a notice (findings part 3 §45.2 line 293); STORAGE_QUOTA is the code for a full disk
+// (error codes line 341). Leaving with "Back to home" (shell.tsx:119) inside the 3 s debounce must not drop that notice.
+test('T01 audit F3: a final save that fails with QuotaExceededError on in-app leave shows a STORAGE_QUOTA notice', async ({ page }) => {
+  await page.goto('/'); const id = await createProject(page); await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  await page.evaluate(() => { const put = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function (...args) { if (this.name === 'documents') throw new DOMException('full', 'QuotaExceededError'); return put.apply(this, args); }; });
+  await dirty(page, 60); await page.getByRole('button', { name: 'Back to home', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('STORAGE_QUOTA');
+});
 test.describe('Library calendar date filters in America/New_York', () => {
   test.use({ timezoneId: 'America/New_York' });
   for (const fixture of [
