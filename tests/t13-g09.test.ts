@@ -289,4 +289,11 @@ describe('G-09 runner: the stored layout results/calls/<id>.json with `result` (
     const r = await run(await callsFolder(list));
     expect(r.steps.filter(s => s.status === 'failed').map(s => s.id)).toEqual(['S03']); expect(r.steps[2].diffs.map(d => d.path)).toContain('success');
   });
+  it('29. the same id in both layouts (results/S01.json and results/calls/S01.json) is refused, naming both files (lane A 05:42: never a silent winner)', async () => {
+    const f = await folder(), s = steps()[0], calls = path.join(f.dir, 'results', 'calls');
+    await mkdir(calls); await writeFile(path.join(calls, 'S01.json'), JSON.stringify({ id: s.id, tool: s.tool, ts: '2026-10-23', input: s.input, is_error: false, result: s.result }));
+    const e = await run(f).then(() => null, (x: Error) => x);
+    expect(e, 'the run resolved: nothing was refused').toBeInstanceOf(Error);
+    expect(e!.message).toMatch(/calls[\\/]S01\.json/); expect(e!.message.split('S01.json').length - 1, e!.message).toBeGreaterThanOrEqual(2);
+  });
 });
