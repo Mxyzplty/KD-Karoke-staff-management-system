@@ -6,8 +6,8 @@
 // count, 20-byte entries, values over 8 bytes out of line, types 16 LONG8, 17 SLONG8, 18 IFD8).
 // IFD0 only (multi-page unspecified, T29 ruling 4). Pixel data stays at its offsets: the input is copied, a classic header goes
 // over its first 8 bytes and the new IFD0 and its out-of-line values are appended, each on an even offset; next IFD 0.
-// The sub-IFD pointers (SubIFDs, Exif, GPS, Interop) are dropped: their targets are in BigTIFF layout. Entries of a type
-// outside TIFF 6.0 1–12, IFD 13 and 16–18 are dropped too, since their size is unknown (TIFF 6.0: readers skip unknown types).
+// The sub-IFD pointers (SubIFDs, Exif, GPS, Interop) are dropped: their targets are in BigTIFF layout.
+// Unknown types are dropped (TIFF 6.0: "Readers should skip over fields containing an unexpected field type").
 // null when the file is not a BigTIFF or anything needs more than 32 bits (classic: 16 bits for the entry count).
 const SIZE: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4, 16: 8, 17: 8, 18: 8 };
 const NARROW: Record<number, number> = { 16: 4, 17: 9, 18: 13 }; // LONG8 → LONG, SLONG8 → SLONG, IFD8 → IFD

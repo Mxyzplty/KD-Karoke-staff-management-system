@@ -139,7 +139,8 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
   } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) {
     // BigTIFF (magic 43): size and EXIF come from its classic rewrite (audit F-07); null leaves tiffSize's refusal as it was.
     if (new DataView(head.buffer).getUint16(2, head[0] === 0x49) === 43) blob = new Blob([bigTiffToClassic(new Uint8Array(await blob.arrayBuffer())) ?? blob]);
-    size = await tiffSize(blob); decoder = 'wasm'; container = 'tiff';
+    // Orientation from tiffSize's IFD0 read, wherever IFD0 lies (readExif sees only the first 16 MiB; audit F-05/F-07).
+    const tiff = await tiffSize(blob); size = tiff; orientation = tiff?.orientation ?? null; decoder = 'wasm'; container = 'tiff';
   }
   else if (/<svg[\s>]/i.test(new TextDecoder().decode(head.subarray(0, 4096)))) { size = typeof Image === 'function' ? await svgIntrinsicSize(blob) : svgSize(await blob.text()); container = 'svg+xml'; }
   else if (!(size = imageSize(head))) { size = await browserImageSize(blob); oriented = true; }
@@ -152,18 +153,18 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
     image: { width: quarter ? size.height : size.width, height: quarter ? size.width : size.height, orientation },
     capturedAt: exif.capturedAt, latitude: exif.latitude, longitude: exif.longitude, decoder };
 }
-/** TIFF IFD0 ImageWidth (256) / ImageLength (257); the IFD can sit anywhere in the file. */
-async function tiffSize(blob: Blob): Promise<{ width: number; height: number } | null> {
+/** TIFF IFD0 ImageWidth (256) / ImageLength (257) / Orientation (274, 1 when absent); the IFD can sit anywhere in the file. */
+async function tiffSize(blob: Blob): Promise<{ width: number; height: number; orientation: number } | null> {
   const read = async (at: number, n: number) => new DataView(await blob.slice(at, at + n).arrayBuffer());
   const h = await read(0, 8), little = h.getUint8(0) === 0x49;
   if (h.getUint16(2, little) !== 42) return null;
   const ifd = h.getUint32(4, little), count = (await read(ifd, 2)).getUint16(0, little), entries = await read(ifd + 2, count * 12);
-  let width = 0, height = 0;
+  let width = 0, height = 0, orientation = 1;
   for (let i = 0; i < count; i++) {
     const tag = entries.getUint16(i * 12, little), type = entries.getUint16(i * 12 + 2, little), value = type === 3 ? entries.getUint16(i * 12 + 8, little) : entries.getUint32(i * 12 + 8, little);
-    if (tag === 256) width = value; if (tag === 257) height = value;
+    if (tag === 256) width = value; if (tag === 257) height = value; if (tag === 274) orientation = value || 1;
   }
-  return width && height ? { width, height } : null;
+  return width && height ? { width, height, orientation } : null;
 }
 export function svgSize(text: string): { width: number; height: number } {
   const tag = text.match(/<svg\b[^>]*>/i)?.[0] ?? '';
