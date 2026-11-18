@@ -14,6 +14,7 @@ import type { ProjectStore } from '../store/database';
 import type { Asset, ProjectDocument, RecordData } from '../store/model';
 import { fmt } from '../timeline/model';
 import { composite } from './compositor';
+import type { Source } from './compositor';
 import { EFFECT_FAILURES, effectsDeviceLosses, isTaint } from './effects';
 import { fpsOf, framePlan, frameTime, previewFrame, projectSize } from './model';
 import type { Pending } from './model';
@@ -34,6 +35,8 @@ async function base64(blob: Blob) {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 }
+/** A source, or a layout's cell sources in its place (T07). */
+const cellSources = (s: Source): Source[] => s !== null && typeof s === 'object' && 'cells' in s ? s.cells.flatMap(cellSources) : [s];
 
 /** The refusal object, or `{success: true, content}`: one text block (the frames' JSON), then one image block per frame. */
 export async function captureFrame(env: CaptureEnv, args: RecordData = {}): Promise<RecordData & { success: boolean }> {
@@ -66,10 +69,13 @@ export async function captureFrame(env: CaptureEnv, args: RecordData = {}): Prom
       return { success: false, code: 'CANVAS_TAINTED', category: 'system_error', recovery: 'our_bug', error: 'Frames could not be read back', message: EFFECT_FAILURES.CANVAS_TAINTED.message };
     }
     images.push({ type: 'image', mimeType: 'image/jpeg', base64: await base64(blob) });
-    // A motion graphic that could not be rendered (T08) is listed by its error, which names it.
-    const failures = sources.flatMap(s => s !== null && s !== 'failed' && 'error' in s ? [s.error] : []);
-    const notRendered = [...new Set([...[...plan.pending, ...failed].map(x => `${x.what} (${x.owner})`), ...failures])];
-    const errors = [...new Map(failed.map(f => [f.code, { code: f.code, category: f.category, recovery: f.recovery, message: f.message }])).values()];
+    // A motion graphic that could not be rendered (T08) is listed by its error, which names it; a video or image that could not
+    // be decoded (T15 F6), a layout cell's included, by its failure's text, and its code goes to errors.
+    const all = sources.flatMap(cellSources);
+    const failures = all.flatMap(s => s !== null && s !== 'failed' && 'error' in s ? [s.error] : []);
+    const decodes = all.flatMap(s => s !== null && typeof s === 'object' && 'failed' in s ? [s.failed] : []);
+    const notRendered = [...new Set([...[...plan.pending, ...failed].map(x => `${x.what} (${x.owner})`), ...failures, ...decodes.map(f => f.text)])];
+    const errors = [...new Map([...failed, ...decodes].map(f => [f.code, { code: f.code, category: f.category, recovery: f.recovery, message: f.message }])).values()];
     frames.push({ timestamp: t, frame, time: tMs / 1000, ...size, ...notRendered.length ? { notRendered } : {}, ...errors.length ? { errors } : {} });
   }
   return { success: true, content: [{ type: 'text', text: JSON.stringify({ success: true, quality, frames }) }, ...images] };

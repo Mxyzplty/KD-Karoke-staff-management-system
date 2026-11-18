@@ -3,7 +3,9 @@
 // the fit size is always the original's display size, so a proxy and its original give the same geometry. Paused, seek and
 // capture frames come from the decoder pool (frame-exact, T14's decode and tone map); images are decoded once per asset.
 import type { ProjectStore } from '../store/database';
+import { StoreError } from '../store/model';
 import type { Asset, RecordData } from '../store/model';
+import { mediaError } from '../media/codes';
 import { resolveSource, usesProxy } from '../media/resolver';
 import { clearGraphics, graphicPicture } from '../mg/frames';
 import { decodeFrame, transientDecodeError } from './decoder-pool';
@@ -18,6 +20,8 @@ export type ItemMedia = { ref: SourceRef; kind: 'proxy' | 'original'; fit: Size 
 const media = new Map<string, Promise<ItemMedia>>(), images = new Map<string, Promise<ImageBitmap | 'failed'>>(), urls = new Map<string, string>();
 /** Settled media and images, for the synchronous draw while playing. */
 const ready = new Map<string, ItemMedia>(), readyImages = new Map<string, ImageBitmap | 'failed'>();
+/** The error of each failed image, by asset id, kept with its 'failed' for capture to report (T15 F6). */
+const imageErrors = new Map<string, unknown>();
 
 /** The identity of the picture source: asset, proxy or original, and whether the frames are stacked-alpha merged. */
 export const mediaKey = (item: RecordData, asset: Asset | undefined) =>
@@ -81,31 +85,43 @@ export function imageBitmap(store: ProjectStore, item: RecordData): Promise<Imag
       const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
       canvas.getContext('2d')!.drawImage(img, 0, 0, W, H);
       return await createImageBitmap(canvas);
-    }).catch(() => 'failed' as const).then(b => { readyImages.set(id, b); return b; });
+    }).catch(e => { imageErrors.set(id, e); return 'failed' as const; }).then(b => { readyImages.set(id, b); return b; });
     images.set(id, p);
   }
   return p;
 }
 export const readyImage = (item: RecordData) => readyImages.get(String(item.metadata?.assetId));
 
-/** The exact picture of one draw (paused preview, seek, capture). A decode or fetch error is 'failed' (grey); a timeout or
- *  worker restart is asked once more first (provisional, the coordinator's rule of 1 Nov 2026, not Xapp parity). purpose:
- *  a motion graphic's retry rule (mg/frames.ts graphicPicture). assetOf: a layout's cell assets by stored id (T07). */
+/** A failed video or image for capture (T15 F6), named by mg/frames.ts's template with the error's code and message. An
+ *  error without a Cutframe code (the browser's image decode) is DECODE_ERROR (media/codes.ts). */
+function failure(d: Draw, e: unknown): Source {
+  const error = e instanceof StoreError ? e : mediaError('DECODE_ERROR', e instanceof Error ? e.message : String(e));
+  const kind = d.kind === 'image' ? 'Image' : 'Video', { code, category, recovery, message } = error;
+  return { failed: { text: `${kind} '${String(d.item.details?.name ?? kind)}' (${d.item.id}) could not be decoded: ${code}: ${message}`, code, category, recovery, message } };
+}
+/** The exact picture of one draw (paused preview, seek, capture). A decode or fetch error is 'failed' (grey), for capture
+ *  with its failure; a timeout or worker restart is asked once more first (provisional, the coordinator's rule of 1 Nov
+ *  2026, not Xapp parity), and the error reported is the last try's. purpose: a motion graphic's retry rule (mg/frames.ts
+ *  graphicPicture) and whether a failure is carried. assetOf: a layout's cell assets by stored id (T07). */
 export async function picture(store: ProjectStore, d: Draw, asset: Asset | undefined, purpose: 'preview' | 'capture' = 'preview', assetOf?: (id: string) => Asset | undefined): Promise<Source> {
   if (d.kind === 'motionGraphic') return graphicPicture(store, d, purpose);
   if (d.kind === 'shape' || d.kind === 'text' || d.kind === 'caption') return null; // T06 / T05 / T09: drawn by the compositor, no source
   if (d.kind === 'layout') return { cells: await Promise.all((d.layout?.cells ?? []).map(c => c.media ? picture(store, c.media.draw, assetOf?.(String(c.media.draw.item.metadata?.assetId)), purpose) : null)) };
   try {
-    if (d.kind === 'image') { const b = await imageBitmap(store, d.item); return b === 'failed' ? b : { image: b, width: b.width, height: b.height }; }
+    if (d.kind === 'image') {
+      const b = await imageBitmap(store, d.item);
+      if (b === 'failed') throw imageErrors.get(String(d.item.metadata?.assetId));
+      return { image: b, width: b.width, height: b.height };
+    }
     const m = await itemMedia(store, d.item, asset);
     const f = await decodeFrame(m.ref, d.sourceMs).catch(e => { if (transientDecodeError(e)) return decodeFrame(m.ref, d.sourceMs); throw e; });
     return { image: f.bitmap, width: m.fit?.width ?? f.width, height: m.fit?.height ?? f.height };
-  } catch { return 'failed'; }
+  } catch (e) { return purpose === 'capture' ? failure(d, e) : 'failed'; }
 }
 /** Forgets every source (project close). */
 export function clearSources() {
   for (const u of urls.values()) URL.revokeObjectURL(u);
   for (const b of readyImages.values()) if (b !== 'failed') b.close();
-  media.clear(); images.clear(); urls.clear(); ready.clear(); readyImages.clear();
+  media.clear(); images.clear(); urls.clear(); ready.clear(); readyImages.clear(); imageErrors.clear();
   clearGraphics();
 }

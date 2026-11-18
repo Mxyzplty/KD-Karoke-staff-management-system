@@ -15,10 +15,15 @@ import { combine, surfaces } from './transitions';
  *  image is scaled into the fitted rect whatever its pixel size, so a proxy and its original give the same geometry.
  *  null = not ready (the preview draws nothing for that item); 'failed' = a decode / fetch error (grey #374151);
  *  {itemId, error} = a motion graphic that could not be rendered (T08): nothing is drawn and the caller reports `error`.
+ *  {failed} = 'failed' with its failure, for capture (T15 F6): drawn grey, the caller reports it.
  *  {cells} = a layout's cell pictures, by LayoutDraw cell (T07; null for an empty cell). */
-export type Source = { image: CanvasImageSource; width: number; height: number } | 'failed' | { itemId: string; error: string } | { cells: Source[] } | null;
+export type Source = { image: CanvasImageSource; width: number; height: number } | 'failed' | { failed: SourceFailure } | { itemId: string; error: string } | { cells: Source[] } | null;
+/** A video or image that could not be decoded: `text` names it for capture's notRendered (mg/frames.ts's template), the rest is its errors entry. */
+export type SourceFailure = { text: string; code: string; category: string; recovery?: string; message: string };
 /** A source with a picture to draw. */
 export const isPicture = (s: Source): s is Extract<Source, { image: CanvasImageSource }> => s !== null && s !== 'failed' && 'image' in s;
+/** A source drawn grey: a decode or fetch error, bare or with its failure. */
+const isFailed = (s: Source) => s === 'failed' || (s !== null && typeof s === 'object' && 'failed' in s);
 /** Whether a draw has all it shows: its picture, a shape (no source), or a layout whose filled cells all have theirs. */
 export const complete = (s: Source, d: Draw): boolean => d.kind === 'shape' || d.kind === 'caption' || isPicture(s)
   || (!!d.layout && !!s && typeof s === 'object' && 'cells' in s && d.layout.cells.every((c, k) => !c.media || isPicture(s.cells[k] ?? null)));
@@ -58,7 +63,7 @@ function layoutContent(ctx: Ctx, l: LayoutDraw, src: Source) {
     if (r > 0) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
     ctx.clip(); ctx.globalAlpha = alpha * c.alpha;
     if (!c.media) { ctx.fillStyle = EMPTY_CELL; ctx.fillRect(x, y, w, h); }
-    else if (s === 'failed') { ctx.fillStyle = MISSING_MEDIA; ctx.fillRect(x, y, w, h); }
+    else if (isFailed(s)) { ctx.fillStyle = MISSING_MEDIA; ctx.fillRect(x, y, w, h); }
     else if (isPicture(s)) {
       const m = cellMediaRect(c.media.fit, s.width, s.height, c.rect, c.media.zoom, c.media.panX, c.media.panY);
       try { ctx.drawImage(s.image, m.x, m.y, m.w, m.h); } catch { /* A source closed under the draw shows nothing this frame. */ }
@@ -75,7 +80,7 @@ function content(ctx: Ctx, d: Draw, src: Source) {
   if (d.caption) { drawCaption(ctx, d.caption, W, H); return; }
   if (d.layout) { layoutContent(ctx, d.layout, src); return; }
   if (src === null) return;
-  if (src === 'failed') { ctx.fillStyle = MISSING_MEDIA; ctx.fillRect(0, 0, W, H); return; }
+  if (isFailed(src)) { ctx.fillStyle = MISSING_MEDIA; ctx.fillRect(0, 0, W, H); return; }
   if (!isPicture(src)) return;
   try {
     if (d.kind !== 'video' || d.stackedAlpha) { ctx.drawImage(src.image, 0, 0, W, H); return; }
