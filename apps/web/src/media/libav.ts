@@ -4,6 +4,7 @@
 import frontendUrl from '../../../../vendor/libav/libav-6.10.9.0-cutframe.mjs?url';
 import factoryUrl from '../../../../vendor/libav/libav-6.10.9.0-cutframe.wasm.mjs?url';
 import wasmUrl from '../../../../vendor/libav/libav-6.10.9.0-cutframe.wasm.wasm?url';
+import { bigTiffToClassic } from './bigtiff';
 import type { RawVideoFrame, RawAudio } from './decode';
 import { rotateRgba } from './decode';
 import { parseHeif } from './heif';
@@ -193,7 +194,8 @@ export async function decodeImageLibav(blob: Blob): Promise<{ width: number; hei
   const av = await loadLibav(), bytes = new Uint8Array(await blob.arrayBuffer()), heif = parseHeif(bytes);
   const [, c, pkt, frame] = await av.ff_init_decoder(heif ? 'hevc' : 'tiff');
   try {
-    const frames = await av.ff_decode_multi(c, pkt, frame, (heif ? heif.tiles : [bytes]).map(data => ({ data })), { fin: true });
+    // A BigTIFF goes to FFmpeg's (classic) TIFF decoder as its classic rewrite (audit F-07); anything else, or null, as read.
+    const frames = await av.ff_decode_multi(c, pkt, frame, (heif ? heif.tiles : [bigTiffToClassic(bytes) ?? bytes]).map(data => ({ data })), { fin: true });
     if (!frames.length) throw new Error('no picture decoded');
     if (!heif) return await packedOrPlanarToRgba(av, frames[0], null);
     const cp = await av.avcodec_parameters_alloc();

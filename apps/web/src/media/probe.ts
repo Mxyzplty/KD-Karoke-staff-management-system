@@ -2,6 +2,7 @@
 // Source probing (findings §2): Mediabunny Input over a Blob → the asset's media record. Image headers and EXIF are read
 // here too. Sources Mediabunny cannot open fall back to the WASM probe (libav.ts) in the browser.
 import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input } from 'mediabunny';
+import { bigTiffToClassic } from './bigtiff';
 import { mediaError } from './codes';
 import { mimeFor } from './files';
 import { isHeif, parseHeif } from './heif';
@@ -135,7 +136,11 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
     if (!heif) throw mediaError('UNSUPPORTED_INPUT', 'This HEIF image uses a layout Cutframe cannot read.');
     const quarter = heif.rotation % 180 !== 0;
     size = { width: quarter ? heif.height : heif.width, height: quarter ? heif.width : heif.height }; decoder = 'wasm'; container = 'heic'; orientation = 1;
-  } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) { size = await tiffSize(blob); decoder = 'wasm'; container = 'tiff'; }
+  } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) {
+    // BigTIFF (magic 43): size and EXIF come from its classic rewrite (audit F-07); null leaves tiffSize's refusal as it was.
+    if (new DataView(head.buffer).getUint16(2, head[0] === 0x49) === 43) blob = new Blob([bigTiffToClassic(new Uint8Array(await blob.arrayBuffer())) ?? blob]);
+    size = await tiffSize(blob); decoder = 'wasm'; container = 'tiff';
+  }
   else if (/<svg[\s>]/i.test(new TextDecoder().decode(head.subarray(0, 4096)))) { size = typeof Image === 'function' ? await svgIntrinsicSize(blob) : svgSize(await blob.text()); container = 'svg+xml'; }
   else if (!(size = imageSize(head))) { size = await browserImageSize(blob); oriented = true; }
   if (!size) throw mediaError('UNSUPPORTED_INPUT', 'This image could not be read.');
