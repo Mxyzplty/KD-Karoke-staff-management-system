@@ -15,7 +15,7 @@ import { probeMedia } from '../apps/web/src/media/probe';
 // Stored 4096 × 1400 RGB, 8 bits, uncompressed, one strip: 17,203,200 pixel bytes > 16 MiB (16,777,216).
 const W = 4096, H = 1400, PIXELS = W * H * 3, SHORT = 3, LONG = 4, LONG8 = 16;
 /** Header, pixels right after it, then IFD0 (Orientation 6) and its out-of-line values; returns the bytes and IFD0's offset. */
-function lateIfdTiff(big: boolean): { bytes: Uint8Array; ifdAt: number } {
+function lateIfdTiff(big: boolean): { bytes: Uint8Array<ArrayBuffer>; ifdAt: number } {
   const head = big ? 16 : 8, ifdAt = head + PIXELS, wide = big ? LONG8 : LONG, slot = big ? 8 : 4, size = big ? 20 : 12, count = big ? 8 : 2;
   // [tag, type, values]: ImageWidth, ImageLength, BitsPerSample, Compression 1, RGB, StripOffsets, Orientation 6, SamplesPerPixel,
   // RowsPerStrip, StripByteCounts. Every count is 1 except BitsPerSample (3 SHORTs: inline in BigTIFF, out of line in classic).
