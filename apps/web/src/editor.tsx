@@ -47,8 +47,7 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
         // T01 audit F3b (lane A ruling): the final flush of an in-app leave meets CONFLICT after teardown. The open editor's
         // conflict UI is its notice, so nothing shows there, nor when the leave started from a shown conflict.
         if (!alive && local?.state === 'conflict' && leftFrom !== 'conflict') {
-          const error = local.error!;
-          notify(`${'code' in error ? `${error.code}: ` : ''}${error.message} The latest change may not be saved.`);
+          notify('CONFLICT: Another tab changed this project. The latest change may not be saved.');
           leftFrom = 'conflict';
         }
         render(n => n + 1);
