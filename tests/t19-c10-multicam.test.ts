@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { build } from 'esbuild';
+import { build as bundle } from 'esbuild';
 import { describe, expect, it, vi } from 'vitest';
 import { Executor } from '../apps/web/src/agent/executor';
 import type { Call } from '../apps/web/src/agent/executor';
@@ -379,7 +379,7 @@ catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: Str
   const line = (r: Run, capMs: number) => console.log(`[T19 F1] n=${r.n} words: ${r.killed ? `> ${capMs} ms (killed)` : `${r.ms.toFixed(1)} ms`}; offset ${r.offset?.toFixed(6) ?? '-'} (expected ${SHIFT}), confidence ${r.confidence?.toFixed(3) ?? '-'}, matches ${r.matches ?? '-'}${r.error ? `, error ${r.error}` : ''}`);
   const check = (r: Run) => { if (r.killed) return; expect(r.error).toBeUndefined(); expect(Math.abs(r.offset! - SHIFT)).toBeLessThanOrEqual(FRAME); expect(r.confidence).toBeGreaterThanOrEqual(0.5); };
   it('3,000 words, 200-word vocabulary, source = target + 1.234 s → offset +1.234 ± 1/24 s on every call that finishes; a killed call prints "> cap" and passes', async () => {
-    const code = (await build({ stdin: { contents: WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false })).outputFiles[0].text;
+    const code = (await bundle({ stdin: { contents: WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false })).outputFiles[0].text;
     const done: Run[] = [];
     for (const n of [125, 250, 500, 1000, 2000]) {
       const r = await timed(code, n, 20_000); line(r, 20_000); check(r);
