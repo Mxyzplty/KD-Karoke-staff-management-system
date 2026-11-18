@@ -473,7 +473,7 @@ const GOLDEN: Record<'pair-125' | 'pair-250' | 'pair-500' | 'fixture-shifted' | 
   'tie-5-duplicate-anchors': { sha: 'e3524484473e6406415fbf1ce6c52ed5baf8867bc5e828c2c84bad9ae9229f15', offset: 0.5, confidence: 1, matches: 6 },
 };
 const REVERSED_GOLDEN = { sha: '1c5b6b7b307b1a90a61121aed9ea5158b1ba95e2850969543ce09ca2c2ffb6ed', code: 'SYNC_LOW_CONFIDENCE', message: 'Low sync confidence (0%). Transcripts may not overlap enough.', confidence: 0 };
-const FALLBACK_GOLDEN: Golden = UNCAPTURED; // review F3: captured on a404e27's sync.ts in the light window
+const FALLBACK_GOLDEN: Golden = { sha: '3711eac6f60f3fa25689e8acb81386bce42a641b562e7ca46363b11f670e6813', offset: 0, confidence: 1, matches: 4 }; // review F3: captured on a404e27's sync.ts
 const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const golden = (name: string, result: SyncResult, sha = sha256(result), extra = ''): Golden => {
   console.log(`[T19 F1 golden] ${name} ${sha} ${result.offset} ${result.confidence} ${result.matches.length}${extra && ` ${extra}`}`);
