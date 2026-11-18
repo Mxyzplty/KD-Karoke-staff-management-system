@@ -39,7 +39,9 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
       unsubscribe = local.subscribe(() => {
         if (local?.state === 'error' && Date.now() - lastErrorToast >= 30000) {
           const error = local.error!;
-          notify(`${'code' in error ? `${error.code}: ` : ''}${error.message} The latest change may not be saved. Saving will retry after the next change.`);
+          // A timing refusal (prepareSave) keeps its issues in the log only (findings part 3 l.293; error codes §12).
+          const detail = 'issues' in error ? '' : `${'code' in error ? `${error.code}: ` : ''}${error.message} `;
+          notify(`${detail}The latest change may not be saved. Saving will retry after the next change.`);
           lastErrorToast = Date.now();
         }
         render(n => n + 1);
