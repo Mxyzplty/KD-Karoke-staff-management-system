@@ -11,7 +11,7 @@ import type { ProjectStore } from '../apps/web/src/store/database';
 import type { Asset, RecordData } from '../apps/web/src/store/model';
 import type { Draw } from '../apps/web/src/render/model';
 import type { Source, SourceFailure } from '../apps/web/src/render/compositor';
-import { clearSources, imageBitmap, picture } from '../apps/web/src/render/sources';
+import { clearSources, imageBitmap, picture, readyImage } from '../apps/web/src/render/sources';
 
 vi.mock('../apps/web/src/media/resolver', () => ({ resolveSource: vi.fn(), usesProxy: () => false }));
 vi.mock('../apps/web/src/mg/frames', () => ({ clearGraphics: vi.fn(), graphicPicture: vi.fn() }));
@@ -63,5 +63,27 @@ describe('T15 F6 review finding 1: a failed image\'s capture error across clearS
     const later = failedOf(await picture(store, draw(), undefined, 'capture'));
     expect(later.message, 'still the fresh decode\'s error, not the stale one').toBe('fresh decode failed');
     expect(createBitmap, 'the later capture reuses the fresh cached decode').toHaveBeenCalledTimes(2);
+  });
+
+  // Row 3 (lane A, 19 Nov 2026; pre-existing, same class): a decode started before clearSources() and settling after the fresh one must not write
+  // readyImages (sources.ts:89 writes it for every decode), so readyImage() keeps the fresh decode's value.
+  const bitmap = (width: number) => ({ width, height: 24, close: vi.fn() }) as unknown as ImageBitmap;
+  it.each([
+    ['the stale decode succeeds after the fresh one failed: readyImage stays \'failed\', not the stale bitmap', 'reject', 'resolve'],
+    ['the stale decode fails after the fresh one succeeded: readyImage stays the fresh bitmap, not \'failed\'', 'resolve', 'reject'],
+  ] as const)('%s', async (_, freshEnd, staleEnd) => {
+    const stale = deferred<ImageBitmap>(), fresh = deferred<ImageBitmap>(), staleBitmap = bitmap(1), freshBitmap = bitmap(2);
+    createBitmap.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+    void imageBitmap(store, item());
+    await vi.waitFor(() => expect(createBitmap).toHaveBeenCalledTimes(1));
+    clearSources();
+    const freshDecode = imageBitmap(store, item());
+    await vi.waitFor(() => expect(createBitmap).toHaveBeenCalledTimes(2));
+    if (freshEnd === 'resolve') fresh.resolve(freshBitmap); else fresh.reject(new Error('fresh decode failed'));
+    const expected = await freshDecode;
+    expect(expected, 'the fresh decode settled').toBe(freshEnd === 'resolve' ? freshBitmap : 'failed');
+    if (staleEnd === 'resolve') stale.resolve(staleBitmap); else stale.reject(new Error('stale decode failed'));
+    await new Promise(r => setTimeout(r, 0)); // the stale decode settles
+    expect(readyImage(item()), 'readyImage is the fresh decode\'s value').toBe(expected);
   });
 });
