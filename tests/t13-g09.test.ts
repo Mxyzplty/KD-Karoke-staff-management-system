@@ -7,6 +7,7 @@
 // Layout: a 1 s test signal (0.15 sin 1 kHz + 0.15 noise, so the lag is unambiguous) on four audio tracks, one clip each at 0 / 1 / 2 / 3 s:
 //   clip 1: item volume 0.5 (gain 0.25) · clip 2: track volume 0.5 (0.5) · clip 3: both (0.125) · clip 4: muted track (0).
 // Provisional (marked): the stored record layout {tool, input, result_text}, the field names given to the runner, and the report's field names.
+// The layout results/calls/<id>.json with `result` (rows 27–29) is not provisional: it is G-09's documented layout (Xapp reference compares and facts (C).md:1186).
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -247,7 +248,8 @@ describe('G-09 expected figures that need Xapp\'s fixture layout', () => {
 
 // Landed audit T13, F3 (red-first): the runner's non-WAV path (parity/g09.ts:65, `maxBuffer: 1 << 31` is negative and Node refuses it) and the
 // stored layout `results/calls/<id>.json` with `result` (Xapp reference compares and facts (C).md:1185–1186). Synthetic only: the tone is made
-// here by ffmpeg and the records from the documented field names (l.1186, l.1954); no Xapp file is read. Lane A (05:37): both layouts are read.
+// here by ffmpeg and the records from the documented field names; no Xapp file is read. G-09's own record (l.1186) names only the folder and `result`;
+// the other fields (id, tool, ts, input, is_error) follow the G-03/G-04 store's record shape (l.1954). Lane A (05:37): both layouts are read.
 describe.skipIf(!haveFfmpeg())('G-09 runner: non-WAV media (audit F3; an ffmpeg-made AAC tone in MP4, as S2 is an MP4; not a Xapp file)', () => {
   /** A 0.1 s 1 kHz sine at 44.1 kHz, stereo AAC in MP4. */
   const mp4 = () => {
@@ -294,6 +296,6 @@ describe('G-09 runner: the stored layout results/calls/<id>.json with `result` (
     await mkdir(calls); await writeFile(path.join(calls, 'S01.json'), JSON.stringify({ id: s.id, tool: s.tool, ts: '2026-10-23', input: s.input, is_error: false, result: s.result }));
     const e = await run(f).then(() => null, (x: Error) => x);
     expect(e, 'the run resolved: nothing was refused').toBeInstanceOf(Error);
-    expect(e!.message).toMatch(/calls[\\/]S01\.json/); expect(e!.message.split('S01.json').length - 1, e!.message).toBeGreaterThanOrEqual(2);
+    expect(e!.message).toMatch(/results[\\/]S01\.json/); expect(e!.message).toMatch(/results[\\/]calls[\\/]S01\.json/);
   });
 });
