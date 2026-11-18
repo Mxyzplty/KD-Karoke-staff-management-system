@@ -8,6 +8,8 @@
 // 4 bytes out of line on a word boundary, types 1–12) and the BigTIFF design (LibTIFF, "BigTIFF Design",
 // https://libtiff.gitlab.io/libtiff/specification/bigtiff.html: magic 43, offset size 8, 8-byte entry count, 20-byte entries,
 // types 16 LONG8, 17 SLONG8, 18 IFD8). The classic twin C of each BigTIFF B is the expected result.
+// Cases (e)–(i) (lane A 04:15 / 04:41 / 05:08, review #3), same two sources: odd input length, SLONG8 → SLONG, unknown field
+// types dropped (TIFF 6.0: readers skip an unexpected field type), counts over 32 bits and over 0xffff entries refused.
 import { describe, expect, it } from 'vitest';
 import { bigTiffToClassic } from '../apps/web/src/media/bigtiff';
 
@@ -124,5 +126,65 @@ describe('T14 audit F-07: bigTiffToClassic (BigTIFF → classic TIFF before the 
     const big = file([...stripped(STRIPS, [12, 12], LONG8), { tag: 34665, type: IFD8, count: 1, values: [SUB] }], true, true, [...stripBlock, { at: SUB, bytes: sub }]);
     const r = expectClassicLike(bigTiffToClassic(big), classic, 'II');
     expect(r.entries.map(e => e.tag).filter(t => POINTERS.includes(t))).toEqual([]);
+  });
+  // (e)–(i) each pin one bigtiff.ts line (at 3d4469d); the comment in each case says why the named mutant fails it.
+  // Extra tags use TIFF 6.0's reusable private range (65000–65535).
+  const SLONG = 9, SLONG8 = 17, BYTE = 1;
+  /** Rewrites one IFD0 entry of a built file in place: its type, then `write` gets its value position (inline or out of line, as built). */
+  const patch = (b: Uint8Array, big: boolean, tag: number, type: number, write?: (v: DataView, value: number, entry: number) => void) => {
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength), le = b[0] === 0x49, at = big ? Number(v.getBigUint64(8, le)) : v.getUint32(4, le);
+    const n = big ? Number(v.getBigUint64(at, le)) : v.getUint16(at, le), head = big ? 8 : 2, size = big ? 20 : 12, field = big ? 12 : 8;
+    for (let i = 0; i < n; i++) {
+      const p = at + head + i * size;
+      if (v.getUint16(p, le) !== tag) continue;
+      const bytes = (big ? Number(v.getBigUint64(p + 4, le)) : v.getUint32(p + 4, le)) * SIZE[v.getUint16(p + 2, le)];
+      const value = bytes <= (big ? 8 : 4) ? p + field : big ? Number(v.getBigUint64(p + field, le)) : v.getUint32(p + field, le);
+      v.setUint16(p + 2, type, le); write?.(v, value, p); return;
+    }
+    throw Error(`tag ${tag} not in IFD0`);
+  };
+  it('(e) an odd-length BigTIFF still gets IFD0 on an even offset (bigtiff.ts l.40)', () => {
+    // Mutant `start = bytes.length`: IFD0 lands at 537, so expectClassicLike's IFD0-even assert fails. Every other fixture here is even.
+    const tail = [...stripBlock, { at: 536, bytes: Uint8Array.of(7) }];
+    const classic = file(stripped(STRIPS, [12, 12], LONG), true, false, tail), big = file(stripped(STRIPS, [12, 12], LONG8), true, true, tail);
+    expect(big.length % 2, 'BigTIFF length is odd').toBe(1);
+    expectClassicLike(bigTiffToClassic(big), classic, 'II');
+  });
+  it('(f) SLONG8 narrows to SLONG with the same signed values; a value outside 32-bit signed is refused (bigtiff.ts l.34)', () => {
+    // Mutants: reading SLONG8 unsigned (u32) makes −5 need more than 32 bits, so the first result is null and
+    // expectClassicLike fails; dropping the range check wraps −2^31 − 1 and 2^31 through setInt32 and returns a file, so the nulls fail.
+    const signed = (values: bigint[]) => {
+      const b = file([...stripped(STRIPS, [12, 12], LONG8), { tag: 65000, type: LONG8, count: 2, values: [0, 0] }], true, true, stripBlock);
+      patch(b, true, 65000, SLONG8, (v, value) => values.forEach((x, i) => v.setBigInt64(value + i * 8, x, true)));
+      return b;
+    };
+    // Classic twin: SLONG −5 and −2^31 have the bit patterns of LONG 2^32 − 5 and 2^31 (two's complement).
+    const classic = file([...stripped(STRIPS, [12, 12], LONG), { tag: 65000, type: LONG, count: 2, values: [2 ** 32 - 5, 2 ** 31] }], true, false, stripBlock);
+    patch(classic, false, 65000, SLONG);
+    expectClassicLike(bigTiffToClassic(signed([-5n, -(2n ** 31n)])), classic, 'II');
+    expect(bigTiffToClassic(signed([-5n, -(2n ** 31n) - 1n])), 'SLONG8 −2^31 − 1').toBeNull();
+    expect(bigTiffToClassic(signed([-5n, 2n ** 31n])), 'SLONG8 2^31').toBeNull();
+  });
+  it('(g) an entry of an unknown type (99) is dropped; every other entry equals the classic original (bigtiff.ts l.28)', () => {
+    // Mutant without `!SIZE[type]`: size is NaN, so the value offset is read from the zero field (0) and l.30 passes; the entry is
+    // kept as type 99 with an empty value, and readClassic throws on it.
+    const big = file([...stripped(STRIPS, [12, 12], LONG8), { tag: 65001, type: LONG, count: 1, values: [0] }], true, true, stripBlock);
+    patch(big, true, 65001, 99);
+    expectClassicLike(bigTiffToClassic(big), file(stripped(STRIPS, [12, 12], LONG), true, false, stripBlock), 'II');
+  });
+  it('(h) an entry count of 2^32 is refused (bigtiff.ts l.27)', () => {
+    // Mutant without l.27: count −1 gives size −2 (SHORT), l.29 takes the inline field and l.30 passes, so a file comes back with
+    // count 0xffffffff. No other line returns null for this file: l.21, l.23, l.30 and l.43 all pass, so only l.27 can.
+    const big = file([...stripped(STRIPS, [12, 12], LONG8), { tag: 65002, type: SHORT, count: 1, values: [0] }], true, true, stripBlock);
+    patch(big, true, 65002, SHORT, (v, _value, entry) => v.setBigUint64(entry + 4, 2n ** 32n, true));
+    expect(bigTiffToClassic(big)).toBeNull();
+  });
+  it('(i) an IFD0 of 65536 entries, all inside the file, is refused (bigtiff.ts l.23)', () => {
+    // 65536 BYTE entries (tag 65003, value inline): 16 + 8 + 65536 × 20 + 8 = 1,310,752 bytes, so ifd + 16 + n × 20 equals the
+    // length and l.23's size test passes. Mutant without `n > 0xffff`: every entry is kept, the classic count wraps to 0 and a file comes back.
+    const n = 65536, b = new Uint8Array(16 + 8 + n * 20 + 8), v = new DataView(b.buffer);
+    b[0] = b[1] = 0x49; v.setUint16(2, 43, true); v.setUint16(4, 8, true); v.setBigUint64(8, 16n, true); v.setBigUint64(16, BigInt(n), true);
+    for (let i = 0; i < n; i++) { const p = 24 + i * 20; v.setUint16(p, 65003, true); v.setUint16(p + 2, BYTE, true); v.setBigUint64(p + 4, 1n, true); }
+    expect(bigTiffToClassic(b)).toBeNull();
   });
 });
