@@ -25,6 +25,7 @@ import { outputCode } from '../../parity/oracle/transfer';
 import { ffmpegAvailable, ffmpegImageRgb, media } from '../media-fixtures';
 import { skipTour } from './t02-support';
 import { bigTiff, reference, rgba64Tiff, taggedJpeg, taggedTiff } from './t14-orientation-support';
+import { yaTiff } from './t14-orientation-support';
 import { decodeRgba } from './t16a-support';
 import { openSvgProject } from './t25-svg-support';
 import {
@@ -60,6 +61,9 @@ const SUBJECTS: { key: string; make: () => Subject }[] = [
   // AC3 asks (ticket l.626). The RGBA64 oracle is ffmpeg's decode of the file; the BigTIFF oracle is the raw pixels written into it.
   { key: 'pattern-rgba64.tiff', make: () => { const file = rgba64Tiff(); return { key: 'pattern-rgba64.tiff', name: 'pattern-rgba64.tiff', mime: 'image/tiff', bytes: readFileSync(file), base: untagged(file), orientation: 1, wasm: true }; } },
   { key: 'pattern-bigtiff.tiff', make: () => { const base = untagged(media('pattern.tiff')); return { key: 'pattern-bigtiff.tiff', name: 'pattern-bigtiff.tiff', mime: 'image/tiff', bytes: bigTiff(base), base, orientation: 1, wasm: true }; } },
+  // T14 audit F-07 (audit l.137): grey + alpha TIFFs, 8- and 16-bit. Oracle: ffmpeg's decode of the file (grey replicated to RGB).
+  { key: 'pattern-ya8.tiff', make: () => { const file = yaTiff('ya8'); return { key: 'pattern-ya8.tiff', name: 'pattern-ya8.tiff', mime: 'image/tiff', bytes: readFileSync(file), base: untagged(file), orientation: 1, wasm: true }; } },
+  { key: 'pattern-ya16.tiff', make: () => { const file = yaTiff('ya16le'); return { key: 'pattern-ya16.tiff', name: 'pattern-ya16.tiff', mime: 'image/tiff', bytes: readFileSync(file), base: untagged(file), orientation: 1, wasm: true }; } },
 ];
 
 const unique = (name: string) => `${randomUUID()}-${name}`;

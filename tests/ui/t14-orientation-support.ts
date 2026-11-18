@@ -46,6 +46,11 @@ export function rgba64Tiff() {
   const file = path.join(dir, 'pattern-rgba64.tiff');
   run(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=1:duration=1', '-frames:v', '1', '-pix_fmt', 'rgba64le', file]); return file;
 }
+/** T14 audit F-07: the same source frame as a grey + alpha TIFF, 8-bit (ya8) or 16-bit (ya16le); the alpha is opaque. */
+export function yaTiff(pixFmt: 'ya8' | 'ya16le') {
+  const file = path.join(dir, pixFmt === 'ya8' ? 'pattern-ya8.tiff' : 'pattern-ya16.tiff');
+  run(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=1:duration=1', '-frames:v', '1', '-pix_fmt', pixFmt, file]); return file;
+}
 /** T14 audit F-07: an uncoded RGB 8-bit BigTIFF (magic 43, 8-byte offsets, one strip) written from raw RGB24 pixels; ffmpeg
  *  writes no BigTIFF. Little-endian: header 16 bytes, pixels, then IFD0 (8-byte count, 20-byte entries, 8-byte next offset). */
 export function bigTiff(img: Ref) {
