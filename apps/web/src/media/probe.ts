@@ -137,8 +137,8 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
     const quarter = heif.rotation % 180 !== 0;
     size = { width: quarter ? heif.height : heif.width, height: quarter ? heif.width : heif.height }; decoder = 'wasm'; container = 'heic'; orientation = 1;
   } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) {
-    // BigTIFF (magic 43): size and EXIF come from its classic rewrite (audit F-07); null leaves tiffSize's refusal as it was.
-    if (new DataView(head.buffer).getUint16(2, head[0] === 0x49) === 43) blob = new Blob([bigTiffToClassic(new Uint8Array(await blob.arrayBuffer())) ?? blob]);
+    // BigTIFF (magic 43) under 4 GiB: tiffSize and readExif read its classic rewrite, IFD0 only (audit F-07); else tiffSize refuses.
+    if (new DataView(head.buffer).getUint16(2, head[0] === 0x49) === 43 && blob.size <= 0xffffffff) blob = new Blob([bigTiffToClassic(new Uint8Array(await blob.arrayBuffer())) ?? blob]);
     // Orientation from tiffSize's IFD0 read, wherever IFD0 lies (readExif sees only the first 16 MiB; audit F-05/F-07).
     const tiff = await tiffSize(blob); size = tiff; orientation = tiff?.orientation ?? null; decoder = 'wasm'; container = 'tiff';
   }
