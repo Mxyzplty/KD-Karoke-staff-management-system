@@ -26,7 +26,7 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
   // T17 restore: the job runs after this editor is torn down and before the project is opened again (once, under StrictMode too).
   const restart = useRef<{ job: () => Promise<void>; done?: Promise<void> } | undefined>(undefined);
   useEffect(() => {
-    let alive = true, unbind: (() => void) | undefined, unsubscribe: (() => void) | undefined, uninstall: (() => void) | undefined, local: AutosaveSession | undefined, detach: ((final?: Promise<unknown>) => void) | undefined, untitle: (() => void) | undefined, unmask: (() => void) | undefined;
+    let alive = true, unbind: (() => void) | undefined, unsubscribe: (() => void) | undefined, uninstall: (() => void) | undefined, local: AutosaveSession | undefined, detach: ((final?: Promise<unknown>) => void) | undefined, untitle: (() => void) | undefined, unmask: (() => void) | undefined, leftFrom: string | undefined;
     setLoad('loading'); resetView();
     const pending = restart.current, open = () => { if (restart.current === pending) restart.current = undefined; return Promise.all([projectStore.openProject(id), readMode(projectStore)]); };
     void (pending ? (pending.done ??= pending.job()).then(open) : open()).then(([result, mode]) => {
@@ -44,6 +44,13 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
           notify('issues' in error ? error.message : `${'code' in error ? `${error.code}: ` : ''}${error.message} The latest change may not be saved. Saving will retry after the next change.`);
           lastErrorToast = Date.now();
         }
+        // T01 audit F3b (lane A ruling): the final flush of an in-app leave meets CONFLICT after teardown. The open editor's
+        // conflict UI is its notice, so nothing shows there, nor when the leave started from a shown conflict.
+        if (!alive && local?.state === 'conflict' && leftFrom !== 'conflict') {
+          const error = local.error!;
+          notify(`${'code' in error ? `${error.code}: ` : ''}${error.message} The latest change may not be saved.`);
+          leftFrom = 'conflict';
+        }
         render(n => n + 1);
       }); unbind = local.bindLifecycle();
       unmask = installMasks(projectStore.media, id);
@@ -59,7 +66,7 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
     }).catch(e => { if (alive) { setLoad('error'); reportError(e); } });
-    return () => { alive = false; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.();
+    return () => { alive = false; leftFrom = local?.state; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.();
       // An in-app leave keeps the error notice until the last flush settles (T01 audit F3).
       if (final) void final.finally(() => unsubscribe?.()); else unsubscribe?.();
       if (activeSession === local) activeSession = undefined; };
