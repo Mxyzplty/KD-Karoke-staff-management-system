@@ -4,6 +4,7 @@
 // $CUTFRAME_FIXTURES has them. Synthetic words otherwise; no fitting. Audit F1 (landed-audit-t19 l.37-46): the real syncOffset
 // on a seeded 3,000-word pair, each call in a worker killed at a hard cap; measurement only (time printed, offset asserted).
 // F1 fix, red-first (lane A 03:56): the 2 s bar, identity goldens of whole results, and the 30 s syncAndSwap deadline.
+// F1 review fixes, red-first (lane A 04:51): the fallback golden (F3), speech-like text measured (F2), a queued sync at the deadline (F1 (c)).
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -15,12 +16,12 @@ import type { Call } from '../apps/web/src/agent/executor';
 import { UNAVAILABLE } from '../apps/web/src/analysis/availability';
 import { SWAP, syncAndSwap } from '../apps/web/src/analysis/multicam';
 import type { SwapContext } from '../apps/web/src/analysis/multicam';
-import type { AnalysisRequest } from '../apps/web/src/analysis/protocol';
+import type { AnalysisReply, AnalysisRequest } from '../apps/web/src/analysis/protocol';
 import { AnalysisService } from '../apps/web/src/analysis/service';
 import { syncOffset } from '../apps/web/src/analysis/sync';
 import type { SyncResult } from '../apps/web/src/analysis/sync';
 import { AnalysisError } from '../apps/web/src/analysis/types';
-import type { Transcript } from '../apps/web/src/analysis/types';
+import type { Pcm, Transcript } from '../apps/web/src/analysis/types';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import type { Asset } from '../apps/web/src/store/model';
 import { assets as fixtureAssets, build, fixture, links, mkItem, mkTrack } from './t03-fixtures';
@@ -395,6 +396,59 @@ catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: Str
   }, 240_000);
 });
 
+// ---- Audit F1 review F2 (lane A 04:51): the same measurement on speech-like text. seededPair keeps the distinct anchor offsets
+// A tiny (uniform vocabulary, exact shift); speech has Zipfian trigrams and per-word timing jitter, so A grows with N. Zipf
+// s = 1 over 3,000 types, one word per 0.16–0.48 s on the 0.02 s grid (types.ts:29); the source is the target 1.234 s later
+// on its own grid, ±0–2 steps of jitter per word, 3% of words dropped and 2% substituted. Every call in a worker killed at a
+// hard cap. Printed: time, A, K (anchor pairs, before the dedupe), offset, confidence. Lane A's bar: 3,000 words within 2 s;
+// 9,000 is information. No time asserted.
+describe('T19 audit F1 engine syncOffset on speech-like text (measurement; time printed, not asserted)', () => {
+  const SHIFT = 1.234, FRAME = 1 / 24, GRID = 0.02, TYPES = 3000;
+  type Run = { n: number; ms: number; killed: boolean; A?: number; K?: number; offset?: number; confidence?: number; matches?: number; error?: string };
+  /** Seeded (mulberry32, its own seed) speech-like pair; the source keeps its own word list (drops, substitutions). */
+  const speech = (n: number) => {
+    let s = 0x5bee7f2;
+    const rand = () => { s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const cdf: number[] = []; let sum = 0;
+    for (let r = 1; r <= TYPES; r++) cdf.push(sum += 1 / r);
+    const zipf = () => { const u = rand() * sum; let lo = 0, hi = TYPES - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] >= u) hi = mid; else lo = mid + 1; } return `v${lo + 1}`; };
+    let steps = 0;
+    const target = Array.from({ length: n }, () => { const start = steps * GRID; steps += 8 + Math.floor(rand() * 17); return { word: zipf(), start, end: start + 0.1 }; });
+    const source = target.flatMap(w => {
+      if (rand() < 0.03) return [];
+      const start = Math.round((w.start + SHIFT) / GRID + Math.floor(rand() * 5) - 2) * GRID;
+      return [{ word: rand() < 0.02 ? zipf() : w.word, start, end: start + 0.1 }];
+    });
+    const doc = (ws: typeof target): Transcript => ({ language: 'en', languages: ['en'], total_duration: ws.at(-1)!.end, segments: [{ id: 0, start: ws[0].start, end: ws.at(-1)!.end, text: ws.map(w => w.word).join(' '), speaker: 0, words: ws }] });
+    return { source: doc(source), target: doc(target) };
+  };
+  // A and K are counted before the timed call (the a404e27 anchor rule: three equal normal words, offset = their median).
+  const WORKER = `import { parentPort, workerData } from 'node:worker_threads'; import { normalWord, syncOffset } from './sync'; import { median } from './audio';
+const words = (t: any) => t.segments.flatMap((s: any) => s.words).filter((w: any) => normalWord(w.word));
+const a = words(workerData.source), b = words(workerData.target), key = (ws: any[], k: number) => ws.slice(k, k + 3).map(w => normalWord(w.word)).join(' ');
+const at = new Map<string, number[]>(); for (let j = 0; j + 2 < b.length; j++) { const k = key(b, j), list = at.get(k); if (list) list.push(j); else at.set(k, [j]); }
+let K = 0; const offsets = new Set<number>();
+for (let i = 0; i + 2 < a.length; i++) for (const j of at.get(key(a, i)) ?? []) { K++; offsets.add(median([0, 1, 2].map(k => a[i + k].start - b[j + k].start))); }
+parentPort.postMessage({ A: offsets.size, K });
+const t0 = performance.now();
+try { const r = syncOffset(workerData.source, workerData.target); parentPort.postMessage({ ms: performance.now() - t0, offset: r.offset, confidence: r.confidence, matches: r.matches.length }); }
+catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: String(e?.code ?? e) }); }`;
+  /** ms is measured inside the worker around syncOffset only; the cap runs from the spawn. */
+  const timed = (code: string, n: number, capMs: number) => new Promise<Run>((resolve, reject) => {
+    const worker = new Worker(code, { eval: true, workerData: speech(n) });
+    let counts: Pick<Run, 'A' | 'K'> = {};
+    const kill = setTimeout(() => { void worker.terminate(); resolve({ n, ms: capMs, killed: true, ...counts }); }, capMs);
+    worker.on('message', m => { if (!('ms' in m)) { counts = m; return; } clearTimeout(kill); void worker.terminate(); resolve({ n, killed: false, ...counts, ...m }); });
+    worker.once('error', e => { clearTimeout(kill); reject(e); });
+  });
+  const line = (r: Run, capMs: number) => console.log(`[T19 F1 speech] n=${r.n} words: ${r.killed ? `> ${capMs} ms (killed)` : `${r.ms.toFixed(1)} ms`}${r.n === 3000 ? ` (lane A bar 2000 ms: ${!r.killed && r.ms <= 2000 ? 'met' : 'NOT met'})` : ''}; A ${r.A ?? '-'}, K ${r.K ?? '-'}; offset ${r.offset?.toFixed(6) ?? '-'} (expected ${SHIFT}), confidence ${r.confidence?.toFixed(3) ?? '-'}, matches ${r.matches ?? '-'}${r.error ? `, error ${r.error}` : ''}`);
+  const check = (r: Run) => { if (r.killed) return; expect(r.error).toBeUndefined(); expect(Math.abs(r.offset! - SHIFT)).toBeLessThanOrEqual(FRAME); expect(r.confidence).toBeGreaterThanOrEqual(0.5); };
+  it('3,000 and 9,000 speech-like words (Zipf s = 1, 3,000 types, grid jitter, drops, substitutions) → offset +1.234 ± 1/24 s on every call that finishes; a killed call prints "> cap" and passes', async () => {
+    const code = (await bundle({ stdin: { contents: WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false })).outputFiles[0].text;
+    for (const [n, capMs] of [[3000, 20_000], [9000, 60_000]] as const) { const r = await timed(code, n, capMs); line(r, capMs); check(r); }
+  }, 120_000);
+});
+
 // ---- Audit F1 fix, red-first (landed-audit-t19 l.37-46, l.126; lane A ruling 19 Nov 03:56). BAR: 3,000 words → 1.234 ± 1/24 s
 // within 2 s, timed inside the worker (red on a404e27: killed at 10 s). IDENTITY: the bound changes no result: sha256 of the
 // whole result (plus offset, confidence, matches in clear) against goldens captured on a404e27 from the `[T19 F1 golden]`
@@ -417,6 +471,7 @@ const GOLDEN: Record<'pair-125' | 'pair-250' | 'pair-500' | 'fixture-shifted' | 
   'tie-5-duplicate-anchors': { sha: 'e3524484473e6406415fbf1ce6c52ed5baf8867bc5e828c2c84bad9ae9229f15', offset: 0.5, confidence: 1, matches: 6 },
 };
 const REVERSED_GOLDEN = { sha: '1c5b6b7b307b1a90a61121aed9ea5158b1ba95e2850969543ce09ca2c2ffb6ed', code: 'SYNC_LOW_CONFIDENCE', message: 'Low sync confidence (0%). Transcripts may not overlap enough.', confidence: 0 };
+const FALLBACK_GOLDEN: Golden = UNCAPTURED; // review F3: captured on a404e27's sync.ts in the light window
 const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const golden = (name: string, result: SyncResult, sha = sha256(result), extra = ''): Golden => {
   console.log(`[T19 F1 golden] ${name} ${sha} ${result.offset} ${result.confidence} ${result.matches.length}${extra && ` ${extra}`}`);
@@ -514,6 +569,17 @@ describe('T19 audit F1 fix: identity (whole results unchanged from a404e27)', ()
     expect(result.offset).toBe(0.5); expect(result.confidence).toBe(1); expect(result.matches.map(m => [m.sourceIndex, m.targetIndex])).toEqual([0, 1, 2, 3, 4, 5].map(i => [i, i]));
     expect(golden('tie-5-duplicate-anchors', result)).toEqual(GOLDEN['tie-5-duplicate-anchors']);
   });
+  // -- Review F3 (lane A 04:51): target times out of order, so sync.ts:46's window guard is false and :45's whole same-word
+  // list from nextTarget is scanned. Only candidate offset 0 (p q r; q r x gives median 0 too). x's target positions 3–6 at
+  // 0.5, 3, 0.5, 5 → d 2.5, 0, 2.5, 2 → j 4. A binary search over those times would stop at j 6 and match no x.
+  it('6. fallback: the target has x at 0.5, 3, 0.5, 5 after r at 2 (out of order) → the whole same-word list is scanned: source x at 3 takes j 4', () => {
+    const B: [string, number][] = [['p', 0], ['q', 1], ['r', 2], ['x', 0.5], ['x', 3], ['x', 0.5], ['x', 5]];
+    expect(B.some((w, k) => k > 0 && w[1] < B[k - 1][1])).toBe(true);
+    const result = syncOffset(tx([['p', 0], ['q', 1], ['r', 2], ['x', 3]]), tx(B));
+    expect(result.offset).toBe(0); expect(result.confidence).toBe(1); expect(result.matches.map(m => m.targetIndex)).toEqual([0, 1, 2, 4]);
+    expect(result.matches[3]).toEqual({ sourceIndex: 3, targetIndex: 4, sourceTime: 3, targetTime: 3 });
+    expect(golden('fallback-unsorted', result)).toEqual(FALLBACK_GOLDEN);
+  });
 });
 
 describe('T19 audit F1 fix: syncAndSwap sync deadline 30 s (Cutframe addition; lane A 03:56)', () => {
@@ -556,5 +622,59 @@ describe('T19 audit F1 fix: syncAndSwap sync deadline 30 s (Cutframe addition; l
     void svc.syncOffset(doc, doc).catch(() => {});
     expect(workers).toHaveLength(2);
     await vi.waitFor(() => expect(workers[1].requests.map(q => q.task)).toEqual(['sync']));
+  });
+});
+
+// ---- Audit F1 review F1, lane A ruling (c) (04:51): the deadline may end the worker only for a sync that has started. A sync
+// still queued behind another task (analysis.worker.ts:11 runs one task at a time, in arrival order) gets TOOL_TIMEOUT and is
+// never applied; the task ahead of it keeps its worker. The real AnalysisService and AnalysisWorker over a stubbed global
+// Worker that speaks today's wire protocol and replies in arrival order. Observed: terminate calls, replies, placements.
+// A message the fix may add towards the worker (a skip flag, say) is recorded and not acted on, so the queued sync still
+// "runs" when it reaches the head and the fix must ignore its reply; skipping it is the fix's choice, not pinned here.
+describe('T19 audit F1 review: a sync queued behind another task at the 30 s deadline (lane A ruling (c))', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  type Posted = { id: number; request: AnalysisRequest };
+  const TRANSCRIPT: Transcript = { language: 'en', languages: ['en'], total_duration: 1, segments: [] };
+  const SYNCED: SyncResult = { offset: 1.234, confidence: 1, matches: [0, 1, 2].map(k => ({ sourceIndex: k, targetIndex: k, sourceTime: k + 1.234, targetTime: k })) };
+  /** analysis.worker.ts's queue: one task at a time in arrival order; 'transcribe' holds the head until `finishTranscribe`. */
+  class QueueWorker {
+    onmessage?: (event: MessageEvent<AnalysisReply>) => void;
+    posted: Posted[] = []; other: unknown[] = []; terminate = vi.fn();
+    private queue: Posted[] = []; private transcribed = false;
+    postMessage(message: unknown) {
+      const m = message as Partial<Posted>;
+      if (typeof m?.id !== 'number' || !m.request) { this.other.push(message); return; }
+      this.posted.push(m as Posted); this.queue.push(m as Posted); this.next();
+    }
+    finishTranscribe() { this.transcribed = true; this.next(); }
+    private next() {
+      const head = this.queue[0];
+      if (!head || (head.request.task === 'transcribe' && !this.transcribed)) return;
+      this.queue.shift();
+      const value = head.request.task === 'transcribe' ? TRANSCRIPT : head.request.task === 'sync' ? SYNCED : true;
+      queueMicrotask(() => { this.onmessage?.({ data: { id: head.id, ok: true, value, elapsedMs: 0, backends: {} } } as MessageEvent<AnalysisReply>); this.next(); });
+    }
+  }
+  it('a sync queued behind an unfinished transcribe: TOOL_TIMEOUT at 30,000 ms; the worker is not terminated, the transcribe completes with its result, the sync is never applied, nothing placed', async () => {
+    vi.useFakeTimers();
+    const natives: QueueWorker[] = [];
+    vi.stubGlobal('location', { href: 'http://localhost/' }); // AnalysisWorker.init resolves the wasm URLs against it
+    vi.stubGlobal('Worker', class { constructor() { const w = new QueueWorker(); natives.push(w); return w; } });
+    const svc = new AnalysisService('/models/'), r = rig(), ctx = { ...r.ctx, service: svc } as SwapContext;
+    const pcm = { sampleRate: 16000, channels: 1, data: [new Float32Array(16)] } as unknown as Pcm;
+    const transcribed = svc.request<Transcript>({ task: 'transcribe', pcm }).then(value => ({ value }), (error: unknown) => ({ error }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(natives.map(w => w.posted.map(m => m.request.task))).toEqual([['init', 'transcribe']]);
+    let out: Rec | undefined; void syncAndSwap(ctx, INPUT).then(v => { out = v as Rec; });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(natives[0].posted.map(m => m.request.task)).toEqual(['init', 'transcribe', 'sync']); expect(out).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
+    expect(natives[0].terminate).not.toHaveBeenCalled(); expect(natives).toHaveLength(1);
+    natives[0].finishTranscribe();
+    expect(await transcribed).toEqual({ value: TRANSCRIPT });
+    await vi.advanceTimersByTimeAsync(0); // the queued sync reaches the head: skipped or run, its result is not used
+    expect(r.place).not.toHaveBeenCalled(); expect(natives[0].terminate).not.toHaveBeenCalled(); expect(natives).toHaveLength(1);
+    expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
   });
 });
