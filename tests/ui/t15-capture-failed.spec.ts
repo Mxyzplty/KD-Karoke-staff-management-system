@@ -14,13 +14,16 @@
 // Oracle: Cutframe's own contract, not Xapp (Xapp's captureFrame failure shape is not stored; agent tool results (C).md, "captureFrame"). Lane A
 // ruling of 19 Nov 2026: notRendered follows mg/frames.ts:92, "Video '<name>' (<id>) could not be decoded: <code>: <message>", with the real code
 // and message (picture() carries the error for purpose 'capture', as graphicPicture does); errors gets one entry built like capture.ts:72.
-// No image row: no fault hook or real asset reaches imageBitmap's failure (sources.ts:84, :99) without product code.
+// Image row (lane A ruling, 19 Nov 2026): a seeded ready image asset whose bytes createImageBitmap cannot decode (seeded as t07-support videoAsset
+// does), so the real imageBitmap failure runs (sources.ts:66 throws, :84 catches, :99 returns 'failed'). The thrown error is the browser's
+// DOMException, not a Cutframe code, so the row pins the template, name and id, and requires a Cutframe-style code that matches the errors entry; the
+// code and message the fix gives await lane A's ruling.
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { ffmpegAvailable } from '../media-fixtures';
 import { createProject, skipTour } from './t02-support';
 import { seedLayout } from './t07-support';
-import { makeClip, openWithVideos, shown, uploadAsset, videoDoc } from './t15-support';
+import { makeClip, openWithVideos, runCanvas, shown, uploadAsset, videoDoc } from './t15-support';
 
 test.skip(!ffmpegAvailable(), 'ffmpeg makes the clip that is captured');
 test.setTimeout(120_000);
@@ -95,4 +98,33 @@ test('F6 layout cell: a clip in a layout cell whose decode fails on both tries i
   const f = faultedFrame(await capture(page, T, 2));
   expect(f.notRendered, 'the failed cell clip').toEqual([`Video 'Layout cell 1 (Split Horizontal)' (L0/${cellId}) could not be decoded: DECODE_ERROR: ${TIMEOUT_TEXT}`]);
   expect(f.errors, 'one entry for the decode code').toEqual([expect.objectContaining(DECODE)]);
+});
+
+/** An image item 'img' ('Bad still') over the whole 4 s, on a seeded ready image asset whose bytes are not an image. The stage draws grey, so frame
+ *  0 is drawn but not exact. */
+async function openBadImage(page: Page, title: string) {
+  const doc: any = videoDoc([{ id: 'img', to: SECONDS * 1000, details: { name: 'Bad still' } }], { size: { width: W, height: H }, duration: SECONDS * 1000 });
+  doc.items[0] = { ...doc.items[0], type: 'image' };
+  const id = await createProject(page, doc, title);
+  await page.evaluate(async id => {
+    const p = '/src/store/database.ts'; const { projectStore } = await import(p);
+    const asset = await projectStore.upload(new File([new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7])], 'bad.png', { type: 'image/png' }));
+    await projectStore.updateAsset(asset.id, (a: any) => ({ ...a, processing_status: 'ready', processing_steps: { ...a.processing_steps, probe: 'complete', thumbnails: 'complete' } }));
+    await projectStore.attach(id, asset.id);
+    const { document } = await projectStore.read(id); document.items[0].metadata = { assetId: asset.id }; await projectStore.save(id, document, document.rev);
+  }, id);
+  await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+  await expect(runCanvas(page)).toHaveAttribute('data-frame', '0', { timeout: 15000 });
+}
+
+test('F6 image: an image whose bytes cannot be decoded is listed once in notRendered by name and id with a code, and that code is in errors', async ({ page }) => {
+  await openBadImage(page, 'T15 F6 capture bad image');
+  const r = await capture(page, T, 0);
+  expect(r.success).toBe(true);
+  expect(r.images).toBe(1);
+  expect(r.frames).toHaveLength(1);
+  const f = r.frames[0];
+  expect(f.notRendered, 'the failed image, by the mg template').toEqual([expect.stringMatching(/^Image 'Bad still' \(img\) could not be decoded: [A-Z][A-Z_]*: .+$/)]);
+  const code = /: ([A-Z][A-Z_]*): /.exec(f.notRendered![0])![1];
+  expect(f.errors, 'one entry, the same code').toEqual([expect.objectContaining({ code, category: expect.any(String), recovery: expect.any(String) })]);
 });
