@@ -213,6 +213,18 @@ test('T01 review R3: a failed save toast keeps the retry sentence', async ({ pag
   const notices = page.getByRole('region', { name: 'Notifications' });
   await expect(notices).toContainText('STORAGE_QUOTA'); await expect(notices).toContainText('The latest change may not be saved. Saving will retry after the next change.');
 });
+// T01 audit F3b (lane A ruling, a documented Cutframe addition; the sources leave this case open): when the final flush of an
+// in-app leave meets CONFLICT after teardown, a notice says so, without the retry sentence (saves are skipped in the conflict
+// state). This tab's channel is closed first (t17-crosstab "REQUIRED (a)"), so the flush's own conditional write meets CONFLICT.
+test('T01 audit F3b: a final save that meets CONFLICT on in-app leave shows the CONFLICT notice', async ({ page, context }) => {
+  await page.goto('/'); const id = await createProject(page); const other = await context.newPage();
+  await Promise.all([page.goto(`/project/${id}`), other.goto(`/project/${id}`)]);
+  await expect(page.getByRole('status')).toHaveText('Saved locally'); await expect(other.getByRole('status')).toHaveText('Saved locally');
+  await page.evaluate(async () => { const p = '/src/versions/crosstab.ts'; const { activeChannel } = await import(p); activeChannel.close(); });
+  await edit(other, 24); await dirty(page, 60); await expect(page.getByRole('status')).toHaveText('Unsaved changes');
+  await page.getByRole('button', { name: 'Back to home', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Notifications' }).getByRole('button', { name: 'Dismiss CONFLICT: Another tab changed this project. The latest change may not be saved.', exact: true })).toBeVisible();
+});
 test.describe('Library calendar date filters in America/New_York', () => {
   test.use({ timezoneId: 'America/New_York' });
   for (const fixture of [
