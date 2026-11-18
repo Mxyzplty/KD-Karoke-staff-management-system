@@ -16,8 +16,8 @@
 // and message (picture() carries the error for purpose 'capture', as graphicPicture does); errors gets one entry built like capture.ts:72.
 // Image row (lane A ruling, 19 Nov 2026): a seeded ready image asset whose bytes createImageBitmap cannot decode (seeded as t07-support videoAsset
 // does), so the real imageBitmap failure runs (sources.ts:66 throws, :84 catches, :99 returns 'failed'). The thrown error is the browser's
-// DOMException, not a Cutframe code, so the row pins the template, name and id, and requires a Cutframe-style code that matches the errors entry; the
-// code and message the fix gives await lane A's ruling.
+// DOMException, not a Cutframe code. Ruled: DECODE_ERROR / system_error / our_bug (media/codes.ts:10) with the DOMException's message, as the video
+// rows (the probe passed, so a render-time failure is no evidence of a corrupt file). The message is browser text, so it is not pinned.
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { ffmpegAvailable } from '../media-fixtures';
@@ -117,14 +117,13 @@ async function openBadImage(page: Page, title: string) {
   await expect(runCanvas(page)).toHaveAttribute('data-frame', '0', { timeout: 15000 });
 }
 
-test('F6 image: an image whose bytes cannot be decoded is listed once in notRendered by name and id with a code, and that code is in errors', async ({ page }) => {
+test('F6 image: an image whose bytes cannot be decoded is listed once in notRendered by name and id with DECODE_ERROR, and its code in errors', async ({ page }) => {
   await openBadImage(page, 'T15 F6 capture bad image');
   const r = await capture(page, T, 0);
   expect(r.success).toBe(true);
   expect(r.images).toBe(1);
   expect(r.frames).toHaveLength(1);
   const f = r.frames[0];
-  expect(f.notRendered, 'the failed image, by the mg template').toEqual([expect.stringMatching(/^Image 'Bad still' \(img\) could not be decoded: [A-Z][A-Z_]*: .+$/)]);
-  const code = /: ([A-Z][A-Z_]*): /.exec(f.notRendered![0])![1];
-  expect(f.errors, 'one entry, the same code').toEqual([expect.objectContaining({ code, category: expect.any(String), recovery: expect.any(String) })]);
+  expect(f.notRendered, 'the failed image, by the mg template').toEqual([expect.stringMatching(/^Image 'Bad still' \(img\) could not be decoded: DECODE_ERROR: .+$/)]);
+  expect(f.errors, 'one entry for the decode code').toEqual([expect.objectContaining(DECODE)]);
 });
