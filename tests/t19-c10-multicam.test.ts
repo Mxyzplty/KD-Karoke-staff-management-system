@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19 C10 (MC-P01): syncAndSwap (analysis/multicam.ts) over a fake service and a fake place; the executor route (real T03 runtime,
 // injected store/service); and the real sync.ts syncOffset on the public aligned words of the 30 s action clip when
-// $CUTFRAME_FIXTURES has them. Synthetic words otherwise; no fitting.
+// $CUTFRAME_FIXTURES has them. Synthetic words otherwise; no fitting. Audit F1 (landed-audit-t19 l.37-46): the real syncOffset
+// on a seeded 3,000-word pair, each call in a worker killed at a hard cap; measurement only (time printed, offset asserted).
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { Worker } from 'node:worker_threads';
+import { build } from 'esbuild';
 import { describe, expect, it, vi } from 'vitest';
 import { Executor } from '../apps/web/src/agent/executor';
 import type { Call } from '../apps/web/src/agent/executor';
@@ -346,4 +349,43 @@ describe('T19 C10 engine syncOffset (public OT-2 words, no models)', () => {
     expect(error).toBeInstanceOf(AnalysisError); expect(error).toMatchObject({ code: 'SYNC_LOW_CONFIDENCE' });
     expect((error as AnalysisError).message).toMatch(/^Low sync confidence \(\d+%\)\. Transcripts may not overlap enough\.$/);
   });
+});
+
+// ---- Audit F1: real sync.ts on 3,000 synthetic words. syncOffset is synchronous and testTimeout cannot stop it, so every call
+// runs in a worker (sync.ts bundled by esbuild) that is terminated at a hard cap. Ladder 125 → 2,000 words (stop after the first
+// call > 10 s or killed at 20 s), growth exponent from the last two finished calls, then 3,000 words killed at 120 s.
+describe('T19 audit F1 engine syncOffset at 3,000 words (measurement; time printed, not asserted)', () => {
+  const SHIFT = 1.234, FRAME = 1 / 24; // MC-P01 ±1 frame = 1/24 s (T19a notes l.183, l.1478; this file l.341)
+  type Run = { n: number; ms: number; killed: boolean; offset?: number; confidence?: number; matches?: number; error?: string };
+  /** Seeded (mulberry32) words from a 200-word vocabulary, one per 0.4 s; the source is the same words SHIFT s later → offset +SHIFT. */
+  const pair = (n: number) => {
+    let s = 0x7e19f1;
+    const rand = () => { s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const words = Array.from({ length: n }, (_, k) => ({ word: `w${Math.floor(rand() * 200)}`, start: k * 0.4, end: k * 0.4 + 0.3 }));
+    const doc = (ws: typeof words): Transcript => ({ language: 'en', languages: ['en'], total_duration: ws.at(-1)!.end, segments: [{ id: 0, start: ws[0].start, end: ws.at(-1)!.end, text: ws.map(w => w.word).join(' '), speaker: 0, words: ws }] });
+    return { source: doc(words.map(w => ({ ...w, start: w.start + SHIFT, end: w.end + SHIFT }))), target: doc(words) };
+  };
+  const WORKER = `import { parentPort, workerData } from 'node:worker_threads'; import { syncOffset } from './sync';
+const t0 = performance.now();
+try { const r = syncOffset(workerData.source, workerData.target); parentPort.postMessage({ ms: performance.now() - t0, offset: r.offset, confidence: r.confidence, matches: r.matches.length }); }
+catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: String(e?.code ?? e) }); }`;
+  /** ms is measured inside the worker around syncOffset only; the cap runs from the spawn. */
+  const timed = (code: string, n: number, capMs: number) => new Promise<Run>((resolve, reject) => {
+    const worker = new Worker(code, { eval: true, workerData: pair(n) });
+    const kill = setTimeout(() => { void worker.terminate(); resolve({ n, ms: capMs, killed: true }); }, capMs);
+    worker.once('message', m => { clearTimeout(kill); void worker.terminate(); resolve({ n, killed: false, ...m }); });
+    worker.once('error', e => { clearTimeout(kill); reject(e); });
+  });
+  const line = (r: Run, capMs: number) => console.log(`[T19 F1] n=${r.n} words: ${r.killed ? `> ${capMs} ms (killed)` : `${r.ms.toFixed(1)} ms`}; offset ${r.offset?.toFixed(6) ?? '-'} (expected ${SHIFT}), confidence ${r.confidence?.toFixed(3) ?? '-'}, matches ${r.matches ?? '-'}${r.error ? `, error ${r.error}` : ''}`);
+  const check = (r: Run) => { if (r.killed) return; expect(r.error).toBeUndefined(); expect(Math.abs(r.offset! - SHIFT)).toBeLessThanOrEqual(FRAME); expect(r.confidence).toBeGreaterThanOrEqual(0.5); };
+  it('3,000 words, 200-word vocabulary, source = target + 1.234 s → offset +1.234 ± 1/24 s on every call that finishes; a killed call prints "> cap" and passes', async () => {
+    const code = (await build({ stdin: { contents: WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false })).outputFiles[0].text;
+    const done: Run[] = [];
+    for (const n of [125, 250, 500, 1000, 2000]) {
+      const r = await timed(code, n, 20_000); line(r, 20_000); check(r);
+      if (r.killed) break; done.push(r); if (r.ms > 10_000) break;
+    }
+    if (done.length >= 2) { const [p, q] = done.slice(-2), k = Math.log(q.ms / p.ms) / Math.log(q.n / p.n); console.log(`[T19 F1] growth exponent ${k.toFixed(2)} (n ${p.n} → ${q.n}); extrapolated n=3000: ${Math.round(q.ms * (3000 / q.n) ** k / 1000)} s`); }
+    const full = await timed(code, 3000, 120_000); line(full, 120_000); check(full);
+  }, 240_000);
 });
