@@ -299,10 +299,22 @@ test('F10 handle: a failure after output.start() took the writer lock, before th
   const sink = await sinkLog(page);
   expect({ closed: sink.closed, aborted: sink.aborted }, `the handle writable after the failure: ${JSON.stringify(sink)}`).toEqual({ closed: 0, aborted: 1 });
 });
-test('F10 OPFS: a failure after output.start() took the writer lock (exportFaults.failStart) fails the export and leaves no export-*.mp4 or .crswap in cutframe/exports (audit F10 fix)', async ({ page }) => {
+test('F10 OPFS: a failure after output.start() took the writer lock (exportFaults.failStart) fails the export and aborts the OPFS writable: one 0-byte, unlocked export-*.mp4 stays for the sweep, no .crswap (audit F10 fix; lane A ruling 19 Nov 04:38, option i, as N5 OPFS)', async ({ page }) => {
   const { id } = await imageProject(page);
   failed(await runExport(page, id, {}, `${START_FAULT}${OPFS_LOG} return {};`, false), 'CLIENT_BUG', /exportFaults\.failStart/);
+  // Committed sizes, read before the probe removes anything (getFile() reads the committed file, never the swap file).
+  const sizes = await page.evaluate(async () => {
+    const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('cutframe', { create: true })).getDirectoryHandle('exports', { create: true });
+    const out: Record<string, number | string> = {};
+    for await (const [name, entry] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemFileHandle]> }).entries()) {
+      if (/^export-/.test(name)) out[name] = await entry.getFile().then(f => f.size, (e: Error) => `${e.name}: ${e.message}`);
+    }
+    return out;
+  });
   const { created, left, errors } = await opfsAfter(page);
   expect(created, 'the OPFS sink was used: one export-<ts>.mp4 was created').toEqual([expect.stringMatching(/^export-\d+\.mp4$/)]);
-  expect(exportFiles(left), `export files left after the failure (removeEntry probe: ${JSON.stringify(errors)})`).toEqual([]);
+  // One check, the probe first: a writer left open shows as a refused removeEntry (and a .crswap) in the same diff as the sizes.
+  const name = created[0];
+  expect({ probe: errors, left: exportFiles(left), sizes }, `export files after the failure: removeEntry probe ${JSON.stringify(errors)}, committed sizes ${JSON.stringify(sizes)}`)
+    .toEqual({ probe: { [name]: 'removed by the probe' }, left: [name], sizes: { [name]: 0 } });
 });
