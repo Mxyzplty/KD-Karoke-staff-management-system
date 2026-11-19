@@ -18,8 +18,9 @@ export const MAX_DECODERS = 4, PREFETCH_S = 2, REQUEST_TIMEOUT_MS = 30_000;
  *  `noBackpressure` skips the encoder queue wait, for the sensitivity check of the queue ≤ 2 test only; `noAac` treats
  *  AAC-LC as not encodable, so the Opus fallback (probe.ts negotiateAudio) runs where AAC exists; `failSetup` fails the
  *  export once its sink and output are set up, before the output starts (encode and remux), for the clean-up tests;
- *  `failStart` fails the encode export once the output has started, before it counts as started (audit F10). */
-export const exportFaults = { timeouts: 0, noBackpressure: false, noAac: false, failSetup: false, failStart: false };
+ *  `failStart` fails the encode export once the output has started, before it counts as started (audit F10);
+ *  `failFinalize` fails the encode export inside output.finalize(), before mediabunny closes the targets (audit F1, R2). */
+export const exportFaults = { timeouts: 0, noBackpressure: false, noAac: false, failSetup: false, failStart: false, failFinalize: false };
 export type ExportFrame = { bitmap: ImageBitmap; width: number; height: number; ts: number; from: number; to: number };
 type Waiter = { resolve: (r: DecodeReply & { ok: true }) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 type Slot = { key: string; worker: Worker; waiting: Map<number, Waiter>; wasm: boolean; used: number; last?: ExportFrame; busy: number };

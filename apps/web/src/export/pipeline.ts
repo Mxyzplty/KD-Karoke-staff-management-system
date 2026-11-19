@@ -130,7 +130,7 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
     // The sink and the output are opened inside the try, so a failure while setting them up still releases the file.
     sink = await openSink({ handle: o.handle, estimate: estimateBytes(bitrate, durationS), storage: o.storage });
     messages.push(sink.message);
-    output = new Output({ format: new Mp4OutputFormat({ fastStart: sink.fastStart }), target: sink.target });
+    output = new Output({ format: new Mp4OutputFormat({ fastStart: sink.fastStart, ...finalizeFault() }), target: sink.target });
     const videoSource = new EncodedVideoPacketSource('avc');
     output.addVideoTrack(videoSource, { frameRate: fps });
     const audioSource = audio ? new AudioSampleSource({ codec: audio.codec, bitrate: AUDIO.bitrate }) : null;
@@ -266,6 +266,11 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
 function setupFault() { if (exportFaults.failSetup) throw new ExportError('CLIENT_BUG', 'Test fault: export setup failed (exportFaults.failSetup).'); }
 /** Test hook exportFaults.failStart: a failure once output.start() has taken the writer lock (audit F10). */
 function startFault() { if (exportFaults.failStart) throw new ExportError('CLIENT_BUG', 'Test fault: export start failed (exportFaults.failStart).'); }
+/** Test hook exportFaults.failFinalize: a failure inside output.finalize(), from the muxer's onMoov once the moov box is written,
+ *  before mediabunny's finally closes the targets (audit F1, R2). onMoov is passed only while the hook is on. */
+function finalizeFault(): { onMoov?: () => never } {
+  return exportFaults.failFinalize ? { onMoov: () => { throw new ExportError('CLIENT_BUG', 'Test fault: export finalize failed (exportFaults.failFinalize).'); } } : {};
+}
 /** Audit F1/F10: releases the sink after a failure or a stop, for both paths. The writable is aborted on every path, so a partial
  *  file is never committed. The output is cancelled after the abort (its close then meets an errored stream), and only once start()
  *  was entered: mediabunny leaves 'pending' synchronously in start(), before it takes the writer lock. Stopped (cancel, supersede):
