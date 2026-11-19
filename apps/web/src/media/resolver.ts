@@ -9,7 +9,7 @@ import { isStackedAlpha } from '../render/model';
 export type ResolvedSource = { kind: 'proxy' | 'original'; assetId: string; blob: Blob; width: number | null; height: number | null };
 export const usesProxy = (item: RecordData) => item?.details?.useProxy !== false;
 /** Whether the preview shows the proxy: Use Proxy on and a proxy exists, never for a stacked-alpha item (P26: the lossy proxy cannot keep the alpha half exact). */
-export const previewProxy = (item: RecordData, asset: Asset | undefined) => usesProxy(item) && !isStackedAlpha(item) && !!asset?.proxy;
+export const previewProxy = (item: RecordData, asset: Asset | undefined): asset is Asset & { proxy: NonNullable<Asset['proxy']> } => usesProxy(item) && !isStackedAlpha(item) && !!asset?.proxy;
 /** `row`: the item's asset row the caller already read from the store (render/sources.ts keys its cache on it); otherwise read here. */
 export async function resolveSource(store: ProjectStore, item: RecordData, purpose: 'preview' | 'export' = 'preview', row?: Asset): Promise<ResolvedSource> {
   const assetId = item?.metadata?.assetId as string | undefined;
