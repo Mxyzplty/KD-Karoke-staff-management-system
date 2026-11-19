@@ -124,7 +124,7 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
   const mix = o.audio ?? exportMix(o.store, assets, { forceWasm: o.forceWasm });
 
   let sink: Sink | null = null, output: Output | null = null;
-  let encoder: VideoEncoder | null = null, started = false, encodeError: Error | null = null, muxError: unknown = null;
+  let encoder: VideoEncoder | null = null, encodeError: Error | null = null, muxError: unknown = null;
   let mux: Promise<void> = Promise.resolve(), muxPending = 0;
   try {
     // The sink and the output are opened inside the try, so a failure while setting them up still releases the file.
@@ -136,7 +136,7 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
     const audioSource = audio ? new AudioSampleSource({ codec: audio.codec, bitrate: AUDIO.bitrate }) : null;
     if (audioSource) output.addAudioTrack(audioSource);
     setupFault();
-    await output.start(); startFault(); started = true;
+    await output.start(); startFault();
     encoder = new VideoEncoder({
       output: (chunk, meta) => {
         const data = new Uint8Array(chunk.byteLength); chunk.copyTo(data);
@@ -255,8 +255,7 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
     };
   } catch (e) {
     if (encoder && encoder.state !== 'closed') try { encoder.close(); } catch { /* already closed */ }
-    if (started) await output!.cancel().catch(() => undefined);
-    await sink?.abort();
+    await abandon(o, e, output, sink);
     throw e;
   } finally {
     decoders.closeAll();
@@ -265,8 +264,17 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
 }
 /** Test hook exportFaults.failSetup: a failure after the sink and the output are set up, before the output starts. */
 function setupFault() { if (exportFaults.failSetup) throw new ExportError('CLIENT_BUG', 'Test fault: export setup failed (exportFaults.failSetup).'); }
-/** Test hook exportFaults.failStart: a failure once output.start() has taken the writer lock, before the export counts as started (audit F10). */
+/** Test hook exportFaults.failStart: a failure once output.start() has taken the writer lock (audit F10). */
 function startFault() { if (exportFaults.failStart) throw new ExportError('CLIENT_BUG', 'Test fault: export start failed (exportFaults.failStart).'); }
+/** Audit F1/F10: releases the sink after a failure or a stop, for both paths. The writable is aborted on every path, so a partial
+ *  file is never committed. The output is cancelled after the abort (its close then meets an errored stream), and only once start()
+ *  was entered: mediabunny leaves 'pending' synchronously in start(), before it takes the writer lock. Stopped (cancel, supersede):
+ *  the OPFS entry is removed too; on a failure its 0-byte entry stays for the sweep. A picked file handle is never removed. */
+async function abandon(o: ExportOptions, e: unknown, output: Output | null, sink: Sink | null) {
+  const code = (e as { code?: unknown })?.code, stopped = !!o.signal?.aborted || code === 'USER_CANCELLED' || code === 'SUPERSEDED';
+  await sink?.abort(stopped);
+  if (output && output.state !== 'pending') await output.cancel().catch(() => undefined);
+}
 
 type VideoRef = { ref: { key: string; blob: Blob; rotation: 0 | 90 | 180 | 270; stackedAlpha: boolean }; fit: Size | null };
 /** The video draws of a frame, a layout's video cells included (T07). */
@@ -326,7 +334,7 @@ type RemuxInput = {
 };
 async function remux(o: ExportOptions, r: RemuxInput): Promise<ExportResult> {
   r.stats.path = 'remux';
-  let sink: Sink | null = null, output: Output | null = null, started = false;
+  let sink: Sink | null = null, output: Output | null = null;
   try {
     sink = await openSink({ handle: o.handle, estimate: r.blob.size * 1.1, storage: o.storage });
     r.messages.push(sink.message, 'The timeline is one unedited clip: its video and audio were copied without re-encoding.');
@@ -334,7 +342,7 @@ async function remux(o: ExportOptions, r: RemuxInput): Promise<ExportResult> {
     output.addVideoTrack(r.tracks.video, { frameRate: r.fps });
     output.addAudioTrack(r.tracks.audio);
     setupFault();
-    await output.start(); started = true;
+    await output.start();
     await r.tracks.copy(n => { if (n % PROGRESS_EVERY === 0) progress(o, 'remux', Math.min(n, r.frames), r.frames, r.t0); }, o.signal);
     progress(o, 'finalize', r.frames, r.frames, r.t0);
     await output.finalize();
@@ -345,8 +353,7 @@ async function remux(o: ExportOptions, r: RemuxInput): Promise<ExportResult> {
       codec: r.asset.media?.video?.codecString ?? 'avc', profile: 'source', audioCodec: 'aac', messages: r.messages, repaired: r.repaired, notRendered: [], stats: r.stats,
     };
   } catch (e) {
-    if (started) await output!.cancel().catch(() => undefined);
-    await sink?.abort();
+    await abandon(o, e, output, sink);
     throw e;
   } finally {
     r.tracks.dispose();
