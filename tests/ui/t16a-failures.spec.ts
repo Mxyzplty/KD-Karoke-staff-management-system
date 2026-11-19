@@ -231,3 +231,78 @@ test('N5 encode, OPFS: after a failure in the setup the export-*.mp4 it created 
   expect(left.some(n => /^export-.*\.mp4$/.test(n)), `the OPFS sink was used: ${JSON.stringify(left)}`).toBe(true);
   expect(Object.values(errors), JSON.stringify(errors)).toEqual(left.map(() => 'removed'));
 });
+
+// ---- Clean-up after the output has started (audit F1, F10; lane A ruling 19 Nov 04:26, D115) ------------------------------------------
+// A cancel, a supersede or a failure once output.start() has taken the writer lock must abort the sink's writable, never close it (a close
+// commits the partial file), and leave no export-*.mp4 or .crswap in OPFS. Oracle: error codes §12 (USER_CANCELLED, SUPERSEDED) and the
+// audit's fix (landed-audit-t16a l.149: abort the writable, or delete the OPFS file afterwards). The stub's writes are not pinned: with
+// 16 MiB chunks a short export may write nothing before it stops.
+const START_FAULT = "const d = '/src/export/decoders.ts'; (await import(d)).exportFaults.failStart = true;";
+/** Records the OPFS export files the run creates (getFileHandle wrapped; the real call is still made), to show the OPFS sink was used. */
+const OPFS_LOG = `
+  window.__opfs = [];
+  const getFileHandle = FileSystemDirectoryHandle.prototype.getFileHandle;
+  FileSystemDirectoryHandle.prototype.getFileHandle = function (name, o) { if (o?.create && /^export-/.test(name)) window.__opfs.push(name); return getFileHandle.call(this, name, o); };`;
+type Stop = { status: string; code?: string; frame?: number; other?: { status: string; code?: string } };
+/** Starts an export (hook: the body of an async function returning extra options, as in runExport), waits for its first progress event
+ *  (frame 5, after output.start()), then stops it: cancelExport, or a second startExport of the same project (no hook, 0.5 s). */
+async function stopAfterProgress(page: Page, id: string, hook: string, how: 'cancel' | 'supersede'): Promise<Stop> {
+  return page.evaluate(async ({ id, hook, how }) => {
+    const s = '/src/store/database.ts', e = '/src/export/index.ts', { projectStore } = await import(s), ex = await import(e), { document } = await projectStore.read(id);
+    const AF = Object.getPrototypeOf(async function () { /* */ }).constructor, extra = (await new AF(hook)()) ?? {};
+    const rid = ex.startExport({ store: projectStore, doc: document, title: 'F1', ...extra });
+    while (!ex.getExportStatus(rid).progress) await new Promise(r => setTimeout(r, 10));
+    let other: string | undefined;
+    if (how === 'cancel') ex.cancelExport(rid); else other = ex.startExport({ store: projectStore, doc: document, title: 'F1 B', range: { startS: 0, endS: 0.5 } });
+    const st = await ex.awaitExport(rid), so = other ? await ex.awaitExport(other) : undefined;
+    return { status: st.status, code: st.error?.code, frame: st.progress?.frame, ...(so ? { other: { status: so.status, code: so.error?.code } } : {}) };
+  }, { id, hook, how });
+}
+const sinkLog = (page: Page) => page.evaluate(() => (window as unknown as { __sink: { writes: number; closed: number; aborted: number } }).__sink);
+/** The OPFS export files the run created, the names left in cutframe/exports, and why each left name cannot be removed (probe). */
+const opfsAfter = (page: Page) => page.evaluate(async () => {
+  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('cutframe', { create: true })).getDirectoryHandle('exports', { create: true });
+  const left: string[] = [], errors: Record<string, string> = {};
+  for await (const [name] of (dir as unknown as { entries(): AsyncIterable<[string, unknown]> }).entries()) left.push(name);
+  for (const n of left) await dir.removeEntry(n).then(() => { errors[n] = 'removed by the probe'; }, (e: Error) => { errors[n] = `${e.name}: ${e.message}`; });
+  return { created: (window as unknown as { __opfs: string[] }).__opfs, left, errors };
+});
+const exportFiles = (names: string[]) => names.filter(n => /^export-.*\.mp4(\.crswap)?$/.test(n));
+
+test('F1 cancel, handle: cancelExport after the first progress event fails the export as USER_CANCELLED and aborts the handle writable, never closes it (written-spec oracle: error codes §12; audit F1 fix)', async ({ page }) => {
+  const { id } = await imageProject(page, 10_000);
+  const out = await stopAfterProgress(page, id, `${SINK_LOG} return { handle };`, 'cancel');
+  expect(out, JSON.stringify(out)).toMatchObject({ status: 'failed', code: 'USER_CANCELLED' });
+  const sink = await sinkLog(page);
+  expect({ closed: sink.closed, aborted: sink.aborted }, `the handle writable after the cancel: ${JSON.stringify(sink)}`).toEqual({ closed: 0, aborted: 1 });
+});
+test('F1 cancel, OPFS: cancelExport after the first progress event fails the export as USER_CANCELLED and leaves no export-*.mp4 or .crswap in cutframe/exports (written-spec oracle: error codes §12; audit F1 fix)', async ({ page }) => {
+  const { id } = await imageProject(page, 10_000);
+  const out = await stopAfterProgress(page, id, `${OPFS_LOG} return {};`, 'cancel');
+  expect(out, JSON.stringify(out)).toMatchObject({ status: 'failed', code: 'USER_CANCELLED' });
+  const { created, left, errors } = await opfsAfter(page);
+  expect(created, 'the OPFS sink was used: one export-<ts>.mp4 was created').toEqual([expect.stringMatching(/^export-\d+\.mp4$/)]);
+  expect(exportFiles(left), `export files left after the cancel (removeEntry probe: ${JSON.stringify(errors)})`).toEqual([]);
+});
+test('F1 supersede, handle: a second startExport of the project after the first progress event fails the first as SUPERSEDED and aborts its handle writable, never closes it (written-spec oracle: error codes §12; audit F1 fix)', async ({ page }) => {
+  const { id } = await imageProject(page, 10_000);
+  const out = await stopAfterProgress(page, id, `${SINK_LOG} return { handle };`, 'supersede');
+  expect(out, JSON.stringify(out)).toMatchObject({ status: 'failed', code: 'SUPERSEDED' });
+  const sink = await sinkLog(page);
+  expect({ closed: sink.closed, aborted: sink.aborted }, `the first export's handle writable after the supersede: ${JSON.stringify(sink)}`).toEqual({ closed: 0, aborted: 1 });
+});
+// exportFaults.failStart throws once output.start() has returned (the writer lock is taken in start), before the export counts as started:
+// the place of a failure inside start() after the lock (audit F10).
+test('F10 handle: a failure after output.start() took the writer lock, before the export counts as started (exportFaults.failStart), fails the export and aborts the handle writable, never closes it (audit F10 fix)', async ({ page }) => {
+  const { id } = await imageProject(page);
+  failed(await runExport(page, id, {}, `${START_FAULT}${SINK_LOG} return { handle };`, false), 'CLIENT_BUG', /exportFaults\.failStart/);
+  const sink = await sinkLog(page);
+  expect({ closed: sink.closed, aborted: sink.aborted }, `the handle writable after the failure: ${JSON.stringify(sink)}`).toEqual({ closed: 0, aborted: 1 });
+});
+test('F10 OPFS: a failure after output.start() took the writer lock (exportFaults.failStart) fails the export and leaves no export-*.mp4 or .crswap in cutframe/exports (audit F10 fix)', async ({ page }) => {
+  const { id } = await imageProject(page);
+  failed(await runExport(page, id, {}, `${START_FAULT}${OPFS_LOG} return {};`, false), 'CLIENT_BUG', /exportFaults\.failStart/);
+  const { created, left, errors } = await opfsAfter(page);
+  expect(created, 'the OPFS sink was used: one export-<ts>.mp4 was created').toEqual([expect.stringMatching(/^export-\d+\.mp4$/)]);
+  expect(exportFiles(left), `export files left after the failure (removeEntry probe: ${JSON.stringify(errors)})`).toEqual([]);
+});
