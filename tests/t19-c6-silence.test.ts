@@ -10,6 +10,7 @@ import type { ProjectDocument, RecordData } from '../apps/web/src/store/model';
 import { CommandBus } from '../apps/web/src/timeline/bus';
 import { removeSilences } from '../apps/web/src/timeline/silence';
 import type { Transcript, Word } from '../apps/web/src/analysis/types';
+import { bindingOf } from '../apps/web/src/captions/model';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import { statics } from '../apps/web/src/timeline/properties';
 import { callTool } from '../apps/web/src/timeline/tools';
@@ -175,16 +176,18 @@ describe('T19 C6 removeSilences: an item inside a track group', () => {
 
 // T19 audit F2(b): linked captions follow a silence removal (lane A 06:44: captions follow, by `Cutframe caption timing
 // contract (C).md` :59-61 — a split partitions the binding, the ripple's caption changes are calculated, bound captions go in the same undo
-// unit). This is the planned t09-links row of T09 report-1 l.88 ("runs T19 removeSilences with linked captions and checks
-// full footprint"), never built. The captions come from T09's own addCaptions tool over a stubbed transcript (no model).
-// Oracle: the cut arithmetic of planSilenceRemoval (gap − 0.35 s, half a kept gap after each word) and the caption hold of
-// 0.5 s (findings §44.1), ended by the occurrence end or the next caption; the box is that of a fresh addCaptions over the
-// same three clips placed by hand. A pause piece holds no words, so no caption can be bound only to it: the row checks that
-// no caption points at a deleted piece instead.
+// unit). This is the unit half of T09 report-1 l.88's planned "U/B t09-links" ("runs T19 removeSilences with linked captions
+// and checks full footprint"); the browser half is not built. The captions come from T09's own addCaptions tool over a
+// stubbed transcript (no model). Oracle: the cut arithmetic of planSilenceRemoval (gap − 0.35 s, half a kept gap after each
+// word) and the caption hold of 0.5 s (findings §44.1), ended by the occurrence end or the next caption; the look (whole
+// details and static properties) is that of a fresh addCaptions over the same three clips placed by hand. A pause piece
+// holds no words, so no caption can be bound only to it (remove deletes such captions with it); the row pins the caption
+// ids and their bindings across the cuts instead.
 describe('T19 audit F2(b) removeSilences: T09-linked captions follow the cuts', () => {
-  /** Source s. Gaps 1.2 s (one→two) and 1.6 s (two→three) are cut; the rest are under 0.75 s. Chunks (5 words max):
-   *  "one two three four five" spans both pauses, then "six seven". */
-  const spoken: [string, number, number][] = [['one', 1.0, 1.4], ['two', 2.6, 3.0], ['three', 4.6, 5.0], ['four', 5.2, 5.6], ['five', 5.8, 6.2], ['six', 6.5, 6.9], ['seven', 7.0, 7.4]];
+  /** Source s. Gaps 1.2 s (one→two) and 1.6 s (two→three) are cut; the rest are under 0.75 s. Chunks: "one two three four
+   *  five." spans both pauses and closes at the sentence end (breakOnPunctuation), then "six seven". The full stop also
+   *  closes the reference's "three four five." on clip c, which would otherwise hold five words from one source. */
+  const spoken: [string, number, number][] = [['one', 1.0, 1.4], ['two', 2.6, 3.0], ['three', 4.6, 5.0], ['four', 5.2, 5.6], ['five.', 5.8, 6.2], ['six', 6.5, 6.9], ['seven', 7.0, 7.4]];
   const transcript = (): Transcript => ({ language: 'en', languages: ['en'], total_duration: 10,
     segments: [{ id: 0, start: 1.0, end: 7.4, text: spoken.map(x => x[0]).join(' '), speaker: 0, words: spoken.map(([word, start, end]) => ({ word, start, end })) }] });
   /** An editor over V1 + C1, captioned by the real addCaptions tool. */
@@ -199,12 +202,12 @@ describe('T19 audit F2(b) removeSilences: T09-linked captions follow the cuts', 
   const wordsIn = (c: RecordData) => c.details.words as Stored[];
   /** Timeline ms of a source ms after the two cuts (source 1575–2425 and 3175–4425 removed, 850 and 1250 ms). */
   const after = (sourceMs: number) => sourceMs - (sourceMs >= 4425 ? 2100 : sourceMs >= 2425 ? 850 : 0);
-  const box = (c: RecordData) => ({ text: c.details.text, width: c.details.width, height: c.details.height, statics: statics(c) });
+  const look = (c: RecordData) => ({ details: c.details, statics: statics(c) });
 
   it('captions on their words, no cut inside a caption, no overlap, gaps within the words\' spacing, full footprint, one "Ripple delete" undo', () => {
     const e = captioned([video('v', 'V1', 0, 10000, 0, 10000)]);
-    expect(captionsOf(e.doc).map(c => c.details.text)).toEqual(['one two three four five', 'six seven']);
-    const before = structuredClone(e.doc), entries = e.bus.undoStack.length;
+    expect(captionsOf(e.doc).map(c => c.details.text)).toEqual(['one two three four five.', 'six seven']);
+    const before = structuredClone(e.doc), entries = e.bus.undoStack.length, originalIds = captionsOf(e.doc).map(c => c.id);
 
     const res = removeSilences(e.bus, 'v', spoken.map(([word, start, end]) => w(start, end, word)));
     expect(res.cuts).toEqual([{ from: 1.575, to: 2.425 }, { from: 3.175, to: 4.425 }]);
@@ -212,11 +215,12 @@ describe('T19 audit F2(b) removeSilences: T09-linked captions follow the cuts', 
     expect(pieces.map(i => [i.display.from, i.display.to, i.trim.from, i.trim.to])).toEqual([[0, 1575, 0, 1575], [1575, 2325, 2425, 3175], [2325, 7900, 4425, 10000]]);
     const caps = captionsOf(d);
 
-    // The pieces of the split caption, each on its own occurrence; no caption points at a deleted (pause) piece.
-    expect(caps.map(c => c.details.text)).toEqual(['one', 'two', 'three four five', 'six seven']);
+    // The pieces of the split caption, each on its own occurrence. The first and last keep the two original caption ids
+    // (correction anchors kept, contract :59), and every caption's binding is on its source occurrence.
+    expect(caps.map(c => c.details.text)).toEqual(['one', 'two', 'three four five.', 'six seven']);
     expect(caps.map(c => c.captionSourceItemId)).toEqual([pieces[0].id, pieces[1].id, pieces[2].id, pieces[2].id]);
-    const live = new Set(d.items.map(i => i.id));
-    for (const c of caps) expect(live.has(c.captionSourceItemId), c.details.text).toBe(true);
+    expect([caps[0].id, caps[3].id]).toEqual(originalIds);
+    for (const c of caps) expect(bindingOf(itemOf(d, c.captionSourceItemId), c.metadata.captionBindingId), c.details.text).toBeDefined();
 
     // Each caption starts on its first word's new time and covers its last word's; stored words sit on their new times.
     for (const c of caps) {
@@ -237,11 +241,13 @@ describe('T19 audit F2(b) removeSilences: T09-linked captions follow the cuts', 
     }
 
     // Full footprint. Spans: first word → last word + 0.5 s hold, ended by the occurrence end (one, two) or the next caption
-    // (three four five). Box: that of a fresh addCaptions over the same three clips placed by hand.
+    // (three four five.). Look: the whole details (text, stored words, box, style) and the static properties of a fresh
+    // addCaptions over the same three clips placed by hand. Not whole items: settleTrack gives the product's "three four
+    // five." a trim (links.ts:217) that the fresh caption, capped at its chunk end, never gets.
     expect(caps.map(c => [c.display.from, c.display.to])).toEqual([[1000, 1575], [1750, 2325], [2500, 4400], [4400, 5800]]);
     const reference = captionsOf(captioned([video('a', 'V1', 0, 1575, 0, 10000), video('b', 'V1', 1575, 2325, 2425, 10000), video('c', 'V1', 2325, 7900, 4425, 10000)]).doc);
     expect(reference.map(c => [c.display.from, c.display.to])).toEqual([[1000, 1575], [1750, 2325], [2500, 4400], [4400, 5800]]);
-    expect(caps.map(box)).toEqual(reference.map(box));
+    expect(caps.map(look)).toEqual(reference.map(look));
 
     // One undo entry, "Ripple delete"; one undo restores items and captions exactly.
     expect(e.bus.undoStack).toHaveLength(entries + 1);
