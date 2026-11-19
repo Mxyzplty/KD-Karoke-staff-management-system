@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectStore } from '../apps/web/src/store/database';
 import type { Asset, RecordData } from '../apps/web/src/store/model';
-import { clearSources, itemMedia } from '../apps/web/src/render/sources';
+import { clearSources, itemMedia, readyMedia } from '../apps/web/src/render/sources';
 
 vi.mock('../apps/web/src/mg/frames', () => ({ clearGraphics: vi.fn(), graphicPicture: vi.fn() }));
 vi.mock('../apps/web/src/render/decoder-pool', () => ({ decodeFrame: vi.fn(), transientDecodeError: () => false }));
@@ -34,6 +34,15 @@ describe('T15 F10: the preview source cache follows Use Proxy, whatever asset ro
     const off = await itemMedia(s, item(false), fresh());
     expect(off.kind, 'Use Proxy off resolves the original').toBe('original');
     expect(off.ref.blob, 'the original bytes').toBe(ORIGINAL);
+  });
+
+  // Row 3 (delta review 3 finding 1): readyMedia, the synchronous lookup playback uses (render/playback.ts, with the asset row it holds), must
+  // return the same source as itemMedia after the row 1 sequence.
+  it('after the row 1 sequence, readyMedia for the useProxy false item returns the original', async () => {
+    const s = store(), off = item(false);
+    await itemMedia(s, item(true), stale());
+    await itemMedia(s, off, fresh());
+    expect(readyMedia(off, fresh())?.kind, 'readyMedia with Use Proxy off').toBe('original');
   });
 
   it('guard: useProxy true with the fresh asset resolves the proxy', async () => {
