@@ -35,3 +35,35 @@ test('Use Proxy off then on leaves display, trim, transform and the shown frame 
     expect(await page.evaluate(async () => { const p = '/src/editor/view.ts'; return (await import(p)).view().playheadMs as number; }), 'the playhead stays').toBe(1500);
   }
 });
+
+// Audit F10: the row above never shows that a proxy exists (sources.ts mediaKey falls back to 'original' without asset.proxy, and preparation
+// writes the proxy record asynchronously, media/prepare.ts:167-178). This row waits for processing_steps.proxy === 'complete' (every video gets a
+// browser proxy, media/work.ts makeProxy; t14-review.spec.ts F7 asserts one on ingest), then checks that the preview's own resolution
+// (render/sources.ts itemMedia, which calls media/resolver.ts resolveSource) flips proxy -> original -> proxy across the toggles, while the paused
+// stage keeps the same frame and canvas size.
+const resolvedKind = (page: Page) => page.evaluate(async () => {
+  const s = '/src/render/sources.ts', d = '/src/store/database.ts', e = '/src/editor.tsx';
+  const { itemMedia } = await import(s), { projectStore } = await import(d), { activeSession } = await import(e);
+  const item = activeSession.document.items.find((i: { id: string }) => i.id === 'vid'), asset = await projectStore.row('assets', item.metadata.assetId);
+  return (await itemMedia(projectStore, item, asset)).kind as string;
+});
+
+test('F10: with the proxy ready, Use Proxy flips the resolved source proxy -> original -> proxy; the shown frame and canvas size stay', async ({ page }) => {
+  const d = videoDoc([{ id: 'vid', from: 500, to: 2500, trim: 200, sourceDuration: 3000 }], { duration: 3000 });
+  await openWithVideos(page, d, { vid: { path: makeClip(3) } }, 'T15 proxy resolved');
+  await expect.poll(() => page.evaluate(async () => {
+    const p = '/src/store/database.ts'; const { projectStore } = await import(p);
+    return (await projectStore.library()).assets.map((a: { processing_steps?: Record<string, string> }) => a.processing_steps?.proxy);
+  }), { timeout: 90_000, message: 'the proxy step completes' }).toEqual(['complete']);
+  await seekMs(page, 1500); await shown(page, 45);
+  const size = await canvasSizeOf(page);
+  expect(await resolvedKind(page), 'Use Proxy on by default: the proxy is shown').toBe('proxy');
+  for (const [useProxy, kind] of [[false, 'original'], [true, 'proxy']] as const) {
+    const r = await runtimeCall(page, 'setUseProxy', { itemId: 'vid', useProxy }) as { success: boolean };
+    expect(r.success).toBe(true);
+    expect(await resolvedKind(page), `after useProxy ${useProxy}: resolved source`).toBe(kind);
+    await shown(page, 45);
+    expect(await runCanvas(page).getAttribute('data-frame'), `after useProxy ${useProxy}: same frame`).toBe('45');
+    expect(await canvasSizeOf(page), `after useProxy ${useProxy}: same canvas size`).toEqual(size);
+  }
+});
