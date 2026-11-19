@@ -187,10 +187,10 @@ function werRows(reference: any) {
       const xapp = reference.wordList.filter((w: any) => w.sourceItem === `i${i + 1}`).map((w: any) => w.text), agreement = wordAlignment(xapp, words.map(w => w.word));
       xappErrors += agreement.errors; xappWords += agreement.referenceWords;
       // D28: WER against the human reference (OT-2) decides; Xapp word agreement is reported, not gated.
-      // parked: D71 (TR-P02 at T8's .175 / .1591; nothing waived, row stays red)
+      // parked: D71 (TR-P02 tos-action-30s at T8's .175; tos-speech-45s passes; nothing waived, row stays red)
       row(`TR-P02 ${clip}`, { wer: wer.wer, errors: wer.errors, referenceWords: wer.referenceWords, xappAgreement: Math.max(0, 1 - agreement.wer), textDisputedIncluded: truth.words.filter((w: any) => w.textDisputed).length }, 'WER <= .10 including disputed words; Xapp word agreement reported, not gated (D28)', wer.wer <= 0.1);
     },
-    // parked: D71 (TR-P02 at T8's .175 / .1591; nothing waived, row stays red)
+    // parked: D71 (TR-P02 combined at T8's .1591; nothing waived, row stays red)
     combined() { row('TR-P02 combined', { wer: allErrors / allWords, xappAgreement: 1 - xappErrors / xappWords, referenceWords: allWords, xappWords }, '<=.10 WER; Xapp agreement reported, not gated (D28)', allErrors / allWords <= 0.1); },
   };
 }
@@ -375,7 +375,7 @@ async function footageChecks() {
     const identity = (r: SearchResponse['results'][number]) => JSON.stringify([r.assetId, r.source, r.embeddingType, r.chunkText, r.startTime, r.endTime]);
     const l = new Set(low.results.map(identity)), m = new Set(result.results.map(identity));
     if (!result.results.every(r => l.has(identity(r))) || !high.results.every(r => m.has(identity(r)))) monotone = false;
-    // parked: D41 (FS-P03 Q09 at T8's .5 after F19 failed; nothing waived, row stays red)
+    // parked: D41 (FS-P03 Q09 only, at T8's .5 after F19 failed; nothing waived, that row stays red)
     row(`FS-P03 ${q.id}`, { query: q.query, recallAt5: recall, relevantAssets: relevant.length, rows: gated.length, xappRecall, xappSource: xapp.source, noMatch: !!q.noMatch }, 'first20 that should find something: per-query recall>=Xapp; mean>=.8; OT-3 asset-level clipGrade>0; tags/summary/description channels only; Q21+ and no-match report only (D24 Q11/Q12)', scorable ? recall >= xappRecall : null);
   }
   await save('searches.json', searches);
