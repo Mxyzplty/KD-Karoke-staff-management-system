@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19 C6 (CUT-P01): removeSilences(bus, itemId, words, options) on a real CommandBus over a plain host: the cuts, the ripple,
 // the single undo entry, playbackRate, ranges, the refusals and the group ripple. Synthetic words; the fixture row uses the
-// public CC-BY aligned words of the 30 s action clip when $CUTFRAME_FIXTURES has them. Report-only against CUT-P01's 4.38 s.
+// public CC-BY aligned words of the 30 s action clip when $CUTFRAME_FIXTURES has them (OT-2 words; the gated CUT-P01 row
+// is score.ts, parked at 4.82 s by D74).
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -260,15 +261,17 @@ describe('T19 audit F2(b) removeSilences: T09-linked captions follow the cuts', 
 
 describe('T19 C6 removeSilences: fixture row (public CC-BY aligned words of the 30 s action clip)', () => {
   const root = process.env.CUTFRAME_FIXTURES, file = root ? path.join(root, 'datasets', 'speech', 'tos-action-30s-aligned.json') : '';
-  it.skipIf(!root || !existsSync(file))('ranges [0, 7.74] and [19.18, 30] → 3 cuts, 4.290 s removed (CUT-P01 4.38 s is report-only)', () => {
+  it.skipIf(!root || !existsSync(file))('ranges [0, 7.74] and [19.18, 30] → 3 cuts, 4.290 s removed (OT-2 words; the gated CUT-P01 row is score.ts, parked at 4.82 s by D74)', () => {
     const aligned = JSON.parse(readFileSync(file, 'utf8')) as { words: { text: string; startMs: number; endMs: number }[] };
     const spoken = aligned.words.map(x => w(x.startMs / 1000, x.endMs / 1000, x.text));
     const r = rig(build({ tracks: [mkTrack('V1', 'video')], items: [video('clip', 'V1', 0, 30000, 0, 30000)] }));
     const res = removeSilences(r.bus, 'clip', spoken, { ranges: [[0, 7.74], [19.18, 30]] });
+    // CUT-P01's band on the total (4.38 s, 4 cuts x 1/30 s). These words pass it only because two errors cancel (D74).
+    expect(Math.abs(res.removed - 4.38), 'removed within CUT-P01 4.38 s ± 4/30 s').toBeLessThanOrEqual(4 / 30);
     const expected = [[2.755, 5.025], [21.295, 22.725], [26.275, 26.865]];
     expect(res.cuts).toHaveLength(3);
     res.cuts.forEach((c, i) => { expect(Math.abs(c.from - expected[i][0])).toBeLessThanOrEqual(0.001); expect(Math.abs(c.to - expected[i][1])).toBeLessThanOrEqual(0.001); });
     expect(Math.abs(res.removed - 4.29)).toBeLessThanOrEqual(0.001);
-    console.info(`[T19 C6] removed ${res.removed.toFixed(3)} s vs CUT-P01 reference 4.38 s (report-only, delta ${(res.removed - 4.38).toFixed(3)} s)`);
+    console.info(`[T19 C6] removed ${res.removed.toFixed(3)} s vs CUT-P01 reference 4.38 s (OT-2 words; gated row in score.ts, parked by D74; delta ${(res.removed - 4.38).toFixed(3)} s)`);
   });
 });
