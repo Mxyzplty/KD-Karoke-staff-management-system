@@ -157,6 +157,11 @@ export class PreviewAudio {
     for (const c of this.chunks) if (c.node && c.when <= now) end = Math.max(end, c.when + c.frames / MIX_RATE);
     return now < end + HOLD_MS / 1000;
   }
+  /** A chunk with sound has its node on the fixed mapping, started or not (render/playback.ts start: the clock goes on the
+   *  context; the nodes made during the start's wait sit on this mapping, which follow does not move). */
+  scheduled(): boolean {
+    return this.base !== null && this.ctx.state === 'running' && this.chunks.some(c => !!c.node);
+  }
   /** Stops every node; the scheduler is not used again. */
   stop() {
     this.stopped = true;

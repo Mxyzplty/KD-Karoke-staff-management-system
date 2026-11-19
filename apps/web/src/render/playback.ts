@@ -85,9 +85,11 @@ function clock() {
   return a.ctx !== null && c !== null ? a.t + Math.max(0, c - a.ctx) : a.t + performance.now() - a.perf;
 }
 /** Switches the clock to the context when its sound starts, and back to performance.now when the sound stops, where the
- *  clock is (no step). The sound starts where the picture is: while quiet its mapping follows this clock (sound.follow). */
+ *  clock is (no step). The sound starts where the picture is: while quiet its mapping follows this clock (sound.follow).
+ *  The start's hold counts as loud: the context has not reached the anchor (the mapping's time of t), so the clock holds t. */
 function followContext() {
-  const loud = !!sound?.audible();
+  const c = audioMs(), holding = anchor?.ctx != null && c !== null && c < anchor.ctx;
+  const loud = !!sound?.audible() || holding;
   if (loud === ctxClock) return;
   const t = anchor ? clock() : 0;
   ctxClock = loud;
@@ -442,7 +444,10 @@ async function play() {
 /** The paused frame stays on screen while the visible clips load, the elements made for the next PREMOUNT_MS load their
  *  metadata (so their start-up stalls end before the clock runs) and the first sound chunk renders, at most START_WAIT_MS.
  *  The wait then goes on for M from the sound's begin (sound.begin: its mapping is M later), elements still held; the clock
- *  runs from t at begin + M. A seek during the wait is taken by the first frame. */
+ *  runs from t at begin + M. A seek during the wait is taken by the first frame. With a chunk with sound scheduled (sound.scheduled), the
+ *  clock runs on the context from the mapping's time of t, so a context that renders late (running, currentTime still behind)
+ *  holds the picture rather than leaving it ahead of the sound (F9-R: the T33 Windows run, 61 ms). A sound that starts in a
+ *  later chunk: the clock goes to performance.now once the context reaches t, and back to the context at the sound, aligned. */
 async function start(t: number, token: number) {
   const until = performance.now() + START_WAIT_MS, run = sound = makeSound(host!);
   let held = NaN; // performance.now() at which the clock runs from t (NaN before the sound begins)
@@ -455,7 +460,7 @@ async function start(t: number, token: number) {
     await new Promise(r => setTimeout(r, Number.isNaN(held) ? 16 : Math.min(16, Math.max(0, held - performance.now()))));
     if (token !== startToken) return;
   }
-  followContext(); setAnchor(t); anchor!.perf = held; if (ctxClock) anchor!.ctx = run!.at(t) ?? anchor!.ctx;
+  ctxClock = !!run?.scheduled(); setAnchor(t); anchor!.perf = held; if (ctxClock) anchor!.ctx = run!.at(t)!;
   lastIndex = null; lastSet = t; lastRaf = NaN;
   usePlayback.setState({ running: true });
   frame();
