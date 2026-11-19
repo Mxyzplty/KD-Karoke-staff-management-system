@@ -47,6 +47,14 @@ const resolvedKind = (page: Page) => page.evaluate(async () => {
   const item = activeSession.document.items.find((i: { id: string }) => i.id === 'vid'), asset = await projectStore.row('assets', item.metadata.assetId);
   return (await itemMedia(projectStore, item, asset)).kind as string;
 });
+/** Review 17f1959a finding 2: whether the decoder cache holds the paused frame's source time (framePlan's sourceMs at the playhead) from the
+ *  `kind` source of the clip (render/sources.ts mediaKey form '<assetId>:<kind>'). Only the stage's paused render decodes that frame here. */
+const stageDecoded = (page: Page, kind: 'proxy' | 'original') => page.evaluate(async kind => {
+  const m = '/src/render/model.ts', p = '/src/render/decoder-pool.ts', e = '/src/editor.tsx', v = '/src/editor/view.ts';
+  const { framePlan } = await import(m), { cachedFrame } = await import(p), { activeSession } = await import(e), { view } = await import(v);
+  const doc = activeSession.document, d = framePlan(doc, view().playheadMs).draws.find((x: { item: { id: string } }) => x.item.id === 'vid');
+  return !!d && !!cachedFrame(`${d.item.metadata.assetId}:${kind}`, d.sourceMs);
+}, kind);
 
 test('F10: with the proxy ready, Use Proxy flips the resolved source proxy -> original -> proxy; the shown frame and canvas size stay', async ({ page }) => {
   const d = videoDoc([{ id: 'vid', from: 500, to: 2500, trim: 200, sourceDuration: 3000 }], { duration: 3000 });
@@ -54,14 +62,17 @@ test('F10: with the proxy ready, Use Proxy flips the resolved source proxy -> or
   await expect.poll(() => page.evaluate(async () => {
     const p = '/src/store/database.ts'; const { projectStore } = await import(p);
     return (await projectStore.library()).assets.map((a: { processing_steps?: Record<string, string> }) => a.processing_steps?.proxy);
-  }), { timeout: 90_000, message: 'the proxy step completes' }).toEqual(['complete']);
+  }), { timeout: 60_000, message: 'the proxy step completes' }).toEqual(['complete']);
   await seekMs(page, 1500); await shown(page, 45);
+  await expect.poll(() => stageDecoded(page, 'proxy'), { timeout: 15_000, message: 'the stage drew the paused frame from the proxy' }).toBe(true);
+  await shown(page, 45);
   const size = await canvasSizeOf(page);
   expect(await resolvedKind(page), 'Use Proxy on by default: the proxy is shown').toBe('proxy');
   for (const [useProxy, kind] of [[false, 'original'], [true, 'proxy']] as const) {
     const r = await runtimeCall(page, 'setUseProxy', { itemId: 'vid', useProxy }) as { success: boolean };
     expect(r.success).toBe(true);
     expect(await resolvedKind(page), `after useProxy ${useProxy}: resolved source`).toBe(kind);
+    await expect.poll(() => stageDecoded(page, kind), { timeout: 15_000, message: `after useProxy ${useProxy}: the stage drew from the ${kind}` }).toBe(true);
     await shown(page, 45);
     expect(await runCanvas(page).getAttribute('data-frame'), `after useProxy ${useProxy}: same frame`).toBe('45');
     expect(await canvasSizeOf(page), `after useProxy ${useProxy}: same canvas size`).toEqual(size);

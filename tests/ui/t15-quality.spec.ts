@@ -111,6 +111,8 @@ test('the quality setting is global: survives a reload and carries to another pr
 
 test('Use Proxy off does not change the playing canvas size', async ({ page }) => {
   await open(page);
+  // Audit F10 / review 17f1959a finding 2: the proxy must exist, or Use Proxy on and off both play the original.
+  await expect.poll(() => page.evaluate(async () => { const p = '/src/store/database.ts'; const { projectStore } = await import(p); return (await projectStore.library()).assets.map((a: { processing_steps?: Record<string, string> }) => a.processing_steps?.proxy); }), { timeout: 60_000, message: 'the proxy step completes' }).toEqual(['complete']);
   await setQuality(page, 'half');
   await play(page); const on = await playingSize(page); await pause(page);
   const r = await runtimeCall(page, 'setUseProxy', { itemId: 'vid', useProxy: false }) as { success: boolean };

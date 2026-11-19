@@ -25,8 +25,18 @@ const setDelay = (page: Page, ms: number) => page.evaluate(async ms => { const p
 async function open(page: Page, title: string) {
   await openWithVideos(page, videoDoc([{ id: 'vid', to: SECONDS * 1000, sourceDuration: SECONDS * 1000 }], { duration: SECONDS * 1000 }), { vid: { path: makeClip(SECONDS) } }, title);
   await expect.poll(() => page.evaluate(async () => { const p = '/src/store/database.ts'; const { projectStore } = await import(p); return (await projectStore.library()).assets.every((a: { processing_status: string }) => a.processing_status === 'ready' || a.processing_status === 'failed'); }), { timeout: 60_000 }).toBe(true);
+  // Review 17f1959a finding 1: settle on the source the stage now uses (the proxy, once ready): its frame 0 is decoded, so that re-render's
+  // decode cannot join the paced chain after setDelay, ahead of the seek decode.
+  await expect.poll(() => cached(page, 0), { timeout: 30_000, message: 'frame 0 of the current source is decoded' }).toBe(true);
   await shown(page, 0);
 }
+/** Whether the decoder cache holds source time `ms` of the clip's current source (render/sources.ts mediaKey with the stored asset row). */
+const cached = (page: Page, ms: number) => page.evaluate(async ms => {
+  const s = '/src/render/sources.ts', p = '/src/render/decoder-pool.ts', d = '/src/store/database.ts', e = '/src/editor.tsx';
+  const { mediaKey } = await import(s), { cachedFrame } = await import(p), { projectStore } = await import(d), { activeSession } = await import(e);
+  const item = activeSession.document.items.find((i: { id: string }) => i.id === 'vid'), asset = await projectStore.row('assets', item.metadata.assetId);
+  return !!cachedFrame(mediaKey(item, asset), ms);
+}, ms);
 /** Starts recording every data-exact / data-frame write on run canvas 0. */
 const arm = (page: Page) => page.evaluate(() => {
   const c = document.querySelector('canvas.run[data-run="0"]')!, w = window as any;
@@ -52,6 +62,9 @@ async function playWindow(page: Page) {
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   await page.waitForTimeout(WINDOW);
+  // Review 17f1959a finding 1, positive control: the seek frame's decode (source time 500 ms) has landed while still playing and before the
+  // drain below, so its render's paint, if any, falls inside the recorded window. Decodes are not cancelled, so this holds before and after the fix.
+  await expect.poll(() => cached(page, N * 1000 / FPS), { timeout: 2000, message: 'the seek frame was decoded while playing' }).toBe(true);
   await expect(page.getByRole('button', { name: 'Pause', exact: true }), 'still playing at the end of the window').toBeVisible();
   const w = await written(page, from);
   await setDelay(page, 0); // drain any waiting decode before Pause
