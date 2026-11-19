@@ -318,3 +318,45 @@ test('F10 OPFS: a failure after output.start() took the writer lock (exportFault
   expect({ probe: errors, left: exportFiles(left), sizes }, `export files after the failure: removeEntry probe ${JSON.stringify(errors)}, committed sizes ${JSON.stringify(sizes)}`)
     .toEqual({ probe: { [name]: 'removed by the probe' }, left: [name], sizes: { [name]: 0 } });
 });
+// exportFaults.failFinalize throws from the muxer's onMoov inside output.finalize(); mediabunny's finally then closes every unfinalized
+// target before the export's catch runs (audit F1, review R2; lane A rulings 19 Nov 05:05, 05:09). The flag is read when the Output is built.
+const FINALIZE_FAULT = "const d = '/src/export/decoders.ts'; (await import(d)).exportFaults.failFinalize = true;";
+/** Option (d), this spec only: createWritable of export-*.mp4 returns a stream that forwards write, close and abort to the real
+ *  FileSystemWritableFileStream's writer and counts close and abort in window.__opfsSink (the product only calls getWriter on it). */
+const OPFS_COUNT = `
+  window.__opfsSink = { closed: 0, aborted: 0 };
+  const createWritable = FileSystemFileHandle.prototype.createWritable;
+  FileSystemFileHandle.prototype.createWritable = async function (o) {
+    const real = await createWritable.call(this, o);
+    if (!/^export-.*\\.mp4$/.test(this.name)) return real;
+    const w = real.getWriter();
+    return new WritableStream({ write: c => w.write(c), close: () => { window.__opfsSink.closed++; return w.close(); }, abort: r => { window.__opfsSink.aborted++; return w.abort(r); } });
+  };`;
+/** Committed size of each export-* entry in cutframe/exports (getFile() reads the committed file, never the swap file). */
+const opfsSizes = (page: Page) => page.evaluate(async () => {
+  const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('cutframe', { create: true })).getDirectoryHandle('exports', { create: true });
+  const out: Record<string, number | string> = {};
+  for await (const [name, entry] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemFileHandle]> }).entries()) {
+    if (/^export-/.test(name)) out[name] = await entry.getFile().then(f => f.size, (e: Error) => `${e.name}: ${e.message}`);
+  }
+  return out;
+});
+
+test('F1 finalize fault, handle: a failure inside output.finalize() (exportFaults.failFinalize) fails the export and aborts the handle writable, never closes it (audit F1, review R2 fix)', async ({ page }) => {
+  const { id } = await imageProject(page);
+  failed(await runExport(page, id, {}, `${FINALIZE_FAULT}${SINK_LOG} return { handle };`, false), 'CLIENT_BUG', /exportFaults\.failFinalize/);
+  const sink = await sinkLog(page);
+  expect({ closed: sink.closed, aborted: sink.aborted }, `the handle writable after the failure: ${JSON.stringify(sink)}`).toEqual({ closed: 0, aborted: 1 });
+});
+test('F1 finalize fault, OPFS: a failure inside output.finalize() (exportFaults.failFinalize) aborts the OPFS writable, never closes it: one 0-byte, unlocked export-*.mp4 stays for the sweep, no .crswap (audit F1, review R2 fix; lane A ruling 19 Nov 05:09, option d)', async ({ page }) => {
+  const { id } = await imageProject(page);
+  failed(await runExport(page, id, {}, `${FINALIZE_FAULT}${OPFS_LOG}${OPFS_COUNT} return {};`, false), 'CLIENT_BUG', /exportFaults\.failFinalize/);
+  // The counters first: under 16 MiB nothing reached the file, so a commit and an abort both leave 0 bytes; only close vs abort tells them apart.
+  const counts = await page.evaluate(() => (window as unknown as { __opfsSink: { closed: number; aborted: number } }).__opfsSink);
+  expect(counts, `the OPFS writable after the failure: ${JSON.stringify(counts)}`).toEqual({ closed: 0, aborted: 1 });
+  const sizes = await opfsSizes(page), { created, left, errors } = await opfsAfter(page);
+  expect(created, 'the OPFS sink was used: one export-<ts>.mp4 was created').toEqual([expect.stringMatching(/^export-\d+\.mp4$/)]);
+  const name = created[0];
+  expect({ probe: errors, left: exportFiles(left), sizes }, `export files after the failure: removeEntry probe ${JSON.stringify(errors)}, committed sizes ${JSON.stringify(sizes)}`)
+    .toEqual({ probe: { [name]: 'removed by the probe' }, left: [name], sizes: { [name]: 0 } });
+});
