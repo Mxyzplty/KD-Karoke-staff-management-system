@@ -6,7 +6,7 @@ import type { ProjectStore } from '../store/database';
 import { StoreError } from '../store/model';
 import type { Asset, RecordData } from '../store/model';
 import { mediaError } from '../media/codes';
-import { resolveSource, usesProxy } from '../media/resolver';
+import { previewProxy, resolveSource, usesProxy } from '../media/resolver';
 import { clearGraphics, graphicPicture } from '../mg/frames';
 import { decodeFrame, transientDecodeError } from './decoder-pool';
 import type { SourceRef } from './decoder-pool';
@@ -25,7 +25,7 @@ const ready = new Map<string, ItemMedia>(), readyImages = new Map<string, ImageB
 
 /** The identity of the picture source: asset, proxy or original, and whether the frames are stacked-alpha merged. */
 export const mediaKey = (item: RecordData, asset: Asset | undefined) =>
-  `${item.metadata?.assetId}:${usesProxy(item) && asset?.proxy ? 'proxy' : 'original'}${isStackedAlpha(item) ? ':stacked' : ''}`;
+  `${item.metadata?.assetId}:${previewProxy(item, asset) ? 'proxy' : 'original'}${isStackedAlpha(item) ? ':stacked' : ''}`;
 /** What the item asks for (asset, Use Proxy, stacked-alpha) → the mediaKey last read from the store for it (readyMedia). */
 const current = new Map<string, string>();
 const wanted = (item: RecordData) => `${item.metadata?.assetId}:${usesProxy(item)}:${isStackedAlpha(item)}`;
