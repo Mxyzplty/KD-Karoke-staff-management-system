@@ -113,6 +113,14 @@ test('Use Proxy off does not change the playing canvas size', async ({ page }) =
   await open(page);
   // Audit F10 / review 17f1959a finding 2: the proxy must exist, or Use Proxy on and off both play the original.
   await expect.poll(() => page.evaluate(async () => { const p = '/src/store/database.ts'; const { projectStore } = await import(p); return (await projectStore.library()).assets.map((a: { processing_steps?: Record<string, string> }) => a.processing_steps?.proxy); }), { timeout: 60_000, message: 'the proxy step completes' }).toEqual(['complete']);
+  // Review 17f1959a delta finding 2: playback reads the stage's asset map, which lags the store by a library poll (editor/shell.tsx:48-58); the
+  // paused frame at the playhead cached from the proxy ('<assetId>:proxy', framePlan's sourceMs) proves that map carries the proxy before the "on" play.
+  await expect.poll(() => page.evaluate(async () => {
+    const m = '/src/render/model.ts', p = '/src/render/decoder-pool.ts', e = '/src/editor.tsx', v = '/src/editor/view.ts';
+    const { framePlan } = await import(m), { cachedFrame } = await import(p), { activeSession } = await import(e), { view } = await import(v);
+    const d = framePlan(activeSession.document, view().playheadMs).draws.find((x: { item: { id: string } }) => x.item.id === 'vid');
+    return !!d && !!cachedFrame(`${d.item.metadata.assetId}:proxy`, d.sourceMs);
+  }), { timeout: 15_000, message: 'the stage drew the paused frame from the proxy' }).toBe(true);
   await setQuality(page, 'half');
   await play(page); const on = await playingSize(page); await pause(page);
   const r = await runtimeCall(page, 'setUseProxy', { itemId: 'vid', useProxy: false }) as { success: boolean };

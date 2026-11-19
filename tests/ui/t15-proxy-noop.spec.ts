@@ -69,6 +69,14 @@ test('F10: with the proxy ready, Use Proxy flips the resolved source proxy -> or
   const size = await canvasSizeOf(page);
   expect(await resolvedKind(page), 'Use Proxy on by default: the proxy is shown').toBe('proxy');
   for (const [useProxy, kind] of [[false, 'original'], [true, 'proxy']] as const) {
+    // Review 17f1959a delta finding 1: the stage's asset map lags the store by a library poll (editor/shell.tsx:48-58), so the seek may have cached
+    // original@1200 before the proxy arrived, and proxy@1200 is cached above. Dropping the target source's frames (decoder-pool.ts dropFrames) leaves
+    // only the stage's render after this toggle to satisfy the poll below.
+    await page.evaluate(async kind => {
+      const p = '/src/render/decoder-pool.ts', e = '/src/editor.tsx';
+      const { dropFrames } = await import(p), { activeSession } = await import(e);
+      dropFrames(`${activeSession.document.items.find((i: { id: string }) => i.id === 'vid').metadata.assetId}:${kind}`);
+    }, kind);
     const r = await runtimeCall(page, 'setUseProxy', { itemId: 'vid', useProxy }) as { success: boolean };
     expect(r.success).toBe(true);
     expect(await resolvedKind(page), `after useProxy ${useProxy}: resolved source`).toBe(kind);
