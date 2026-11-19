@@ -12,7 +12,7 @@ import { completed, runExport, type Run } from './t16a-support';
 
 export const PIPELINE_PATH = '/src/export/pipeline.ts';
 /** Repository source pin of apps/web/src/export/pipeline.ts (D39 method §8). */
-export const PIPELINE_SHA256 = 'c676816a683ee80added3d94d762f79730fd56aff370a3d3911f5b77f8694c63';
+export const PIPELINE_SHA256 = 'da390484ca5398bf54e31649da18d75fc05e970d35cbd7dad6c8aeee9996b975';
 /** vendor/roboto/Roboto-Bold.ttf, the bundled caption face. */
 export const FONT_SHA256 = 'baf44ce81636cc927fc27768437e5da853bac699e8aaf832d042f0dfed29b4b4';
 export const ANCHOR = 'const image = ctx.getImageData(0, 0, size.width, size.height);';
