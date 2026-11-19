@@ -136,7 +136,7 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
     const audioSource = audio ? new AudioSampleSource({ codec: audio.codec, bitrate: AUDIO.bitrate }) : null;
     if (audioSource) output.addAudioTrack(audioSource);
     setupFault();
-    await output.start(); started = true;
+    await output.start(); startFault(); started = true;
     encoder = new VideoEncoder({
       output: (chunk, meta) => {
         const data = new Uint8Array(chunk.byteLength); chunk.copyTo(data);
@@ -265,6 +265,8 @@ export async function runExport(o: ExportOptions): Promise<ExportResult> {
 }
 /** Test hook exportFaults.failSetup: a failure after the sink and the output are set up, before the output starts. */
 function setupFault() { if (exportFaults.failSetup) throw new ExportError('CLIENT_BUG', 'Test fault: export setup failed (exportFaults.failSetup).'); }
+/** Test hook exportFaults.failStart: a failure once output.start() has taken the writer lock, before the export counts as started (audit F10). */
+function startFault() { if (exportFaults.failStart) throw new ExportError('CLIENT_BUG', 'Test fault: export start failed (exportFaults.failStart).'); }
 
 type VideoRef = { ref: { key: string; blob: Blob; rotation: 0 | 90 | 180 | 270; stackedAlpha: boolean }; fit: Size | null };
 /** The video draws of a frame, a layout's video cells included (T07). */
