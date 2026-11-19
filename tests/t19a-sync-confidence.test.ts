@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19a audit F4 (landed-audit-t19a l.97-108; lane A 12:01): SYNC_LOW_CONFIDENCE's 0.5 line, pinned from both sides. Xapp
 // refuses confidence < 0.5 (code-level findings §17 :392, part 3 :264); the ticket: fewer than 3 anchor matches or confidence
-// below 0.5 (implementation tickets :814, :334). So exactly 0.5 is accepted and anything under it is refused.
+// below 0.5 (implementation tickets :827, :347). So exactly 0.5 is accepted and anything under it is refused.
 // sync.ts: confidence = matches / max(1, min(|a|, |b|)) × max(0, 1 − residual / 0.2). Every row but d matches k words at one
 // offset with zero residual (the factor is exactly 1), so confidence = k / n: words are on a 0.5 s grid (source from 2 s, target
 // from 0.5 s), every time and difference is exact in binary, each difference is 1.5, and the residual is median([0, …]) = 0.
@@ -22,7 +22,7 @@ it('a: 3 matches of 7, confidence 3/7 = 0.428…: refused (43%)', () => {
 });
 
 it('a2: 50 matches of 101, confidence 50/101 = 0.49505: refused, the message rounding to 50% (audit nit l.108)', () => {
-  expect(() => syncOffset(...pair(50, 101))).toThrowError(refusal(50, 50 / 101)); // Math.round(49.505) = 50
+  expect(() => syncOffset(...pair(50, 101))).toThrowError(refusal(50, 50 / 101)); // Math.round(49.505) = 50; nit open (audit l.108)
 });
 
 it('b: 3 matches of 6, confidence exactly 0.5: accepted', () => {
