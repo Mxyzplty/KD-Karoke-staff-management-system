@@ -26,12 +26,20 @@ const ready = new Map<string, ItemMedia>(), readyImages = new Map<string, ImageB
 /** The identity of the picture source: asset, proxy or original, and whether the frames are stacked-alpha merged. */
 export const mediaKey = (item: RecordData, asset: Asset | undefined) =>
   `${item.metadata?.assetId}:${usesProxy(item) && asset?.proxy ? 'proxy' : 'original'}${isStackedAlpha(item) ? ':stacked' : ''}`;
-export function itemMedia(store: ProjectStore, item: RecordData, asset: Asset | undefined): Promise<ItemMedia> {
+/** What the item asks for (asset, Use Proxy, stacked-alpha) → the mediaKey last read from the store for it (readyMedia). */
+const current = new Map<string, string>();
+const wanted = (item: RecordData) => `${item.metadata?.assetId}:${usesProxy(item)}:${isStackedAlpha(item)}`;
+/** The item's preview source. The key and the value come from one asset row read from the store, never from the caller's row,
+ *  which can lag it (T15 audit F10: a row without its proxy yet cached the proxy under '<id>:original'). `_asset` is unused,
+ *  kept for the callers. */
+export async function itemMedia(store: ProjectStore, item: RecordData, _asset?: Asset): Promise<ItemMedia> {
+  const id = item.metadata?.assetId as string | undefined, asset = id ? await store.row<Asset>('assets', id) : undefined;
   const key = mediaKey(item, asset);
+  current.set(wanted(item), key);
   let m = media.get(key);
   if (!m) {
     m = (async () => {
-      const s = await resolveSource(store, item, 'preview'), v = asset?.media?.video, original = s.kind === 'original', stacked = isStackedAlpha(item);
+      const s = await resolveSource(store, item, 'preview', asset), v = asset?.media?.video, original = s.kind === 'original', stacked = isStackedAlpha(item);
       const w = v?.displayWidth ?? s.width, h = v?.displayHeight ?? s.height;
       const result: ItemMedia = {
         ref: { key, blob: s.blob, rotation: original ? v?.rotation ?? 0 : 0, stackedAlpha: stacked },
@@ -47,7 +55,8 @@ export function itemMedia(store: ProjectStore, item: RecordData, asset: Asset | 
   }
   return m;
 }
-export const readyMedia = (item: RecordData, asset: Asset | undefined) => ready.get(mediaKey(item, asset));
+/** The settled source itemMedia last resolved for what the item asks for (the store's row, as itemMedia; `_asset` is unused). */
+export const readyMedia = (item: RecordData, _asset?: Asset) => { const key = current.get(wanted(item)); return key === undefined ? undefined : ready.get(key); };
 
 /** The stored SVG bytes as a data URL: an object URL taints the canvas when the SVG has a foreignObject (D97). */
 async function svgDataUrl(blob: Blob) {
@@ -126,6 +135,6 @@ export async function picture(store: ProjectStore, d: Draw, asset: Asset | undef
 export function clearSources() {
   for (const u of urls.values()) URL.revokeObjectURL(u);
   for (const b of readyImages.values()) if (b !== 'failed') b.close();
-  media.clear(); images.clear(); urls.clear(); ready.clear(); readyImages.clear();
+  media.clear(); images.clear(); urls.clear(); ready.clear(); readyImages.clear(); current.clear();
   clearGraphics();
 }
