@@ -272,7 +272,7 @@ function finalizeFault(): { onMoov?: () => never } {
   return exportFaults.failFinalize ? { onMoov: () => { throw new ExportError('CLIENT_BUG', 'Test fault: export finalize failed (exportFaults.failFinalize).'); } } : {};
 }
 /** Audit F1/F10: releases the sink after a failure or a stop, for both paths. The writable is aborted on every path, so a partial
- *  file is never committed. The output is cancelled after the abort (its close then meets an errored stream), and only once start()
+ *  file is never committed. The output is cancelled after the abort (its close, a no-op, commits nothing), and only once start()
  *  was entered: mediabunny leaves 'pending' synchronously in start(), before it takes the writer lock. Stopped (cancel, supersede):
  *  the OPFS entry is removed too; on a failure its 0-byte entry stays for the sweep. A picked file handle is never removed. */
 async function abandon(o: ExportOptions, e: unknown, output: Output | null, sink: Sink | null) {
