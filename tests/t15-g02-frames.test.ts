@@ -146,7 +146,7 @@ describe.skipIf(!hasStore)('G-02 frames: round trip through the real session (se
 
 /** Any failed test or suite in the file (vitest 5 hands afterAll the file). */
 const anyFailed = (s: Readonly<RunnerTestSuite | RunnerTestFile>): boolean => s.tasks.some(t => t.result?.state === 'fail' || ('tasks' in t && anyFailed(t)));
-afterAll(async (_, file) => {
+afterAll(async ({}, file) => {
   if (!root) return;
   if (anyFailed(file)) console.log(`t15-g02-frames: a test failed; kept ${root}`);
   else await rm(root, { recursive: true, force: true });
