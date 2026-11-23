@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { Asset, ProjectDocument } from '../apps/web/src/store/model';
 import type { GainMode } from '../apps/web/src/audio/gain';
 import { mixFrames, PER_MS } from '../apps/web/src/audio/mix';
-import { renderAudio } from '../apps/web/src/audio/stage';
+import { rangeFrames, renderAudio } from '../apps/web/src/audio/stage';
 import { CHUNK_S, CHUNKED_ABOVE_S, mixStage, SAMPLE_RATE } from '../apps/web/src/export/audio';
 import type { AudioStage } from '../apps/web/src/export/audio';
 import { remuxCandidate } from '../apps/web/src/export/remux';
@@ -87,12 +87,12 @@ describe('export = parity where no keyframes differ (T13 audit F5)', () => {
   const doc = mkDoc([mkTrack('a1'), mkTrack('a2', { volume: 0.5 }), mkTrack('a3', { muted: true }), mkTrack('a4')], [
     mkClip('c1', 'a1', 0, 2500, { properties: volume(2) }), mkClip('c2', 'a2', 1000, 3000, { playbackRate: 2 }),
     mkClip('c3', 'a1', 3000, 4500, { ...remap, properties: volume(0.8) }), mkClip('c4', 'a4', 4500, 6000, { playbackRate: 1.5, keepPitch: true }), mkClip('c5', 'a3', 0, 6000)]);
-  const source = synthSource({ c1: bursty([[0.5, 0.6], [1.5, 1.7]]), c2: sine(330, 0.5), c3: sine(700, 0.5), c4: sine(300, 0.5), c5: sine(200) }, 14);
+  const source = synthSource({ c1: bursty([[0.5, 0.6], [1.5, 1.7]]), c2: [sine(330, 0.5), sine(550, 0.4)], c3: sine(700, 0.5), c4: sine(300, 0.5), c5: sine(200) }, 14); // c2 two channels: ch 1 is not ch 0 (mix.ts:35)
   for (const [id, baseMs] of [['a0', 0], ['a1001', 1001 / 30]] as const) it(`${id}: no volume keyframes, the limiter working hard: the export equals renderAudio parity, sample for sample (range from ${baseMs.toFixed(3)} ms)`, async () => {
     const { total, out } = await pipelineCalls(() => mixStage(source), doc, baseMs, 6), start = Math.round(baseMs * PER_MS), at = (ms: number) => Math.round(ms * PER_MS) - start;
     expect(out).toHaveLength(1);
     const ref = await renderAudio({ doc, fromMs: baseMs, toMs: baseMs + total / SAMPLE_RATE * 1000, source, mode: 'parity' });
-    for (const ch of [0, 1] as const) { expect(ref.channels[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref.channels[ch])).toBe(0); }
+    for (const ch of [0, 1] as const) { expect(out[0][ch]).toHaveLength(total); expect(ref.channels[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref.channels[ch])).toBe(0); }
     const raw = await mixFrames(doc, start, total, { source });
     expect(Math.max(peak(raw[0]), peak(raw[1]))).toBeGreaterThan(CEILING); // the limiter engages
     for (const ch of [0, 1] as const) expect(peak(out[0][ch])).toBeLessThanOrEqual(CEILING * (1 + 1e-6)); // float32 rounding of the gain
@@ -100,25 +100,31 @@ describe('export = parity where no keyframes differ (T13 audit F5)', () => {
     expect(rms(out[0][0], at(4500) + 4800, at(6000) - 4800), 'c4 (keep pitch) sounds').toBeGreaterThan(0);
   }, 60_000);
 
-  // One eased pair, quiet (0.2 × gain ≤ 1 < ceiling), so the limiter is idle: need = 1 (limiter.ts:27), target 1, g stays
-  // exactly 1 (:38), and :39 scales in place with no output delay, so output frame n is mix frame n. The keyframe at property
-  // time 2000 sits at toTimelineMs (timeline/properties.ts:158) and the mix reads the gain at f / PER_MS (mix.ts:91): from
-  // the first such f both modes give exactly tg × 1² (default: curve.ts:21 at property time, gain.ts:28; parity: gain.ts:39).
+  // One eased pair, quiet (peak 0.2 × gain ≤ 0.2 < ceiling), so the limiter is idle: need = 1 (limiter.ts:27), target 1, g
+  // stays exactly 1 (:38), and :39 scales in place with no output delay, so output frame n is mix frame n. The keyframe at
+  // property time 2000 sits at toTimelineMs (timeline/properties.ts:158) and the mix reads the gain at f / PER_MS (mix.ts:91):
+  // from the first such f both modes give exactly tg × 1² (default: curve.ts:21 at property time, gain.ts:28; parity:
+  // gain.ts:39). k1 is two channels of the same 440 Hz at 0.2 and 0.15, so the frame before the boundary is off zero in both.
   const clip = mkClip('k1', 'a1', 0, 4000, { properties: volume(1, [kf(0, 0, 'easeInOut'), kf(2000, 1, 'easeInOut')]) });
-  const kdoc = mkDoc([mkTrack('a1')], [clip]), ksource = synthSource({ k1: sine(440, 0.2) }, 5);
+  const kdoc = mkDoc([mkTrack('a1')], [clip]), ksource = synthSource({ k1: [sine(440, 0.2), sine(440, 0.15)] }, 5);
   const keyed = async (mode?: GainMode) => (await renderAudio({ doc: kdoc, fromMs: 0, toMs: 4000, source: ksource, mode })).channels;
-  it('c1: eased volume keyframes: the export equals renderAudio in default mode (no mode), sample for sample', async () => {
+  const atMs = toTimelineMs(clip, 2000); let b = Math.ceil(atMs * PER_MS); while (b / PER_MS < atMs) b++; while ((b - 1) / PER_MS >= atMs) b--;
+  const boundary = b - rangeFrames(0, 4000).start; // the first output frame whose mix frame reads the gain at or after the keyframe
+  it('e1: eased volume keyframes: the export equals renderAudio in default mode (no mode), sample for sample', async () => {
     const { total, out } = await pipelineCalls(() => mixStage(ksource), kdoc, 0, 4), ref = await keyed();
     expect(out).toHaveLength(1);
-    for (const ch of [0, 1] as const) { expect(ref[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref[ch])).toBe(0); }
+    for (const ch of [0, 1] as const) { expect(out[0][ch]).toHaveLength(total); expect(ref[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref[ch])).toBe(0); }
   }, 60_000);
-  it('c2: eased volume keyframes: the export differs from renderAudio parity before the last keyframe (output frames) and equals it from there to the end', async () => {
+  it('e2: eased volume keyframes: the export differs from renderAudio parity before the last keyframe (output frames) and equals it from there to the end', async () => {
     const { total, out } = await pipelineCalls(() => mixStage(ksource), kdoc, 0, 4), ref = await keyed('parity'), raw = await mixFrames(kdoc, 0, total, { source: ksource });
     expect(Math.max(peak(raw[0]), peak(raw[1]))).toBeLessThan(CEILING); // the limiter stays idle
-    const atMs = toTimelineMs(clip, 2000); let b = Math.ceil(atMs * PER_MS); while (b / PER_MS < atMs) b++; while ((b - 1) / PER_MS >= atMs) b--;
-    const boundary = b - 0; // relative to the range start, frame round(0 × 48) = 0
     expect(boundary > 0 && boundary < total).toBe(true);
-    for (const ch of [0, 1] as const) { expect(ref[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref[ch], 0, boundary)).toBeGreaterThan(0); expect(mismatches(out[0][ch], ref[ch], boundary, total)).toBe(0); }
+    for (const ch of [0, 1] as const) { expect(out[0][ch]).toHaveLength(total); expect(ref[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref[ch], 0, boundary)).toBeGreaterThan(0); expect(mismatches(out[0][ch], ref[ch], boundary, total)).toBe(0); }
+  }, 60_000);
+  it('e3: eased volume keyframes: the last output frame before the boundary still differs from renderAudio parity (the boundary is not late)', async () => {
+    const { total, out } = await pipelineCalls(() => mixStage(ksource), kdoc, 0, 4), ref = await keyed('parity');
+    expect(boundary > 0 && boundary < total).toBe(true);
+    for (const ch of [0, 1] as const) { expect(out[0][ch]).toHaveLength(total); expect(ref[ch]).toHaveLength(total); expect(mismatches(out[0][ch], ref[ch], boundary - 1, boundary)).toBe(1); }
   }, 60_000);
 });
 
