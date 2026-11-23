@@ -121,7 +121,7 @@ const PAGE_CAPTURE = `async ({ doc, input, assetId, refs, boxes }) => {
 }`;
 
 type PageFrame = { jpeg: string; width: number; height: number; hist?: number[]; counter?: { ours: string; theirs: string } };
-type PageResult = { refused: { [key: string]: Json } } | { refused?: undefined; text: { frames: { timestamp: number; frame: number }[] }; frames: PageFrame[] };
+type PageResult = { refused: { [key: string]: Json } } | { refused?: undefined; text: { frames: { timestamp: number; frame: number; notRendered?: string[]; errors?: Json[] }[] }; frames: PageFrame[] };
 type Session = { s1: string; capture: (arg: { doc: ProjectDocument; input: Json; refs: (string | null)[]; boxes: (Box | null)[] }) => Promise<PageResult> };
 type Box = { x: number; y: number; w: number; h: number };
 async function session<T>(o: FramesOptions, serve: (name: string) => string | undefined, run: (s: Session) => Promise<T>): Promise<T> {
@@ -211,6 +211,10 @@ export function compareFrames(referenceDir: string, unit: FrameTimeUnit, o: Fram
           const row: { [key: string]: Json } = { file: r.file, step: c.id, state: c.state, timestamp: r.timestamp, frame: res.text.frames[k].frame,
             size: [f.width, f.height], storedSize: [theirs.width, theirs.height], encoder: jpegInfo(ours).encoder === theirs.encoder ? 'same' : 'different' };
           rows.push(row);
+          // A frame captureFrame could not render (capture.ts notRendered / errors, T15 F6) is that diff, not a pixel or counter
+          // one: its picture is a grey fill (T15 audit F9).
+          const { notRendered, errors } = res.text.frames[k];
+          if (notRendered?.length) { Object.assign(row, { notRendered, ...errors ? { errors } : {} }); d.push({ part: 'frame', path: `${at}.notRendered`, expected: [], actual: notRendered }); continue; }
           if (!f.hist) { d.push({ part: 'frame', path: `${at}.size`, expected: [theirs.width, theirs.height], actual: [f.width, f.height] }); continue; }
           const over = f.hist.slice(FRAME_LEVEL_TOLERANCE + 1).reduce((a, b) => a + b, 0), st = histStats(f.hist);
           Object.assign(row, { pixelsOver: over, mean: st.mean, p95: st.p95, max: st.max });
@@ -239,6 +243,9 @@ export async function renderCaptures(captures: G02Capture[], o: FramesOptions = 
     for (const c of captures) {
       const res = await s.capture({ doc: onUpload(c.doc), input: c.input, refs: [], boxes: [] });
       if (res.refused) throw Error(`captureFrame ${c.id} refused: ${JSON.stringify(res.refused)}`);
+      // A frame that did not render is never written as a stored frame (T15 audit F9).
+      const missed = res.text.frames.filter(f => f.notRendered?.length);
+      if (missed.length) throw Error(`captureFrame ${c.id} did not render: ${missed.map(f => `${f.timestamp} s: ${f.notRendered!.join('; ')}`).join(' | ')}`);
       res.text.frames.forEach((f, k) => out.push({ id: c.id, state: c.state, timestamp: f.timestamp, jpeg: Buffer.from(res.frames[k].jpeg, 'base64') }));
     }
     return out;
