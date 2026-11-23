@@ -10,7 +10,7 @@
 // T15 audit F9 (red-first, D115): 4 and 5 inject two decode timeouts (decoder-pool.ts decoderFaults, through FramesOptions.faults) on the compare
 // side and the stored side; oracle: a frame captureFrame reports as not rendered (capture.ts notRendered) is not a frame to compare (F9 confirm §5).
 // A failing run keeps root (the reports and frames) and prints its path; a green run removes it.
-import { afterAll, beforeAll, describe, expect, it, type File, type Suite } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, type RunnerTestFile, type RunnerTestSuite } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -145,7 +145,7 @@ describe.skipIf(!hasStore)('G-02 frames: round trip through the real session (se
 });
 
 /** Any failed test or suite in the file (vitest 5 hands afterAll the file). */
-const anyFailed = (s: Readonly<Suite | File>): boolean => s.tasks.some(t => t.result?.state === 'fail' || ('tasks' in t && anyFailed(t)));
+const anyFailed = (s: Readonly<RunnerTestSuite | RunnerTestFile>): boolean => s.tasks.some(t => t.result?.state === 'fail' || ('tasks' in t && anyFailed(t)));
 afterAll(async (_, file) => {
   if (!root) return;
   if (anyFailed(file)) console.log(`t15-g02-frames: a test failed; kept ${root}`);
