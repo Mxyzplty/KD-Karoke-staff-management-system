@@ -7,12 +7,15 @@
 // tickets l.69, checked by eye (2: F2 at 0.516667 s reads 5 and 0.75 s reads 11); coordinator decision + T00 harness runbook l.50, the unit of <t>
 // in frames/F1-<t>.jpg is undocumented so no default exists (4, 5).
 // The browser tests (1-3) need the fixture store (S1, checked against the manifest's size and sha256) and take about a minute each.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+// T15 audit F9 (red-first, D115): 4 and 5 inject two decode timeouts (decoder-pool.ts decoderFaults, through FramesOptions.faults) on the compare
+// side and the stored side; oracle: a frame captureFrame reports as not rendered (capture.ts notRendered) is not a frame to compare (F9 confirm §5).
+// A failing run keeps root (the reports and frames) and prints its path; a green run removes it.
+import { afterAll, beforeAll, describe, expect, it, type File, type Suite } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { compareFrames, matchFrames, renderCaptures } from '../parity/g02-frames';
+import { compareFrames, matchFrames, renderCaptures, type FramesOptions } from '../parity/g02-frames';
 import { runG02, type G02Capture } from '../parity/g02';
 import { writeSyntheticG02 } from '../parity/g02-synthetic';
 import { STORE, hasStore } from './media-fixtures';
@@ -22,7 +25,7 @@ const T = 240_000;
 let root: string, ref: string, opts: Omit<Parameters<typeof runG02>[1], 'output' | 'frames'>, recorded: G02Capture[];
 type Report = Awaited<ReturnType<typeof runG02>>;
 const frameSteps = (r: Report) => r.parts.flatMap(p => p.steps).filter(s => s.tool === 'captureFrame');
-const run = (dir: string, out: string) => runG02(dir, { ...opts, output: path.join(root, out), frames: compareFrames(dir, 's', { store: STORE }) });
+const run = (dir: string, out: string, faults?: FramesOptions['faults']) => runG02(dir, { ...opts, output: path.join(root, out), frames: compareFrames(dir, 's', { store: STORE, faults }) });
 const stored = [['F1', 0], ['F1', 0.5], ['F2', 0.516667], ['F2', 0.75]] as const;
 
 beforeAll(async () => {
@@ -127,6 +130,24 @@ describe.skipIf(!hasStore)('G-02 frames: round trip through the real session (se
     expect(diffs[0].actual as number).toBeGreaterThan(0);
     expect(r.status).toBe('failed');
   }, T);
+
+  // Two hangs fail the first frame's request and its one retry (sources.ts picture; decoder-pool.ts request), so F1-0 is drawn grey.
+  it('4. a compare-side decode failure is a C00 diff ending .notRendered that names the timeout, not a pixel or counter diff', async () => {
+    const r = await run(ref, 'out-fault', { decodeTimeouts: 2 });
+    const diffs = frameSteps(r).find(s => s.id === 'C00')!.diffs, d = diffs.find(x => x.path.endsWith('.notRendered'));
+    expect(d, `C00 diffs: ${JSON.stringify(diffs.map(x => x.path))}`).toBeDefined();
+    expect(JSON.stringify(d!.actual)).toMatch(/could not be decoded: .*timed out/);
+  }, T);
+
+  it('5. a stored-side decode failure rejects the run ("did not render"); a grey frame is never written as the reference', async () => {
+    await expect(renderCaptures(recorded, { store: STORE, faults: { decodeTimeouts: 2 } })).rejects.toThrow(/did not render/);
+  }, T);
 });
 
-afterAll(async () => { if (root) await rm(root, { recursive: true, force: true }); });
+/** Any failed test or suite in the file (vitest 5 hands afterAll the file). */
+const anyFailed = (s: Readonly<Suite | File>): boolean => s.tasks.some(t => t.result?.state === 'fail' || ('tasks' in t && anyFailed(t)));
+afterAll(async (_, file) => {
+  if (!root) return;
+  if (anyFailed(file)) console.log(`t15-g02-frames: a test failed; kept ${root}`);
+  else await rm(root, { recursive: true, force: true });
+});

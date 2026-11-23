@@ -144,9 +144,11 @@ async function session<T>(o: FramesOptions, serve: (name: string) => string | un
     });
     await page.goto(`${base}__g02/page`);
     const assetId = await page.evaluate(`(${PAGE_UPLOAD})(${JSON.stringify({ name: path.basename(S1_FILE) })})`) as string;
-    let reloaded = false;
+    let reloaded = false, armed = !o.faults?.decodeTimeouts;
     page.on('framenavigated', f => { if (f === page.mainFrame()) reloaded = true; });
     return await run({ s1, capture: async arg => {
+      // Test hook (T15 audit F9): decoder-pool.ts decoderFaults, set in this page right before its first capture.
+      if (!armed) { armed = true; await page.evaluate(`(async n => { (await import('/src/render/decoder-pool.ts')).decoderFaults.timeouts = n; })(${o.faults!.decodeTimeouts})`); }
       const r = await page.evaluate(`(${PAGE_CAPTURE})(${JSON.stringify({ ...arg, assetId })})`) as PageResult;
       if (reloaded) throw Error('The capture page reloaded during the run (Vite re-optimised its dependencies); run again');
       return r;
@@ -182,8 +184,9 @@ const histStats = (h: number[]) => {
   return { mean: sum / n, p95, max };
 };
 
-/** `store`: the fixture store (default CUTFRAME_FIXTURES); `port`: the Vite port (default: any free one). */
-export type FramesOptions = { store?: string; port?: number };
+/** `store`: the fixture store (default CUTFRAME_FIXTURES); `port`: the Vite port (default: any free one); `faults` (tests only):
+ *  `decodeTimeouts` sets decoder-pool.ts decoderFaults.timeouts in this side's page before its first capture (unset: none). */
+export type FramesOptions = { store?: string; port?: number; faults?: { decodeTimeouts?: number } };
 /** The G-02 frames comparison for runG02 (`frames` option). Our JPEGs are written to <out>/frames/ under the stored names;
  *  each frame's row (sizes, encoder, pixels over the tolerance, mean / p95 / max level difference, counter readings) goes in
  *  the report's `frames` summary. */
