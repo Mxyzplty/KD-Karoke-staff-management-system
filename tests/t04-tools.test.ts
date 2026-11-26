@@ -537,6 +537,18 @@ describe('T04 F5 (D115): result messages in Xapp\'s form (RC 9.2 l.2726–2729, 
   });
 });
 
+// data.ops follows the ticket name (T04 notes l.199); RC 10.8 l.3045 says only that every success "returns `ops`", one { property, op } per property.
+describe('T04 F5b: writeKeyframes data.ops, one { property, op } per property (RC 10.8 l.3045–3052)', () => {
+  it('replace of 3 is one "replace" op (RC 10.8 l.3048, l.3051: A00 / U00 / R00)', () => {
+    const e = editor(), r = wk(e, { borderWidth: { replace: [{ time: 0, value: 1 }, { time: 1, value: 2 }, { time: 2, value: 3 }] } });
+    expect(r.success).toBe(true); expect(r.data.ops).toEqual([{ property: 'borderWidth', op: 'replace' }]);
+  });
+  it('add plus update on one property is one "upsert" op (RC 10.8 l.3050–3051, U05; lane R (g) via lane A 12:16)', () => {
+    const e = editor(bw(kf(2000, 3))), r = wk(e, { borderWidth: { add: [{ time: 1, value: 2 }], update: [{ time: 2, value: 4 }] } });
+    expect(r.success).toBe(true); expect(r.data.ops).toEqual([{ property: 'borderWidth', op: 'upsert' }]);
+  });
+});
+
 describe('editProperties: remaining codes and strings (provisional where the wording is Cutframe\'s own)', () => {
   const ed = (properties: Record<string, unknown>, id = 'vid', doc?: ProjectDocument) => { const e = editor(doc), before = json(e.doc); return { e, before, r: call(e, 'editProperties', { itemId: id, properties }) }; };
   it('text keys on a text item are written by T05 (one undo entry); on a caption → T09; colors / media → T22', () => {
