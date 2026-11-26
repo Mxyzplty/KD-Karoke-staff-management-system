@@ -114,6 +114,27 @@ describe('G-02 replay support: every perturbation of the stored reference fails 
       const at = await folder(); await edit(at.dir, 'K72', j => { j.details.errors[0].path = '$.payload.positionY.remove'; }); await expectOnlyFails(at, 'K72');
     });
   });
+
+  // T04 F5b: `ops` joins the compared call fields. RC 10.8 l.3045–3046: every writeKeyframes success returns `ops`, one
+  // { property, op } per property; g02.ts l.10–11: call fields are compared wherever the stored result carries them (Xapp's
+  // envelope position is not recorded, so the stored ops go in `data` beside ours). K01 is `positionY: { replace: [2 entries] }`: ours is "replace".
+  describe('call result ops (<id>.json, T04 F5b)', () => {
+    it('4r. ops (K01 stored [{ positionY, upsert }], ours [{ positionY, replace }]): K01 fails with one call diff at path "ops" (RC 10.8 l.3045–3046)', async () => {
+      const f = await folder(); await edit(f.dir, 'K01', j => { j.data.ops = [{ property: 'positionY', op: 'upsert' }]; });
+      const report = await expectOnlyFails(f, 'K01');
+      expect(step(report, 'K01').diffs).toEqual([{ part: 'call', path: 'ops', expected: [{ property: 'positionY', op: 'upsert' }], actual: [{ property: 'positionY', op: 'replace' }] }]);
+    });
+    it('4s. guard: K01 stored ops equal to ours ([{ positionY, replace }]) gives no ops diff and nothing fails (RC 10.8 l.3051: a replace gives one "replace" op)', async () => {
+      const f = await folder(); await edit(f.dir, 'K01', j => { j.data.ops = [{ property: 'positionY', op: 'replace' }]; });
+      const report = await run(f);
+      expect(failedIds(report)).toEqual([]); expect(step(report, 'K01').status).toBe('passed'); expect(step(report, 'K01').diffs.some(d => d.path === 'ops')).toBe(false);
+    });
+    it('4t. guard: ops absent from the stored result (the synthetic K01 as written) is not compared, though ours carries ops (g02.ts l.10–11)', async () => {
+      const f = await folder(); expect(JSON.stringify(await readRecord(f.dir, 'K01'))).not.toContain('"ops'); // precondition: no stored ops
+      const report = await run(f);
+      expect(failedIds(report)).toEqual([]); expect(step(report, 'K01').status).toBe('passed'); expect(step(report, 'K01').diffs.some(d => d.path === 'ops')).toBe(false);
+    });
+  });
 });
 
 describe('G-02 replay support: schema refusals are deferred to T18 (results §4 rule 1)', () => {
