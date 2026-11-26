@@ -150,8 +150,14 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
   // inferred from code only). The effect and mask wording stays Cutframe's own (open).
   const said = fx || mask ? `Keyframes written on '${i.id}'${fx ? ` effect '${args.effectId}'` : ''}: ${counts}.`
     : names.length === 1 ? `writeKeyframes: ${names[0]} updated (1 op)` : `writeKeyframes: ${names.length} properties updated (${names.length} ops)`;
+  // T04 F5b: a plain property write returns Xapp's ops, one { property, op } per property in payload order (RC 10.8
+  // l.3045–3052): replace wins ("clear" when empty), else add / update → "upsert", plus remove → "upsert+remove". Effect and
+  // mask writes return none (open).
+  const opOf = (ops: RecordData) => ops.replace ? (ops.replace.length ? 'replace' : 'clear')
+    : (ops.add?.length || ops.update?.length) ? (ops.remove?.length ? 'upsert+remove' : 'upsert') : 'remove';
+  const opList = fx || mask ? undefined : Object.entries<RecordData>(payload).map(([property, ops]) => ({ property, op: opOf(ops) }));
   return { success: true, message: `${said}${warnings.length ? ` Warnings: ${warnings.join(' ')}` : ''}`,
-    data: { itemId: i.id, ...(fx ? { effectId: args.effectId } : {}), keyframes: tracks, resolvedKeyframes: resolved, ...(warnings.length ? { warnings } : {}) } };
+    data: { itemId: i.id, ...(fx ? { effectId: args.effectId } : {}), keyframes: tracks, resolvedKeyframes: resolved, ...(opList ? { ops: opList } : {}), ...(warnings.length ? { warnings } : {}) } };
 }
 
 // ---- setTimeRemap.
