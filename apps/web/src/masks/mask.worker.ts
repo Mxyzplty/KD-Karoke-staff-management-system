@@ -43,7 +43,7 @@ async function seeder(): Promise<Foreground> {
 }
 /** T19a's Florence-2, loaded only for a text prompt: the phrase's first box on a picture. */
 async function ground(picture: Picture, prompt: string): Promise<[number, number, number, number]> {
-  const box = await (vision ??= new (await import('../analysis/models')).LocalModels({ modelRoot: init.root, wasm: init.wasm })).ground(picture, prompt).catch((e: Error) => { throw new MaskError(MASK_CODES.unavailable, e.message); });
+  const box = await (vision ??= new (await import('../analysis/models')).LocalModels({ modelRoot: init.root, wasm: init.wasm, device: 'wasm' })).ground(picture, prompt).catch((e: Error) => { throw new MaskError(MASK_CODES.unavailable, e.message); });
   if (!box) throw new MaskError(MASK_CODES.failed, `Nothing on this frame matches "${prompt}". Describe it differently or draw strokes.`);
   return box;
 }
