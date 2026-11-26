@@ -357,9 +357,9 @@ describe('writeKeyframes: stored order (findings part 2 §41 l.569–571: replac
     const r = wk(e, { borderWidth: { add: [{ time: 1, value: 4 }, { time: 2, delta: 1 }, { time: 3, factor: 2 }, { time: 5 }] } });
     expect(r.data.resolvedKeyframes.borderWidth.map((x: any) => [x.time, x.source])).toEqual([[1, 'value'], [2, 'delta'], [3, 'factor'], [5, 'hold']]);
   });
-  it('provisional: success wording "Keyframes written on \'vid\': borderWidth (2)." with data.keyframes as the keyframes block entry (stored order, timeline seconds)', () => {
+  it('success wording "writeKeyframes: borderWidth updated (1 op)" (RC 9.2 l.2726, 10.8 l.3053) with data.keyframes as the keyframes block entry (stored order, timeline seconds)', () => {
     const e = editor(), r = wk(e, { borderWidth: { replace: [{ time: 2, value: 4 }, { time: 1, value: 2 }] } });
-    expect(r.message).toBe("Keyframes written on 'vid': borderWidth (2).");
+    expect(r.message).toBe('writeKeyframes: borderWidth updated (1 op)');
     expect(r.data).toMatchObject({ itemId: 'vid', keyframes: { borderWidth: { defaultValue: 0, keyframeCount: 2, keyframes: [{ timelineSeconds: 1, value: 2 }, { timelineSeconds: 2, value: 4 }] } } });
   });
   it('provisional: a property left empty reports { defaultValue, keyframeCount: 0, keyframes: [] }; {timeRemap:{replace:[]}} clears the curve to null', () => {
@@ -409,16 +409,16 @@ describe('writeKeyframes: remaining refusals (error codes §6; provisional where
     const { e, before } = fresh(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5, easing: 'wobble' }] } });
     refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^\[opacity\.add\[0\]\] easing 'wobble' not valid\. Options: /);
     const h = wk(e, { opacity: { update: [{ time: 1, value: 0.5, outHandle: [2, 0] }] } });
-    refused(e, before, h, 'INVALID_BEZIER_HANDLE'); expect(h.message).toBe('[opacity.update[0]] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
+    refused(e, before, h, 'INVALID_BEZIER_HANDLE'); expect(h.message, 'update entry: [add/update] is inferred for update (lane R via lane A 12:16)').toBe('[add/update] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
   });
   it('INVALID_RESOLVED_KEYFRAME_VALUE: a factor that overflows to a non-finite value (message names the entry path)', () => {
     const e = editor(withVid({ properties: { positionY: prop([], 1e300) } })), before = json(e.doc);
     const r = wk(e, { positionY: { add: [{ time: 1, factor: 1e10 }] } });
     refused(e, before, r, 'INVALID_RESOLVED_KEYFRAME_VALUE'); expect(r.message).toBe('[positionY.add[0]] positionY resolved to a non-finite value.');
   });
-  it('TIME_OUT_OF_BOUNDS exact message: "[<path>] keyframe at <t>s outside item bounds (<a>s - <b>s)." with the item bounds in timeline seconds', () => {
+  it('TIME_OUT_OF_BOUNDS exact message: "[add/update] keyframe at <t>s outside item bounds (<a>s - <b>s)." with the item bounds in timeline seconds', () => {
     const { e, before } = fresh(), r = wk(e, { opacity: { add: [{ time: 11, value: 0.5 }] } });
-    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[opacity.add[0]] keyframe at 11s outside item bounds (0s - 10s).');
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[add/update] keyframe at 11s outside item bounds (0s - 10s).');
   });
   it('provisional: payload missing, empty or not an object → MISSING_PARAM "payload is required"', () => {
     for (const payload of [undefined, {}, [], 'x']) { const { e, before } = fresh(), r = call(e, 'writeKeyframes', { itemId: 'vid', payload }); refused(e, before, r, 'MISSING_PARAM'); expect(r.error).toBe('payload is required'); }
@@ -468,9 +468,9 @@ describe('setTimeRemap: remaining codes and storage (provisional where the wordi
     const r = call(e, 'setTimeRemap', { itemId: 'late', keyframes: [{ time: 1.99, value: 0 }, { time: 12.01, value: 9000 }] });
     expect(r.success).toBe(true); expect(itemOf(e.doc, 'late').timeRemap.keyframes.map((k: any) => k.time)).toEqual([0, 10000]);
   });
-  it('provisional: the TIME_OUT_OF_BOUNDS message names the entry path: "[keyframes[1]] keyframe at 15s outside clip bounds (0.000s – 10.000s)."', () => {
+  it('the TIME_OUT_OF_BOUNDS message: "Keyframe at 15s is outside clip bounds (0.000s – 10.000s)." (RC 9.2 l.2729)', () => {
     const e = editor(), before = json(e.doc), r = remap(e, [{ time: 0, value: 0 }, { time: 15, value: 100 }]);
-    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[keyframes[1]] keyframe at 15s outside clip bounds (0.000s – 10.000s).');
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('Keyframe at 15s is outside clip bounds (0.000s – 10.000s).');
   });
   it('merge keeps the id of the keyframe it updates; stored keyframe ids match kf_<epoch ms>_<9 chars>', () => {
     const e = editor(); remap(e, [{ time: 0, value: 0 }, { time: 5, value: 5000 }]);

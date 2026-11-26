@@ -145,7 +145,7 @@ test.describe('the served tools against a Chromium tab (row 10)', () => {
     expect(edited.data).toEqual({ itemIds: ['clipA'], changedFields: { clipA: ['properties.opacity'] } });
     expect(edited.timelineChanges.items.updated[0]).toMatchObject({ itemId: 'clipA', changedFields: ['properties.opacity'] });
     const written = await ok('writeKeyframes', { itemId: 'clipA', payload: { scale: { replace: [{ time: 0, value: 1 }, { time: 2, value: 1.5 }] } } });
-    expect(written.message).toBe("Keyframes written on 'clipA': scale (2).");
+    expect(written.message).toBe('writeKeyframes: scale updated (1 op)');
     expect(written.data).toMatchObject({ itemId: 'clipA', keyframes: { scale: { keyframeCount: 2 } } });
     expect(written.timelineChanges.items.updated[0]).toMatchObject({ itemId: 'clipA', changedFields: ['properties.scale'] });
     const remapped = await ok('setTimeRemap', { itemId: 'clipA', keyframes: [{ time: 0, value: 0 }, { time: 3, value: 3000 }] });

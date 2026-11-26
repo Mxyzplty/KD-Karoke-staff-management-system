@@ -6,7 +6,8 @@
 // Provisional choices, not Xapp parity (the spec gives no value): the `source` labels of resolvedKeyframes
 // (value / delta / factor / hold); the `error` strings of INVALID_BEZIER_HANDLE and TIME_OUT_OF_BOUNDS; a bezier easing
 // read back as the input object; the reason text of the schema refusals (only their path and code are compared, and
-// only on the emulated TYPE case; the others are deferred to T18).
+// only on the emulated TYPE case; the others are deferred to T18). The `message` strings of K61 / K62 ("[add/update] …")
+// and T05 ("Keyframe at <t>s is outside clip bounds …") are Xapp's forms (RC 9.2 l.2727–2729), no longer provisional.
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Json } from './normalise';
@@ -83,8 +84,8 @@ export async function writeSyntheticG02(dir: string, o: { blockBase?: 0 | 1; set
   // Bezier handles (§6 storage) and the handler refusals G-02 returned as predicted.
   write('K60', { blur: { replace: [{ time: 0, value: 0, outHandle: [0.25, 0.1] }, { time: 4, value: 10, inHandle: [0.25, 1] }] } });
   kfs.blur = curve(0, kf(0, 0, 'linear', { outHandle: [0.25, 0.1] }), kf(4, 10, 'linear', { inHandle: [0.25, 1] })); vid('K60');
-  write('K61', { blur: { add: [{ time: 2, value: 5, outHandle: [1.5, 0] }] } }, { success: false, code: 'INVALID_BEZIER_HANDLE', error: 'Invalid bezier handle', message: '[blur.add[0]] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.' }); vid('K61');
-  write('K62', { blur: { add: [{ time: 12, value: 5 }] } }, { success: false, code: 'TIME_OUT_OF_BOUNDS', error: 'Keyframe time out of bounds', message: '[blur.add[0]] keyframe at 12s outside item bounds (0s - 10s).' }); vid('K62');
+  write('K61', { blur: { add: [{ time: 2, value: 5, outHandle: [1.5, 0] }] } }, { success: false, code: 'INVALID_BEZIER_HANDLE', error: 'Invalid bezier handle', message: '[add/update] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.' }); vid('K61');
+  write('K62', { blur: { add: [{ time: 12, value: 5 }] } }, { success: false, code: 'TIME_OUT_OF_BOUNDS', error: 'Keyframe time out of bounds', message: '[add/update] keyframe at 12s outside item bounds (0s - 10s).' }); vid('K62');
   // A schema refusal (§6: an empty operation object is MINPROPERTIES): deferred to T18; the next read proves nothing changed.
   write('K70', { positionY: {} }, SCHEMA('writeKeyframes', '$.payload.positionY', 'MINPROPERTIES', 'must NOT have fewer than 1 properties'));
   store('R01', 'viewItemDetails', { itemIds: [ITEM] }, details(), 'blocks');
@@ -106,7 +107,7 @@ export async function writeSyntheticG02(dir: string, o: { blockBase?: 0 | 1; set
   kfs.timeRemap = curve(0, kf(0, 0, 'easeInOut'), kf(5, 8500), kf(10, 2000)); vid('T03');
   remap('T04', { keyframes: shaped }, { success: true, message: remapMessage(3, 'replaced', '0.000', '2.759'), data: remapData('replace', 3, 3, 0, 2.759) });
   kfs.timeRemap = curve(0, kf(0, 0, 'easeInOut'), kf(5, 8000, BEZIER), kf(10, 2000)); vid('T04');
-  remap('T05', { keyframes: [{ time: 15, value: 5000 }] }, { success: false, code: 'TIME_OUT_OF_BOUNDS', error: 'Keyframe time out of bounds', message: '[keyframes[0]] keyframe at 15s outside clip bounds (0.000s – 10.000s).' }); vid('T05');
+  remap('T05', { keyframes: [{ time: 15, value: 5000 }] }, { success: false, code: 'TIME_OUT_OF_BOUNDS', error: 'Keyframe time out of bounds', message: 'Keyframe at 15s is outside clip bounds (0.000s – 10.000s).' }); vid('T05');
   remap('T06', { keyframes: [] }, SCHEMA('setTimeRemap', '$.keyframes', 'MINITEMS', 'must NOT have fewer than 1 items'));
   // R02: the read after T06, stored as @@SAME references to T04.vid's blocks (nothing changed since T04).
   files.set('R02', { tool_name: 'viewItemDetails', tool_input: { itemIds: [ITEM] }, result_text: text([`@@SAME:T04.vid#${base}`, `@@SAME:T04.vid.json#${base + 1}`]), notes: '' }); steps.push('R02');

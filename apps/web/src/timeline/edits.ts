@@ -33,10 +33,11 @@ const lockCheck = (doc: ProjectDocument, i: RecordData) => { if (trackLocked(doc
 function checkTime(path: string, t: unknown) {
   if (!isNum(t) || t < 0) refuse('INVALID_KEYFRAME_TIME', 'Invalid keyframe time', `[${path}] time must be a positive number, got: ${show(t)}`);
 }
-export function checkShape(path: string, e: RecordData) {
+/** `handleAt`: the handle refusal's prefix (writeKeyframes add / update entries pass 'add/update', RC 9.2 l.2727–2728). */
+export function checkShape(path: string, e: RecordData, handleAt = path) {
   if (e.easing !== undefined && !validEasing(e.easing)) refuse('INVALID_EASING', 'Invalid easing', `[${path}] easing '${show(e.easing)}' not valid. Options: ${EASINGS.join(', ')}`);
   for (const h of ['inHandle', 'outHandle']) if (e[h] !== undefined && !handleOk(e[h]))
-    refuse('INVALID_BEZIER_HANDLE', 'Invalid bezier handle', `[${path}] ${h} must be [x, y] with x from 0 to 1 and y from -100 to 100.`);
+    refuse('INVALID_BEZIER_HANDLE', 'Invalid bezier handle', `[${handleAt}] ${h} must be [x, y] with x from 0 to 1 and y from -100 to 100.`);
 }
 /** A stored keyframe from an input entry; an overwrite keeps the old id and time (§41). */
 const keyframe = (e: RecordData, time: number, value: unknown, id = keyframeId()): Keyframe =>
@@ -86,16 +87,17 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     for (const o of OPS) if (ops[o] !== undefined && !Array.isArray(ops[o]))
       fail('INVALID_TOOL_INPUT', 'Invalid input for writeKeyframes', { message: `$.payload.${p}.${o}: must be array`, data: { details: { errors: [{ path: `$.payload.${p}.${o}`, code: 'TYPE', message: 'must be array' }] } } });
     for (const o of ['replace', 'add', 'update'] as const) (ops[o] ?? []).forEach((e: RecordData, n: number) => {
-      const path = `${p}.${o}[${n}]`, entry = e ?? {};
+      // Xapp prefixes add and update refusals "[add/update]" (RC 9.2 l.2727–2728); replace keeps the entry path.
+      const path = `${p}.${o}[${n}]`, entry = e ?? {}, tag = o === 'replace' ? path : 'add/update';
       checkTime(path, entry.time);
       if (['value', 'delta', 'factor'].filter(m => entry[m] !== undefined).length > 1)
         refuse('CONFLICTING_KEYFRAME_VALUE_MODES', 'Conflicting value modes', `[${path}] provide at most one of value, delta, or factor. Omit all three to capture the current interpolated value.`);
       for (const m of ['value', 'delta', 'factor']) if (entry[m] !== undefined && !isNum(entry[m]))
         refuse(`INVALID_KEYFRAME_${m.toUpperCase()}`, `Invalid keyframe ${m}`, `[${path}] ${m} must be a finite number if provided, got: ${show(entry[m])}`);
-      checkShape(path, entry);
+      checkShape(path, entry, tag);
       const t = toMs(entry.time);
       if (t < i.display.from - EPS || t > i.display.to + EPS)
-        refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `[${path}] keyframe at ${entry.time}s outside item bounds (${fmt(i.display.from)}s - ${fmt(i.display.to)}s).`);
+        refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `[${tag}] keyframe at ${entry.time}s outside item bounds (${fmt(i.display.from)}s - ${fmt(i.display.to)}s).`);
     });
     (ops.remove ?? []).forEach((t: unknown, n: number) => checkTime(`${p}.remove[${n}]`, t));
   }
@@ -142,8 +144,12 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     tracks[p] = ep ? { defaultValue: ep.defaultValue, keyframeCount: ep.keyframes.length, keyframes: keyframeList(ep.keyframes, t => toTimelineMs(i, t)) }
       : block[p] ?? { defaultValue: p === 'timeRemap' ? 0 : prop(i, p)?.defaultValue, keyframeCount: 0, keyframes: [] };
   }
-  const counts = Object.keys(payload).map(p => `${p} (${tracks[p].keyframeCount})`).join(', ');
-  return { success: true, message: `Keyframes written on '${i.id}'${fx ? ` effect '${args.effectId}'` : ''}: ${counts}.${warnings.length ? ` Warnings: ${warnings.join(' ')}` : ''}`,
+  const names = Object.keys(payload), counts = names.map(p => `${p} (${tracks[p].keyframeCount})`).join(', ');
+  // A plain property write reads as Xapp's, one op per property (RC 9.2 l.2726, 10.8 l.3045–3054; the k-property form is
+  // inferred from code only). The effect and mask wording stays Cutframe's own (open).
+  const said = fx || mask ? `Keyframes written on '${i.id}'${fx ? ` effect '${args.effectId}'` : ''}: ${counts}.`
+    : names.length === 1 ? `writeKeyframes: ${names[0]} updated (1 op)` : `writeKeyframes: ${names.length} properties updated (${names.length} ops)`;
+  return { success: true, message: `${said}${warnings.length ? ` Warnings: ${warnings.join(' ')}` : ''}`,
     data: { itemId: i.id, ...(fx ? { effectId: args.effectId } : {}), keyframes: tracks, resolvedKeyframes: resolved, ...(warnings.length ? { warnings } : {}) } };
 }
 
@@ -163,7 +169,7 @@ export function setTimeRemap(doc: ProjectDocument, args: RecordData): RecordData
     checkShape(path, entry);
     const t = toMs(entry.time);
     if (t < from - 10 - EPS || t > to + 10 + EPS)
-      refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `[${path}] keyframe at ${entry.time}s outside clip bounds (${(from / 1000).toFixed(3)}s – ${(to / 1000).toFixed(3)}s).`);
+      refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `Keyframe at ${entry.time}s is outside clip bounds (${(from / 1000).toFixed(3)}s – ${(to / 1000).toFixed(3)}s).`); // RC 9.2 l.2729
   });
   const replace = args.replace !== false, local = (s: number) => Math.min(Math.max(toMs(s) - from, 0), span(i));
   let list: Keyframe[] = replace ? [] : [...remapKeyframes(i)];
