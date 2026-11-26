@@ -37,7 +37,7 @@ test('60 s of two 1080p tracks: skipped, notReady and droppedVideoFrames are 0 a
   const fps = stats.painted / SECONDS;
   console.log(`T15 60 s playback: wall ${wall.toFixed(1)} s, fps ${fps.toFixed(2)}, stats ${JSON.stringify(stats)}`);
   test.info().annotations.push({ type: 'measured', description: `fps ${fps.toFixed(2)}; ${JSON.stringify(stats)}` });
-  expect(stats.skipped, 'frame indices never painted').toBe(0);
+  expect(stats.skipped, `frame indices never painted: skippedAt ${JSON.stringify(stats.skippedAt)}, maxRafGapMs ${stats.maxRafGapMs} at clock ${stats.maxRafGapAtMs} ms`).toBe(0);
   expect(stats.notReady, 'draws with no picture yet').toBe(0);
   expect(stats.failed, 'draws that showed the grey failed picture').toBe(0);
   expect(stats.droppedVideoFrames, 'dropped video frames').toBe(0);

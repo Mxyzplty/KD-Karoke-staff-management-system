@@ -42,7 +42,12 @@ export const PREMOUNT_MS = 10_000, MAX_IDLE = 4;
 export const HANDOFF_SETTLE_MS = 250, POOL_AHEAD = 8;
 /** running: the clock runs (after the start-up wait; T13's voice-over starts recording then). */
 export const usePlayback = create<{ playing: boolean; running: boolean }>(() => ({ playing: false, running: false }));
-const zero = () => ({ starts: 0, painted: 0, skipped: 0, notReady: 0, stale: 0, failed: 0, resyncs: 0, seeks: 0, reanchors: 0, maxDriftMs: 0, elementMaxDriftMs: 0, driftMs: 0, poolDrawnFrames: 0, handoffs: 0, behindHandoffs: 0, handoffMs: [] as number[], unconverged: 0, droppedVideoFrames: 0, elements: 0, lateMounts: 0, sounds: 0, buffers: 0, lateChunks: 0, riskyStarts: 0, soundFailures: 0, firstFrame: -1, lastFrame: -1, maxRafGapMs: 0 });
+const zero = () => ({ starts: 0, painted: 0, skipped: 0, notReady: 0, stale: 0, failed: 0, resyncs: 0, seeks: 0, reanchors: 0, maxDriftMs: 0, elementMaxDriftMs: 0, driftMs: 0, poolDrawnFrames: 0, handoffs: 0, behindHandoffs: 0, handoffMs: [] as number[], unconverged: 0, droppedVideoFrames: 0, elements: 0, lateMounts: 0, sounds: 0, buffers: 0, lateChunks: 0, riskyStarts: 0, soundFailures: 0, firstFrame: -1, lastFrame: -1, maxRafGapMs: 0, maxRafGapAtMs: -1, skippedAt: [] as SkipEntry[] });
+/** One skip (diagnostics, T15 :104 Step A): n, the first frame index not painted; t, the clock reading (timeline ms) of the
+ *  paint after it; gapMs, the animation-frame gap before that paint; ctx, whether the clock was on the context;
+ *  sinceReanchorMs, performance.now() ms since the run's last re-anchor (null in JSON: none this run). */
+type SkipEntry = { n: number; t: number; gapMs: number; ctx: boolean; sinceReanchorMs: number };
+const SKIP_LOG = 20;
 /** Counters for tests and the 60 s check. skipped: frame indices never painted; notReady: draws with no picture yet; stale:
  *  draws that showed an older pool / remap / motion-graphic frame; failed: draws that showed the grey failed picture (P16); maxDriftMs: since the reset, the worst offset of a painted video frame,
  *  whichever path drew it: the presented media time of the frame drawn (an element's currentTime, a pool frame's timestamp,
@@ -55,7 +60,9 @@ const zero = () => ({ starts: 0, painted: 0, skipped: 0, notReady: 0, stale: 0, 
  *  clock runs (after a paint); sounds: clips whose sound the mix read, once per clip per run; buffers: chunks with sound
  *  made; lateChunks: chunks that started after their time (cut short) or were dropped; riskyStarts: chunk nodes started
  *  within the audio thread's possible render-ahead of the clock (audio/preview.ts renderAhead; information only); soundFailures: source reads that
- *  failed (that clip is silent); maxRafGapMs: the longest gap between two animation frames of one run (a stall). */
+ *  failed (that clip is silent); maxRafGapMs: the longest gap between two animation frames of one run (a stall);
+ *  maxRafGapAtMs: the clock reading (timeline ms) at the animation frame that ended it (-1: none yet); skippedAt: the first
+ *  SKIP_LOG skips, one entry per paint that skipped one or more indices (SkipEntry; diagnostics, written only). */
 export const playbackStats = zero();
 /** Diagnostics, kept apart from the counters: the latest DRIFT_LOG painted video frames since the reset, each with the paint's
  *  clock reading t (timeline ms), the signed offset driftMs (presented minus expected media time; negative = behind), the path
@@ -76,6 +83,8 @@ let host: PlaybackHost | null = null, audio: AudioContext | null = null;
 // would slow down.
 type Anchor = { t: number; perf: number; ctx: number | null };
 let anchor: Anchor | null = null, ctxClock = false;
+/** performance.now() at the run's last re-anchor (NaN: none since the run started); read only by playbackStats.skippedAt. */
+let reanchoredAt = NaN;
 const audioMs = () => ctxClock && audio?.state === 'running' ? audio.currentTime * 1000 : null;
 const setAnchor = (t: number) => { anchor = { t, perf: performance.now(), ctx: audioMs() }; };
 /** Never below the anchor's t: a context anchor ahead of the context's now holds the picture there (start: the mapping's
@@ -95,7 +104,7 @@ function followContext() {
   ctxClock = loud;
   if (!anchor) return;
   setAnchor(t);
-  playbackStats.reanchors++;
+  playbackStats.reanchors++; reanchoredAt = performance.now();
 }
 
 // ---- Media elements, reused per source (findings §5: Xapp also paints from <video> elements). Starting one stalls Chromium's
@@ -402,7 +411,7 @@ function frame() {
   raf = requestAnimationFrame(frame);
   const now = performance.now();
   rafGap = Number.isNaN(lastRaf) ? 0 : now - lastRaf; lastRaf = now;
-  playbackStats.maxRafGapMs = Math.max(playbackStats.maxRafGapMs, rafGap);
+  if (rafGap > playbackStats.maxRafGapMs) { playbackStats.maxRafGapMs = rafGap; playbackStats.maxRafGapAtMs = Math.round(clock() * 10) / 10; }
   const doc = host.doc(), fps = fpsOf(doc), end = doc.duration ?? 0;
   // A seek while playing (the timeline, a shortcut, an agent) moves the clock; elements and sounds follow it.
   if (view().playheadMs !== lastSet) return seek(view().playheadMs);
@@ -412,7 +421,11 @@ function frame() {
   playbackStats.driftMs = 0; syncMedia(t, false); if (!ctxClock) sound?.follow(t); sound?.pump(); followContext();
   const n = previewFrame(t, fps);
   if (n !== lastIndex) {
-    if (lastIndex !== null && n > lastIndex + 1) playbackStats.skipped += n - lastIndex - 1;
+    if (lastIndex !== null && n > lastIndex + 1) {
+      playbackStats.skipped += n - lastIndex - 1;
+      const r = (x: number) => Math.round(x * 10) / 10;
+      if (playbackStats.skippedAt.length < SKIP_LOG) playbackStats.skippedAt.push({ n: lastIndex + 1, t: r(t), gapMs: r(rafGap), ctx: ctxClock, sinceReanchorMs: r(now - reanchoredAt) });
+    }
     lastIndex = n;
     if (playbackStats.firstFrame < 0) playbackStats.firstFrame = n;
     playbackStats.lastFrame = n; playbackStats.painted++;
@@ -436,7 +449,7 @@ async function play() {
   // Provisional: play at or after the end restarts from 0.
   let t = view().playheadMs;
   if (t >= (doc.duration ?? 0)) { t = 0; setView({ playheadMs: 0 }); }
-  if (!audio) { audio = new AudioContext({ sampleRate: 48000 }); audio.onstatechange = () => { if (anchor) { setAnchor(clock()); playbackStats.reanchors++; } }; }
+  if (!audio) { audio = new AudioContext({ sampleRate: 48000 }); audio.onstatechange = () => { if (anchor) { setAnchor(clock()); playbackStats.reanchors++; reanchoredAt = performance.now(); } }; }
   void audio.resume().catch(() => {});
   usePlayback.setState({ playing: true }); playbackStats.starts++;
   await start(t, token);
@@ -461,7 +474,7 @@ async function start(t: number, token: number) {
     if (token !== startToken) return;
   }
   ctxClock = !!run?.scheduled(); setAnchor(t); anchor!.perf = held; if (ctxClock) anchor!.ctx = run!.at(t)!;
-  lastIndex = null; lastSet = t; lastRaf = NaN;
+  lastIndex = null; lastSet = t; lastRaf = NaN; reanchoredAt = NaN;
   usePlayback.setState({ running: true });
   frame();
 }
