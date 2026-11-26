@@ -363,7 +363,7 @@ describe('splitItem (findings part 2 §41b; results §2 splitItem)', () => {
   });
   it('a locked track refuses with the unlock hint', () => {
     const e = editor(lock(fixture(), 'V1')); const r = call(e, 'splitItem', { itemId: 'v2', timestampS: 6 });
-    expect(r).toMatchObject({ success: false, code: 'TRACK_LOCKED', error: 'This clip or track is locked. Unlock it before splitting.' }); expect(e.bus.undoStack).toHaveLength(0);
+    expect(r).toMatchObject({ success: false, code: 'PROJECT_UNAVAILABLE', error: 'This clip or track is locked. Unlock it before splitting.' }); expect(e.bus.undoStack).toHaveLength(0);
   });
   // Xapp parity (fix queue l.142, D115; research findings §13): Xapp's splitItem throws with no code, so the project guard's fallback
   // PROJECT_UNAVAILABLE carries the text; a track inside a locked group fails earlier with "Group is locked".
