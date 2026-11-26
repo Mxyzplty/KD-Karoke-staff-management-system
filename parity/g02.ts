@@ -2,7 +2,7 @@
 // `parity --golden G-02 --xapp-ref <dir> …`: replays the stored golden keyframe and time-remap capture G-02 (agent tool
 // results §6; tickets T04 "Golden keyframe and time-remap capture") through the direct-call harness on S1, one call at a
 // time. After every step it compares (1) the call result with `results/<id>.json` (success, code, error, message,
-// resolvedKeyframes, speedRange, warnings, details.errors[].path / code) and (2) the item's `keyframes` object with
+// resolvedKeyframes, speedRange, warnings, ops, details.errors[].path / code) and (2) the item's `keyframes` object with
 // `<id>.vid` (sorted by time: times and values to 1e-9, stored easing names, handles, the timeRemap curve; then the
 // stored order). With `frames` (parity/g02-frames.ts, T15) each captureFrame step is compared with the stored preview frames
 // frames/F1-<t>.jpg / F2-<t>.jpg; the export frames and the export's ffprobe facts are T16's and not compared.
@@ -63,7 +63,7 @@ function compareKeyframes(v: Json, o: Json, at: string, diffs: Diff[]) {
 }
 
 // ---- The call result (tickets T04 G-02 (2)).
-const FIELDS = ['resolvedKeyframes', 'speedRange', 'warnings'];
+const FIELDS = ['resolvedKeyframes', 'speedRange', 'warnings', 'ops'];
 const schemaErrors = (x: Rec) => { const d = first(x, 'details'); return isObj(d) && Array.isArray(d.errors) ? d.errors.map(e => isObj(e) ? { path: e.path ?? null, code: e.code ?? null } : e) : undefined; };
 function compareCall(v: Rec, o: Rec): Diff[] {
   const diffs: Diff[] = [], check = (p: string, a: Json | undefined, b: Json | undefined) => { if (!same(a, b)) diffs.push({ part: 'call', path: p, expected: a ?? null, actual: b ?? null }); };
