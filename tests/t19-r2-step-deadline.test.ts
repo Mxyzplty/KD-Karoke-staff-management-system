@@ -110,6 +110,18 @@ describe('T19 R2b the step deadline: per step, from its own start; only that ste
       processing_steps: { analysis: 'failed', transcription: 'complete', embeddings_description: 'complete', embeddings_transcript: 'complete' } });
     expect(await store.row<PreparationRecord>('preparations', a.id)).toMatchObject({ phase: 'finished' }); // not 'failed' / RETRY_LIMIT_EXCEEDED
     expect((await stored(store, a.id))?.last_error_code).not.toBe('RETRY_LIMIT_EXCEEDED');
+    // Step reason: our preparation row keeps the analysis step's own code and message; the asset's Xapp fields stay generic.
+    expect(await store.row<PreparationRecord>('preparations', a.id)).toMatchObject({ stepErrors: { analysis: { code: 'CLIENT_PREPARATION_TIMEOUT', message: mediaError('CLIENT_PREPARATION_TIMEOUT').message } } });
+    expect(await stored(store, a.id)).toMatchObject({ last_error_code: 'GEMINI_FAILED', last_error_message: mediaError('GEMINI_FAILED').message });
+  });
+  it('step reason: analysis throws a plain Error → our preparation row keeps its message verbatim; the asset keeps GEMINI_FAILED and the generic message', async () => {
+    const store = setup(), a = await ready(store), time = fakeTime();
+    const done = prepareAsset(store, a.id, { clock: time.now, timers: time.timers, steps: {
+      probe: async () => info(DURATION) as never, analysis: async () => { throw new Error('no available backend found. ERR: test'); },
+    } });
+    expect(await done).toBe('prepared');
+    expect(await store.row<PreparationRecord>('preparations', a.id)).toMatchObject({ phase: 'finished', stepErrors: { analysis: { message: 'no available backend found. ERR: test' } } });
+    expect(await stored(store, a.id)).toMatchObject({ processing_status: 'ready', last_error_code: 'GEMINI_FAILED', last_error_message: mediaError('GEMINI_FAILED').message, processing_steps: { analysis: 'failed' } });
   });
   it('the deadline is counted from each step\'s own start: transcription (started after the analysis timed out) is aborted 6 min after its own start, not before', async () => {
     const store = setup(), a = await ready(store), time = fakeTime();
