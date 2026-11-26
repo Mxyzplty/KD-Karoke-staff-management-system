@@ -14,6 +14,10 @@ import type { AssetMedia } from '../../apps/web/src/store/model';
 /** The steps media/prepare.ts records, in the order they run. */
 export const STEP_KEYS = ['upload', 'probe', 'thumbnails', 'waveform', 'proxy', 'analysis', 'transcription', 'embeddings_description', 'embeddings_transcript'] as const;
 
-export function preparationProblems(_asset: Pick<AssetMedia, 'processing_status' | 'processing_steps' | 'last_error_code'>): string[] {
-  return []; // red-first stub (no check): the implementer replaces this body with the contract above
+export function preparationProblems(asset: Pick<AssetMedia, 'processing_status' | 'processing_steps' | 'last_error_code'>): string[] {
+  const out: string[] = [];
+  if (asset.processing_status !== 'ready') out.push(`status: ${asset.processing_status ?? 'missing'}`);
+  for (const key of STEP_KEYS) { const v = asset.processing_steps?.[key]; if (v !== 'complete') out.push(`step ${key}: ${v ?? 'missing'}`); }
+  if (asset.last_error_code != null) out.push(`code: ${asset.last_error_code}`);
+  return out;
 }

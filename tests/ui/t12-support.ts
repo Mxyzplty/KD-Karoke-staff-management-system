@@ -8,6 +8,10 @@ import { STORE } from './t15-support';
 import { ff } from './t16a-support';
 
 export const CLIP2 = path.join(STORE, 'corpus/tos-action-30s.mp4');
+/** Clip 2's full preparation with the real models, as openAndIngest's bound (ms). preparationBudgetMs(30 000) = 300 000, the 5-min floor (media/prepare.ts:40):
+ *  probe → proxy share one 300 000 attempt budget (:110, re-armed :149, cleared :192); analysis, transcription and embeddings each get their own 300 000
+ *  deadline (:202), in sequence: 1 200 000. Plus 60 000 for goto, 'Saved locally', the attempt start, the final write and the poll interval. */
+export const CLIP2_INGEST_MS = 1_260_000;
 export const W = 1080, H = 1920, CLIP_H = Math.round(W * 534 / 1280), CLIP_Y = Math.round((H - CLIP_H) / 2), SRC_W = 1280, SRC_H = 534;
 const SET = path.join(STORE, 'datasets/t12');
 export const prop = (v: unknown) => ({ defaultValue: v, keyframes: [] });
