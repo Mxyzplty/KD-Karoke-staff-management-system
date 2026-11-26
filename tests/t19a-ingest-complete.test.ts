@@ -50,7 +50,7 @@ it('g: ready with analysis unavailable and embeddings_transcript skipped: both a
 });
 
 it('h: ready with the proxy key absent and a key outside STEP_KEYS: names proxy as missing, ignores the other key', () => {
-  const s = { ...steps(), foo: 'failed' as ProcessingStep };
+  const s: Record<string, ProcessingStep> = { ...steps(), foo: 'failed' };
   delete s.proxy; // absent, not undefined
   expect(preparationProblems({ processing_status: 'ready', processing_steps: s, last_error_code: null })).toEqual(['step proxy: missing']);
 });
