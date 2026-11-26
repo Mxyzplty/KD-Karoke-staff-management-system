@@ -602,7 +602,7 @@ describe('T04 F5b: writeKeyframes envelope and refusal prefixes in Xapp\'s form 
     const e = editor(), before = json(e.doc), r = wk(e, { opacity: { replace: [{ time: 11, value: 0.5 }] } });
     refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[replace] keyframe at 11s outside item bounds (0s - 10s).');
   });
-  it('guard (D2 scope): a replace entry\'s easing refusal keeps the entry path "[opacity.replace[0]]"', () => {
+  it('guard (D2 scope) (provisional): a replace entry\'s easing refusal keeps the entry path "[opacity.replace[0]]"', () => {
     const e = editor(), before = json(e.doc), r = wk(e, { opacity: { replace: [{ time: 1, value: 0.5, easing: 'wobble' }] } });
     refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^\[opacity\.replace\[0\]\] easing 'wobble' not valid\. Options: /);
   });
