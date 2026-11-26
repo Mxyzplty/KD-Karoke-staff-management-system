@@ -18,6 +18,8 @@ test.beforeEach(async ({ page }) => { await skipTour(page); });
 type Result = { original: any; entries: Entry[]; after: any; restored: any };
 type Pair = {
   name: string; doc: () => any; label: string; toolLabel?: string; note?: string;
+  /** The item the UI path selects (default 'vid'). */
+  item?: string;
   ui: (page: Page) => Promise<void>;
   tool: (ui: Result) => [string, Record<string, unknown>];
   /** Compare keyframes by time with ids dropped (a drag keeps the keyframe id; the tool path removes and adds). */
@@ -28,7 +30,7 @@ const vid = (d: any) => d.items.find((i: any) => i.id === 'vid');
 const undoWith = (page: Page, source: 'user' | 'agent') => page.evaluate(async source => { const p = '/src/timeline/runtime.ts'; const { activeRuntime } = await import(p); activeRuntime.bus.undo(source); }, source);
 
 async function runUi(page: Page, pair: Pair): Promise<Result> {
-  await openEditor(page, pair.doc()); await pick(page, 'vid');
+  await openEditor(page, pair.doc()); await pick(page, pair.item ?? 'vid');
   const original = await liveDoc(page);
   await pair.ui(page);
   await expect.poll(async () => (await undoEntries(page)).length, { timeout: 10000 }).toBeGreaterThan(0);
@@ -59,7 +61,7 @@ const SHADOW = { x: 3, y: 2, blur: 4, color: '#112233' };
 const shadowDoc = () => t04Doc({ vid: { properties: { boxShadow: prop(SHADOW) } } });
 const gdialog = (page: Page, name: string) => page.getByRole('dialog', { name });
 const openGraph = async (page: Page, name: string) => { await panel(page).getByRole('button', { name: 'Keyframes graph' }).click(); await expect(gdialog(page, name)).toBeVisible(); return gdialog(page, name); };
-const editProps = (properties: Record<string, unknown>): [string, Record<string, unknown>] => ['editProperties', { itemId: 'vid', properties }];
+const editProps = (properties: Record<string, unknown>, itemId = 'vid'): [string, Record<string, unknown>] => ['editProperties', { itemId, properties }];
 /** Timeline seconds of a stored clip-relative keyframe time on the fixture clip (display from 1 s, trim from 0, rate 1). */
 const tl = (ms: number) => (1000 + ms) / 1000;
 
@@ -128,6 +130,30 @@ const PAIRS: Pair[] = [
     ui: async page => { await (await section(page, 'Transform')).getByRole('group', { name: 'Flip' }).getByRole('button', { name: 'Flip X' }).click(); }, tool: () => editProps({ flipX: true }) },
   { name: 'Blend Mode "Color Dodge" <-> editProperties {blendMode: "color-dodge"}', doc: () => t04Doc(), label: 'Edit items',
     ui: async page => { await (await section(page, 'Basic')).getByLabel('Blend Mode', { exact: true }).selectOption({ label: 'Color Dodge' }); }, tool: () => editProps({ blendMode: 'color-dodge' }) },
+  // 10. Units per T04 type (audit F7). Tool values in stored units, findings part 2 l.563: "opacity ... 0–1, volume 0–3 (gain = volume²), scale and brightness
+  // multipliers, rotation degrees, positions/sizes px". UI values in display units (Volume / Scale / Opacity shown in %).
+  { name: 'video Volume 150 % <-> editProperties {volume: 1.5}', doc: () => t04Doc(), label: 'Edit items',
+    ui: async page => { await typeValue(await section(page, 'Basic'), 'Volume', '150'); }, tool: () => editProps({ volume: 1.5 }) },
+  { name: 'video Scale 150 % <-> editProperties {scale: 1.5}', doc: () => t04Doc(), label: 'Edit items',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'Scale', '150'); }, tool: () => editProps({ scale: 1.5 }) },
+  { name: 'video Rotation 45° <-> editProperties {rotation: 45}', doc: () => t04Doc(), label: 'Edit items',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'Rotation', '45'); }, tool: () => editProps({ rotation: 45 }) },
+  { name: 'video X 120 px <-> editProperties {positionX: 120}', doc: () => t04Doc(), label: 'Edit items',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'X', '120'); }, tool: () => editProps({ positionX: 120 }) },
+  { name: 'video Y −80 px <-> editProperties {positionY: -80}', doc: () => t04Doc(), label: 'Edit items',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'Y', '-80'); }, tool: () => editProps({ positionY: -80 }) },
+  { name: 'image Opacity 40 % <-> editProperties {opacity: 0.4}', doc: () => t04Doc(), label: 'Edit items', item: 'img',
+    ui: async page => { await typeValue(await section(page, 'Basic'), 'Opacity', '40'); }, tool: () => editProps({ opacity: 0.4 }, 'img') },
+  { name: 'image Scale 150 % <-> editProperties {scale: 1.5}', doc: () => t04Doc(), label: 'Edit items', item: 'img',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'Scale', '150'); }, tool: () => editProps({ scale: 1.5 }, 'img') },
+  { name: 'image Rotation 45° <-> editProperties {rotation: 45}', doc: () => t04Doc(), label: 'Edit items', item: 'img',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'Rotation', '45'); }, tool: () => editProps({ rotation: 45 }, 'img') },
+  { name: 'image X 120 px <-> editProperties {positionX: 120}', doc: () => t04Doc(), label: 'Edit items', item: 'img',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'X', '120'); }, tool: () => editProps({ positionX: 120 }, 'img') },
+  { name: 'image Y −80 px <-> editProperties {positionY: -80}', doc: () => t04Doc(), label: 'Edit items', item: 'img',
+    ui: async page => { await typeValue(await section(page, 'Transform'), 'Y', '-80'); }, tool: () => editProps({ positionY: -80 }, 'img') },
+  { name: 'audio Volume 150 % <-> editProperties {volume: 1.5}', doc: () => t04Doc(), label: 'Edit items', item: 'aud',
+    ui: async page => { await typeValue(await section(page, 'Volume'), 'Volume', '150'); }, tool: () => editProps({ volume: 1.5 }, 'aud') },
 ];
 
 for (const pair of PAIRS) {
