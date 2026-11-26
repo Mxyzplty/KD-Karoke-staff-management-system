@@ -33,7 +33,7 @@ export class AnalysisService {
   constructor(private modelRoot = MODEL_ROOT, private spawn = () => new AnalysisWorker()) {}
   private open(): Current {
     if (!this.current) {
-      // D117: WASM, the backend every acceptance number was measured on; WebGPU per model is T36.
+      // D117: WASM, the browser backend of the worker checks and memory runs (accuracy rows are Node CPU); WebGPU per model is T36.
       const worker = this.spawn(), ready = worker.init({ modelRoot: this.modelRoot, device: 'wasm' });
       ready.catch(() => {}); // awaited by each inference request
       this.current = { worker, ready, indexed: new Map() };
