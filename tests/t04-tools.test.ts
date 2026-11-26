@@ -5,7 +5,8 @@
 // INVALID_TOOL_INPUT and every handler code that Xapp's schema answers first (EMPTY_OPS, CONFLICTING_KEYFRAME_VALUE_MODES, INVALID_EASING,
 // INVALID_KEYFRAMES, INVALID_KEYFRAME_TIME/VALUE): those are T18's.
 // Provisional (undocumented, named `provisional` in the test): where `warnings` / `resolvedKeyframes` sit in the success envelope (both
-// `data.*` and top level are accepted); the `[<path>]` prefix of writeKeyframes messages (not asserted); USE_SET_TIME_REMAP for `add` on
+// `data.*` and top level are accepted); writeKeyframes add / update refusals assert Xapp's "[add/update]" (RC 9.2 l.2727–2728; update
+// is inferred), while replace, remove and effect / mask entries keep the entry path `[<path>]`, still Cutframe's own; USE_SET_TIME_REMAP for `add` on
 // `timeRemap`; ITEM_NOT_FOUND for writeKeyframes; undo labels of setTimeRemap and playbackRate edits; the playbackRate growth message wording;
 // playbackRate on a non-media item; the codes of `properties is required` / `Provide itemId …`.
 // Expected to be RED until the P2 handlers land (a missing tool answers UNKNOWN_TOOL).
@@ -357,7 +358,7 @@ describe('writeKeyframes: stored order (findings part 2 §41 l.569–571: replac
     const r = wk(e, { borderWidth: { add: [{ time: 1, value: 4 }, { time: 2, delta: 1 }, { time: 3, factor: 2 }, { time: 5 }] } });
     expect(r.data.resolvedKeyframes.borderWidth.map((x: any) => [x.time, x.source])).toEqual([[1, 'value'], [2, 'delta'], [3, 'factor'], [5, 'hold']]);
   });
-  it('success wording "writeKeyframes: borderWidth updated (1 op)" (RC 9.2 l.2726, 10.8 l.3053) with data.keyframes as the keyframes block entry (stored order, timeline seconds)', () => {
+  it('success wording "writeKeyframes: borderWidth updated (1 op)" (RC 9.2 l.2726, 10.8 l.3053); provisional: data.keyframes as the keyframes block entry (stored order, timeline seconds; Xapp returns ops, T04 F5b)', () => {
     const e = editor(), r = wk(e, { borderWidth: { replace: [{ time: 2, value: 4 }, { time: 1, value: 2 }] } });
     expect(r.message).toBe('writeKeyframes: borderWidth updated (1 op)');
     expect(r.data).toMatchObject({ itemId: 'vid', keyframes: { borderWidth: { defaultValue: 0, keyframeCount: 2, keyframes: [{ timelineSeconds: 1, value: 2 }, { timelineSeconds: 2, value: 4 }] } } });
@@ -405,7 +406,7 @@ describe('writeKeyframes: remaining refusals (error codes §6; provisional where
     refused(e, before, wk(e, { opacity: { add: [{ time: t, value: 0.5 }] } }), 'INVALID_KEYFRAME_TIME');
     refused(e, before, wk(e, { opacity: { remove: [t] } }), 'INVALID_KEYFRAME_TIME');
   });
-  it('INVALID_EASING lists the options; INVALID_BEZIER_HANDLE names the entry path (error codes §6)', () => {
+  it('INVALID_EASING lists the options (entry path); INVALID_BEZIER_HANDLE on an update entry reads "[add/update]" (INFERRED for update, X01 stores add only; RC 9.2 l.2727)', () => {
     const { e, before } = fresh(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5, easing: 'wobble' }] } });
     refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^\[opacity\.add\[0\]\] easing 'wobble' not valid\. Options: /);
     const h = wk(e, { opacity: { update: [{ time: 1, value: 0.5, outHandle: [2, 0] }] } });
@@ -505,6 +506,23 @@ describe('T04 F5 (D115): result messages in Xapp\'s form (RC 9.2 l.2726–2729, 
   it('INFERRED from code only, no stored case: several properties read "writeKeyframes: <k> properties updated (<k> ops)" (RC 10.8 l.3054, [C])', () => {
     const e = editor(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] }, scale: { add: [{ time: 1, value: 1.5 }] } });
     expect(r.success).toBe(true); expect(r.message, 'INFERRED from code only (RC 10.8 l.3054, [C]); no stored case shows it').toBe('writeKeyframes: 2 properties updated (2 ops)');
+  });
+  it('INFERRED, no stored case: clearing the remap curve {timeRemap: {replace: []}} reads "writeKeyframes: timeRemap updated (1 op)" (op kind "clear", RC 10.8 l.3048; one property, l.3045 / l.3053)', () => {
+    const doc = base(); Object.assign(itemOf(doc, 'vid'), { timeRemap: { defaultValue: 0, keyframes: [kf(0, 0), kf(5000, 5000)] } });
+    const e = editor(doc), r = wk(e, { timeRemap: { replace: [] } });
+    expect(r.success).toBe(true); expect(r.message, 'INFERRED, no stored case: an empty replace is the op kind "clear" (RC 10.8 l.3048); one property reads "(1 op)" (l.3045, l.3053)').toBe('writeKeyframes: timeRemap updated (1 op)');
+  });
+  it('open; Cutframe\'s own (lane A 12:37): an effect add entry out of bounds keeps the entry path "[amount.add[0]] keyframe at 11s outside item bounds (0s - 10s)."', () => {
+    const e = editor(); call(e, 'writeEffects', { itemId: 'vid', add: [{ effectId: 'grayscale' }] });
+    const before = json(e.doc), n = e.bus.undoStack.length, j = e.journal.length;
+    const r = wk(e, { amount: { add: [{ time: 11, value: 50 }] } }, { effectId: 'grayscale_1' });
+    expect(r).toMatchObject({ success: false, code: 'TIME_OUT_OF_BOUNDS' }); expect(r.message).toBe('[amount.add[0]] keyframe at 11s outside item bounds (0s - 10s).');
+    expect(json(e.doc)).toBe(before); expect(e.bus.undoStack).toHaveLength(n); expect(e.journal).toHaveLength(j);
+  });
+  it('open; Cutframe\'s own (lane A 12:37): an effect write succeeds with "Keyframes written on \'vid\' effect \'grayscale_1\': amount (2)."', () => {
+    const e = editor(); call(e, 'writeEffects', { itemId: 'vid', add: [{ effectId: 'grayscale' }] });
+    const r = wk(e, { amount: { replace: [{ time: 0, value: 0 }, { time: 2, value: 100 }] } }, { effectId: 'grayscale_1' });
+    expect(r.success).toBe(true); expect(r.message).toBe("Keyframes written on 'vid' effect 'grayscale_1': amount (2).");
   });
   it('X01 / X02: an add refusal is prefixed "[add/update]", not the entry path (RC 9.2 l.2727–2728)', () => {
     const e = editor(), before = json(e.doc);
