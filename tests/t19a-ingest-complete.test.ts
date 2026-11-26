@@ -41,3 +41,20 @@ it('f: failed as prepare.ts failed() writes it (a step processing turned failed,
     .toEqual(['status: failed', 'step probe: failed', 'step thumbnails: pending', 'step waveform: pending', 'step proxy: pending', 'step analysis: pending',
       'step transcription: pending', 'step embeddings_description: pending', 'step embeddings_transcript: pending', 'code: DECODE_ERROR']);
 });
+
+// Review F1 (t19a-f1-bound-review, lane A 11:58): steps() builds all nine keys, so a-f pass a deny-list check and one that walks
+// processing_steps instead of STEP_KEYS; g-i do not.
+it('g: ready with analysis unavailable and embeddings_transcript skipped: both are problems', () => {
+  expect(preparationProblems({ processing_status: 'ready', processing_steps: steps({ analysis: 'unavailable', embeddings_transcript: 'skipped' }), last_error_code: null }))
+    .toEqual(['step analysis: unavailable', 'step embeddings_transcript: skipped']);
+});
+
+it('h: ready with the proxy key absent and a key outside STEP_KEYS: names proxy as missing, ignores the other key', () => {
+  const s = { ...steps(), foo: 'failed' as ProcessingStep };
+  delete s.proxy; // absent, not undefined
+  expect(preparationProblems({ processing_status: 'ready', processing_steps: s, last_error_code: null })).toEqual(['step proxy: missing']);
+});
+
+it('i: the empty asset: status and every step missing, in key order, no code', () => {
+  expect(preparationProblems({})).toEqual(['status: missing', ...STEP_KEYS.map(k => `step ${k}: missing`)]);
+});
