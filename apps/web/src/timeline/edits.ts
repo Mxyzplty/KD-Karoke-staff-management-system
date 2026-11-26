@@ -87,8 +87,9 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     for (const o of OPS) if (ops[o] !== undefined && !Array.isArray(ops[o]))
       fail('INVALID_TOOL_INPUT', 'Invalid input for writeKeyframes', { message: `$.payload.${p}.${o}: must be array`, data: { details: { errors: [{ path: `$.payload.${p}.${o}`, code: 'TYPE', message: 'must be array' }] } } });
     for (const o of ['replace', 'add', 'update'] as const) (ops[o] ?? []).forEach((e: RecordData, n: number) => {
-      // Xapp prefixes add and update refusals "[add/update]" (RC 9.2 l.2727–2728); replace keeps the entry path.
-      const path = `${p}.${o}[${n}]`, entry = e ?? {}, tag = o === 'replace' ? path : 'add/update';
+      // Xapp prefixes add and update refusals "[add/update]" (RC 9.2 l.2727–2728); replace keeps the entry path, and so do
+      // effect and mask entries, whose prefix is not recorded (open; lane A 12:37).
+      const path = `${p}.${o}[${n}]`, entry = e ?? {}, tag = o === 'replace' || fx || mask ? path : 'add/update';
       checkTime(path, entry.time);
       if (['value', 'delta', 'factor'].filter(m => entry[m] !== undefined).length > 1)
         refuse('CONFLICTING_KEYFRAME_VALUE_MODES', 'Conflicting value modes', `[${path}] provide at most one of value, delta, or factor. Omit all three to capture the current interpolated value.`);
