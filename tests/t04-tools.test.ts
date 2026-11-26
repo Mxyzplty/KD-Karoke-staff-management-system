@@ -492,6 +492,33 @@ describe('setTimeRemap: remaining codes and storage (provisional where the wordi
   });
 });
 
+describe('T04 F5 (D115): result messages in Xapp\'s form (RC 9.2 l.2726–2729, 10.8 l.3045–3054)', () => {
+  const remap = (e: Editor, keyframes: unknown, extra: Record<string, unknown> = {}) => call(e, 'setTimeRemap', { itemId: 'vid', keyframes, ...extra });
+  it('writeKeyframes success follows Xapp: "writeKeyframes: <p> updated (1 op)", one op per property (RC 9.2 l.2726, 10.8 l.3045–3053; E01: one add of 5)', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [1, 2, 3, 4, 5].map(time => ({ time, value: time / 10 })) } });
+    expect(r.success).toBe(true); expect(r.message).toBe('writeKeyframes: opacity updated (1 op)');
+  });
+  it('add plus update on one property is one op: "writeKeyframes: borderWidth updated (1 op)" (RC 10.8 l.3051, U05)', () => {
+    const e = editor(bw(kf(2000, 3))), r = wk(e, { borderWidth: { add: [{ time: 1, value: 2 }], update: [{ time: 2, value: 4 }] } });
+    expect(r.success).toBe(true); expect(r.message).toBe('writeKeyframes: borderWidth updated (1 op)');
+  });
+  it('INFERRED from code only, no stored case: several properties read "writeKeyframes: <k> properties updated (<k> ops)" (RC 10.8 l.3054, [C])', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] }, scale: { add: [{ time: 1, value: 1.5 }] } });
+    expect(r.success).toBe(true); expect(r.message, 'INFERRED from code only (RC 10.8 l.3054, [C]); no stored case shows it').toBe('writeKeyframes: 2 properties updated (2 ops)');
+  });
+  it('X01 / X02: an add refusal is prefixed "[add/update]", not the entry path (RC 9.2 l.2727–2728)', () => {
+    const e = editor(), before = json(e.doc);
+    const x1 = wk(e, { rotation: { add: [{ time: 2, value: 5, outHandle: [1.5, 0] }] } });
+    refused(e, before, x1, 'INVALID_BEZIER_HANDLE'); expect(x1.message).toBe('[add/update] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
+    const x2 = wk(e, { rotation: { add: [{ time: 12, value: 5 }] } });
+    refused(e, before, x2, 'TIME_OUT_OF_BOUNDS'); expect(x2.message).toBe('[add/update] keyframe at 12s outside item bounds (0s - 10s).');
+  });
+  it('T03: setTimeRemap out of bounds reads "Keyframe at <t>s is outside clip bounds (<a>s – <b>s)." with no prefix (RC 9.2 l.2729)', () => {
+    const e = editor(), before = json(e.doc), r = remap(e, [{ time: 0, value: 0 }, { time: 15, value: 100 }]);
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('Keyframe at 15s is outside clip bounds (0.000s – 10.000s).');
+  });
+});
+
 describe('editProperties: remaining codes and strings (provisional where the wording is Cutframe\'s own)', () => {
   const ed = (properties: Record<string, unknown>, id = 'vid', doc?: ProjectDocument) => { const e = editor(doc), before = json(e.doc); return { e, before, r: call(e, 'editProperties', { itemId: id, properties }) }; };
   it('text keys on a text item are written by T05 (one undo entry); on a caption → T09; colors / media → T22', () => {
