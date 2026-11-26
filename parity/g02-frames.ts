@@ -9,6 +9,8 @@
 // Provisional, not Xapp parity: S1 is captured from the original, not a proxy (the replay prepares no media); the browser is
 // headless Chromium (software 2D canvas); the stored frames' renderer and JPEG encoder are unknown, so each frame reports
 // whether its JPEG quantization tables and chroma sampling equal ours.
+import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { readdir, readFile, realpath, stat, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -132,7 +134,7 @@ async function session<T>(o: FramesOptions, serve: (name: string) => string | un
   const s1 = await fixturePath(entry, store, REPO);
   if ((await stat(s1)).size !== entry.bytes || await sha256(s1) !== entry.sha256) throw Error(`Fixture mismatch: ${S1_FILE}`);
   const { createServer } = await import('vite'), { chromium } = await import('@playwright/test');
-  const server = await createServer({ configFile: path.join(REPO, 'vite.config.ts'), root: path.join(REPO, 'apps/web'), cacheDir: path.join(os.tmpdir(), 'cutframe-g02-frames-vite'),
+  const server = await createServer({ configFile: path.join(REPO, 'vite.config.ts'), root: path.join(REPO, 'apps/web'), cacheDir: path.join(os.tmpdir(), 'cutframe-vite-g02-frames-' + createHash('sha256').update(realpathSync(REPO)).digest('hex').slice(0, 12)),
     server: { host: '127.0.0.1', port: o.port ?? 0, strictPort: true }, logLevel: 'error' });
   await server.listen();
   const browser = await chromium.launch();
