@@ -12,7 +12,9 @@ import { lockNames, tryLock } from './locks';
 import { placeName } from './geocode';
 import type { MediaInfo } from './probe';
 
-export type PreparationRecord = { id: string; attemptId: string; phase: 'running' | 'finished' | 'failed' | 'interrupted' | 'cancelled'; startedAt: number; updatedAt: number; sourceRevision: string | null; budgetMs: number; code?: string; cancelledBy?: 'user' };
+export type PreparationRecord = { id: string; attemptId: string; phase: 'running' | 'finished' | 'failed' | 'interrupted' | 'cancelled'; startedAt: number; updatedAt: number; sourceRevision: string | null; budgetMs: number; code?: string; cancelledBy?: 'user'; stepErrors?: Record<string, StepError> };
+/** Our own record of why a T19 step failed (the asset's Xapp fields keep the generic step code and message). */
+export type StepError = { code?: string; message: string };
 export type ThumbnailRow = { id: string; width: number; height: number; poster: Blob; frames: { t: number; blob: Blob }[] };
 export type WaveformRow = { id: string; version: 1; bucketsPerSecond: number; durationMs: number; sampleRate: number; channels: number; peaks: Float32Array };
 export type ProxyResult = { blob: Blob; codec: string; container: string; width: number; height: number };
@@ -192,6 +194,7 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
     timers.clearTimeout(budget);
     let analysisFailure: MediaCode | undefined;
     const results: Record<string, unknown> = {};
+    const stepErrors: Record<string, StepError> = {};
     const t19 = [['analysis', 'GEMINI_FAILED', ['analysis']], ['transcription', 'TRANSCRIPTION_FAILED', ['transcription']], ['embeddings', 'EMBEDDING_FAILED', ['embeddings_description', 'embeddings_transcript']]] as const;
     for (const [name, code, recorded] of t19) {
       const step = steps[name], all = (state: ProcessingStep) => Object.fromEntries(recorded.map(n => [n, state]));
@@ -214,6 +217,8 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
         Object.assign(stepState, states); results[name] = outcome?.value ?? null;
       } catch (e) {
         if (abortError) throw abortError; if ((e as { code?: string }).code?.startsWith('LOCAL_PREPARATION_')) throw e; analysisFailure ??= code;
+        const reason = e as { code?: unknown; message?: unknown } | null;
+        stepErrors[name] = { ...(typeof reason?.code === 'string' ? { code: reason.code } : {}), message: typeof reason?.message === 'string' ? reason.message : String(e) };
         // A step that failed by itself may carry rows that say why (T19 C2: the transcript row `{status: "failed", error}`);
         // not one that ran out of time or was cancelled by another request.
         const puts = own.signal.aborted || collateral(e) ? undefined : (e as { puts?: { store: StoreName; value: unknown }[] }).puts;
@@ -222,7 +227,7 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
       } finally { timers.clearTimeout(deadline); controller.signal.removeEventListener('abort', link); }
     }
     const failure = proxyFailure ?? analysisFailure;
-    await owned({ preparation: row => ({ ...row, phase: 'finished', updatedAt: clock(), code: failure }),
+    await owned({ preparation: row => ({ ...row, phase: 'finished', updatedAt: clock(), code: failure, ...(Object.keys(stepErrors).length ? { stepErrors } : {}) }),
       asset: a => ({ ...a, processing_status: 'ready', preparationAttempts: 0, last_error_code: failure ?? null, last_error_message: failure ? mediaError(failure).message : null }) });
     return 'prepared';
   } catch (e) {
