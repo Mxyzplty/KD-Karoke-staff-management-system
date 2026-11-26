@@ -365,6 +365,22 @@ describe('splitItem (findings part 2 §41b; results §2 splitItem)', () => {
     const e = editor(lock(fixture(), 'V1')); const r = call(e, 'splitItem', { itemId: 'v2', timestampS: 6 });
     expect(r).toMatchObject({ success: false, code: 'TRACK_LOCKED', error: 'This clip or track is locked. Unlock it before splitting.' }); expect(e.bus.undoStack).toHaveLength(0);
   });
+  // Xapp parity (fix queue l.142, D115; research findings §13): Xapp's splitItem throws with no code, so the project guard's fallback
+  // PROJECT_UNAVAILABLE carries the text; a track inside a locked group fails earlier with "Group is locked".
+  it('Xapp parity: a locked track → PROJECT_UNAVAILABLE with the unlock hint, nothing changes', () => {
+    const e = editor(lock(fixture(), 'V1')); const b = json(e.doc); const r = call(e, 'splitItem', { itemId: 'v2', timestampS: 6 });
+    expect(r).toMatchObject({ success: false, code: 'PROJECT_UNAVAILABLE', error: 'This clip or track is locked. Unlock it before splitting.' }); refused(e, b, r);
+  });
+  it('Xapp parity: a locked item on an unlocked track → PROJECT_UNAVAILABLE with the unlock hint, nothing changes', () => {
+    const doc = fixture(); itemOf(doc, 'v2').locked = true;
+    const e = editor(doc); const b = json(e.doc); const r = call(e, 'splitItem', { itemId: 'v2', timestampS: 6 });
+    expect(r).toMatchObject({ success: false, code: 'PROJECT_UNAVAILABLE', error: 'This clip or track is locked. Unlock it before splitting.' }); refused(e, b, r);
+  });
+  it('Xapp parity: an item on a track inside a locked group → PROJECT_UNAVAILABLE "Group is locked", nothing changes', () => {
+    const doc = grouped(); doc.groups.g1.locked = true;
+    const e = editor(doc); const b = json(e.doc); const r = call(e, 'splitItem', { itemId: 'v2', timestampS: 6 });
+    expect(r).toMatchObject({ success: false, code: 'PROJECT_UNAVAILABLE', error: 'Group is locked' }); refused(e, b, r);
+  });
 });
 
 describe('cloneItem (results §2 cloneItem l.389)', () => {
