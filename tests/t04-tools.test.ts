@@ -547,6 +547,31 @@ describe('T04 F5b: writeKeyframes data.ops, one { property, op } per property (R
     const e = editor(bw(kf(2000, 3))), r = wk(e, { borderWidth: { add: [{ time: 1, value: 2 }], update: [{ time: 2, value: 4 }] } });
     expect(r.success).toBe(true); expect(r.data.ops).toEqual([{ property: 'borderWidth', op: 'upsert' }]);
   });
+  it('INFERRED, no stored ops: add only is one "upsert" op (RC 10.8 l.3050 [C]; E01 stores the message, not ops)', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [1, 2, 3, 4, 5].map(time => ({ time, value: time / 10 })) } });
+    expect(r.success).toBe(true); expect(r.data.ops, 'INFERRED: add only → "upsert" (RC 10.8 l.3050 [C])').toEqual([{ property: 'opacity', op: 'upsert' }]);
+  });
+  it('INFERRED, no stored case: an empty replace is one "clear" op (RC 10.8 l.3048 [C])', () => {
+    const e = editor(bw(kf(1000, 1))), r = wk(e, { borderWidth: { replace: [] } });
+    expect(r.success).toBe(true); expect(r.data.ops, 'INFERRED: empty replace → "clear" (RC 10.8 l.3048 [C])').toEqual([{ property: 'borderWidth', op: 'clear' }]);
+  });
+  it('INFERRED, no stored case: remove only is one "remove" op (RC 10.8 l.3050 [C])', () => {
+    const e = editor(bw(kf(1000, 1))), r = wk(e, { borderWidth: { remove: [1] } });
+    expect(r.success).toBe(true); expect(r.data.ops, 'INFERRED: remove only → "remove" (RC 10.8 l.3050 [C])').toEqual([{ property: 'borderWidth', op: 'remove' }]);
+  });
+  it('INFERRED, no stored case: add plus remove is one "upsert+remove" op (RC 10.8 l.3049 [C])', () => {
+    const e = editor(bw(kf(1000, 1), kf(3000, 2))), r = wk(e, { borderWidth: { add: [{ time: 5, value: 4 }], remove: [1] } });
+    expect(r.success).toBe(true); expect(r.data.ops, 'INFERRED: add + remove → "upsert+remove" (RC 10.8 l.3049 [C])').toEqual([{ property: 'borderWidth', op: 'upsert+remove' }]);
+  });
+  it('INFERRED, no stored case: replace with other arrays is still one "replace" op; the others are not counted (RC 10.8 l.3048 [C])', () => {
+    const e = editor(bw(kf(1000, 1), kf(3000, 2))), r = wk(e, { borderWidth: { replace: [{ time: 2, value: 5 }], add: [{ time: 4, value: 6 }] } });
+    expect(r.success).toBe(true); expect(r.data.ops, 'INFERRED: replace wins, other arrays not counted (RC 10.8 l.3048 [C])').toEqual([{ property: 'borderWidth', op: 'replace' }]);
+  });
+  it('INFERRED, no stored case: two properties give two entries, one per property; entry order not recorded (RC 10.8 l.3045, l.3054 [C])', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] }, scale: { add: [{ time: 1, value: 1.5 }] } });
+    expect(r.success).toBe(true); expect(r.data.ops, 'INFERRED: one entry per property (RC 10.8 l.3045, l.3054 [C]); order open').toHaveLength(2);
+    expect(r.data.ops).toEqual(expect.arrayContaining([{ property: 'opacity', op: 'upsert' }, { property: 'scale', op: 'upsert' }]));
+  });
 });
 
 describe('editProperties: remaining codes and strings (provisional where the wording is Cutframe\'s own)', () => {
