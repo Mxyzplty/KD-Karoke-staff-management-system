@@ -3,8 +3,10 @@
 // It is NOT the G-02 reference and says nothing about Xapp parity. Unlike g01-synthetic.ts it is a written-spec oracle:
 // every stored result and keyframes object below is written by hand from agent tool results §6 (G-02), the setTimeRemap
 // block of §2, error codes l.163–166 and tickets T04 (G-02 boundary outcomes), not produced by the Cutframe code.
-// Provisional choices, not Xapp parity (the spec gives no value): the `source` labels of resolvedKeyframes
-// (value / delta / factor / hold); the `error` strings of INVALID_BEZIER_HANDLE and TIME_OUT_OF_BOUNDS; a bezier easing
+// writeKeyframes results are stored in Xapp's flat envelope, with no `data`: ops and resolvedKeyframes at the top level,
+// and `current` as the `source` of an entry with no value, delta or factor (lane R raw read, 26 Nov (D127)).
+// Provisional choices, not Xapp parity (the spec gives no value): the `source` labels value / delta / factor of
+// resolvedKeyframes; the `error` strings of INVALID_BEZIER_HANDLE and TIME_OUT_OF_BOUNDS; a bezier easing
 // read back as the input object; the reason text of the schema refusals (only their path and code are compared, and
 // only on the emulated TYPE case; the others are deferred to T18). The `message` strings of K61 / K62 ("[add/update] …")
 // and T05 ("Keyframe at <t>s is outside clip bounds …") are Xapp's forms (RC 9.2 l.2727–2729), no longer provisional.
@@ -39,7 +41,7 @@ export async function writeSyntheticG02(dir: string, o: { blockBase?: 0 | 1; set
   const kfs: Rec = {};
   const details = () => ({ success: true, data: { results: [{ id: ITEM, type: 'video', startTime: 0, endTime: 10, ...(Object.keys(kfs).length ? { keyframes: structuredClone(kfs) } : { keyframes: null, keyframesNote: 'No keyframes on this item' }) }] } });
   const vid = (id: string) => files.set(`${id}.vid`, { result_text: text([`viewItemDetails after ${id}`, JSON.stringify(details())]), notes: '' });
-  const write = (id: string, payload: Rec, result: Rec = { success: true, data: { itemId: ITEM } }, form: 'text' | 'blocks' = 'text') => store(id, 'writeKeyframes', { itemId: ITEM, payload }, result, form);
+  const write = (id: string, payload: Rec, result: Rec = { success: true }, form: 'text' | 'blocks' = 'text') => store(id, 'writeKeyframes', { itemId: ITEM, payload }, result, form);
   const remove = (t: number) => ({ success: false, code: 'REMOVE_TIME_NOT_FOUND', error: 'No keyframes at remove times', message: `For 'borderWidth', no keyframes found at ${t}s (100ms tolerance). Available: 1.000s, 3.000s, 6.000s.` });
 
   if (setup === 'calls') {
@@ -51,17 +53,17 @@ export async function writeSyntheticG02(dir: string, o: { blockBase?: 0 | 1; set
   // Value modes on positionY (§6: 0 → 400 over 0–8 s, linear). Add appends, so K05's stored order is not sorted.
   write('K01', { positionY: { replace: [{ time: 0, value: 0 }, { time: 8, value: 400 }] } });
   kfs.positionY = curve(0, kf(0, 0), kf(8, 400)); vid('K01');
-  write('K02', { positionY: { add: [{ time: 1, value: 100 }] } }, { success: true, data: { itemId: ITEM, resolvedKeyframes: { positionY: [{ time: 1, value: 100, source: 'value' }] } } });
-  write('K03', { positionY: { add: [{ time: 3, delta: 50 }] } }, { success: true, data: { itemId: ITEM, resolvedKeyframes: { positionY: [{ time: 3, value: 235.71428571428572, source: 'delta' }] } } }, 'blocks');
-  write('K04', { positionY: { add: [{ time: 5, factor: 0.5 }] } }, { success: true, data: { itemId: ITEM, resolvedKeyframes: { positionY: [{ time: 5, value: 150.71428571428572, source: 'factor' }] } } });
-  write('K05', { positionY: { add: [{ time: 7 }] } }, { success: true, data: { itemId: ITEM, resolvedKeyframes: { positionY: [{ time: 7, value: 316.9047619047619, source: 'hold' }] } } });
+  write('K02', { positionY: { add: [{ time: 1, value: 100 }] } }, { success: true, resolvedKeyframes: { positionY: [{ time: 1, value: 100, source: 'value' }] } });
+  write('K03', { positionY: { add: [{ time: 3, delta: 50 }] } }, { success: true, resolvedKeyframes: { positionY: [{ time: 3, value: 235.71428571428572, source: 'delta' }] } }, 'blocks');
+  write('K04', { positionY: { add: [{ time: 5, factor: 0.5 }] } }, { success: true, resolvedKeyframes: { positionY: [{ time: 5, value: 150.71428571428572, source: 'factor' }] } });
+  write('K05', { positionY: { add: [{ time: 7 }] } }, { success: true, resolvedKeyframes: { positionY: [{ time: 7, value: 316.9047619047619, source: 'current' }] } });
   kfs.positionY = curve(0, kf(0, 0), kf(8, 400), kf(1, 100), kf(3, 235.71428571428572), kf(5, 150.71428571428572), kf(7, 316.9047619047619)); vid('K05');
 
   // Tickets T04 boundary outcomes, after whole-ms rounding (§6 corrections table).
   write('K10', { opacity: { replace: [{ time: 1, value: 1 }, { time: 3, value: 0.5 }, { time: 6, value: 0 }] } });
   kfs.opacity = curve(1, kf(1, 1), kf(3, 0.5), kf(6, 0)); vid('K10');
   write('K11', { opacity: { add: [{ time: 1.003999, value: 0.9 }, { time: 3.004, value: 0.4 }, { time: 6.004001, value: 0.1 }] } },
-    { success: true, data: { itemId: ITEM, resolvedKeyframes: { opacity: [{ time: 1.003999, value: 0.9, source: 'value' }, { time: 3.004, value: 0.4, source: 'value' }, { time: 6.004001, value: 0.1, source: 'value' }] } } });
+    { success: true, resolvedKeyframes: { opacity: [{ time: 1.003999, value: 0.9, source: 'value' }, { time: 3.004, value: 0.4, source: 'value' }, { time: 6.004001, value: 0.1, source: 'value' }] } });
   kfs.opacity = curve(1, kf(1, 1), kf(3, 0.5), kf(6, 0), kf(1.004, 0.9), kf(3.004, 0.4), kf(6.004, 0.1)); vid('K11');
   write('K20', { positionX: { replace: [{ time: 1, value: 10 }, { time: 3, value: 20 }, { time: 6, value: 30 }] } });
   kfs.positionX = curve(0, kf(1, 10), kf(3, 20), kf(6, 30)); vid('K20');

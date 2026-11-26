@@ -103,7 +103,7 @@ describe('G-02 replay support: every perturbation of the stored reference fails 
     it('4j. code (K51 REMOVE_TIME_NOT_FOUND -> TIME_OUT_OF_BOUNDS)', async () => { const f = await folder(); await edit(f.dir, 'K51', j => { j.code = 'TIME_OUT_OF_BOUNDS'; }); await expectOnlyFails(f, 'K51'); });
     it('4k. error (K51)', async () => { const f = await folder(); await edit(f.dir, 'K51', j => { j.error = 'Something else'; }); await expectOnlyFails(f, 'K51'); });
     it('4l. message (K51)', async () => { const f = await folder(); await edit(f.dir, 'K51', j => { j.message += ' (changed)'; }); await expectOnlyFails(f, 'K51'); });
-    it('4m. resolvedKeyframes (K11 first time 1.003999 -> 1.0041)', async () => { const f = await folder(); await edit(f.dir, 'K11', j => { j.data.resolvedKeyframes.opacity[0].time = 1.0041; }); await expectOnlyFails(f, 'K11'); });
+    it('4m. resolvedKeyframes (K11 first time 1.003999 -> 1.0041)', async () => { const f = await folder(); await edit(f.dir, 'K11', j => { j.resolvedKeyframes.opacity[0].time = 1.0041; }); await expectOnlyFails(f, 'K11'); });
     it('4n. speedRange (T03 max 2.931 -> 3)', async () => { const f = await folder(); await edit(f.dir, 'T03', j => { j.data.speedRange.max = 3; }); await expectOnlyFails(f, 'T03'); });
     it('4o. warnings dropped from a stored result that has them (T01)', async () => { const f = await folder(); await edit(f.dir, 'T01', j => { delete j.data.warnings; }); await expectOnlyFails(f, 'T01'); });
     it('4p. a warning added to a stored result that has none (T04): a warning Cutframe lacks is a difference', async () => {
@@ -116,16 +116,17 @@ describe('G-02 replay support: every perturbation of the stored reference fails 
   });
 
   // T04 F5b: `ops` joins the compared call fields. RC 10.8 l.3045–3046: every writeKeyframes success returns `ops`, one
-  // { property, op } per property; g02.ts l.10–11: call fields are compared wherever the stored result carries them (Xapp's
-  // envelope position is not recorded, so the stored ops go in `data` beside ours). K01 is `positionY: { replace: [2 entries] }`: ours is "replace".
+  // { property, op } per property. Xapp's writeKeyframes result is flat, with no `data`: ops and resolvedKeyframes sit at the
+  // top level (lane R raw read, 26 Nov (D127)), so for writeKeyframes steps those two are compared at the top level and either
+  // one found in `data` is a call diff. K01 is `positionY: { replace: [2 entries] }`: ours is "replace".
   describe('call result ops (<id>.json, T04 F5b)', () => {
     it('4r. ops (K01 stored [{ positionY, upsert }], ours [{ positionY, replace }]): K01 fails with one call diff at path "ops" (RC 10.8 l.3045–3046)', async () => {
-      const f = await folder(); await edit(f.dir, 'K01', j => { j.data.ops = [{ property: 'positionY', op: 'upsert' }]; });
+      const f = await folder(); await edit(f.dir, 'K01', j => { j.ops = [{ property: 'positionY', op: 'upsert' }]; });
       const report = await expectOnlyFails(f, 'K01');
       expect(step(report, 'K01').diffs).toEqual([{ part: 'call', path: 'ops', expected: [{ property: 'positionY', op: 'upsert' }], actual: [{ property: 'positionY', op: 'replace' }] }]);
     });
     it('4s. guard: K01 stored ops equal to ours ([{ positionY, replace }]) gives no ops diff and nothing fails (RC 10.8 l.3051: a replace gives one "replace" op)', async () => {
-      const f = await folder(); await edit(f.dir, 'K01', j => { j.data.ops = [{ property: 'positionY', op: 'replace' }]; });
+      const f = await folder(); await edit(f.dir, 'K01', j => { j.ops = [{ property: 'positionY', op: 'replace' }]; });
       const report = await run(f);
       expect(failedIds(report)).toEqual([]); expect(step(report, 'K01').status).toBe('passed'); expect(step(report, 'K01').diffs.some(d => d.path === 'ops')).toBe(false);
     });
@@ -133,6 +134,20 @@ describe('G-02 replay support: every perturbation of the stored reference fails 
       const f = await folder(); expect(JSON.stringify(await readRecord(f.dir, 'K01'))).not.toContain('"ops'); // precondition: no stored ops
       const report = await run(f);
       expect(failedIds(report)).toEqual([]); expect(step(report, 'K01').status).toBe('passed'); expect(step(report, 'K01').diffs.some(d => d.path === 'ops')).toBe(false);
+    });
+    it('4u. position: K01 stored ops equal to ours but inside `data` fails K01 with call diffs at "ops" and "data.ops" (lane R raw read, 26 Nov (D127))', async () => {
+      const f = await folder(); await edit(f.dir, 'K01', j => { j.data = { ops: [{ property: 'positionY', op: 'replace' }] }; });
+      const report = await expectOnlyFails(f, 'K01');
+      expect(step(report, 'K01').diffs.filter(d => d.part === 'call').map(d => d.path)).toEqual(['ops', 'data.ops']);
+    });
+    it('4v. position: K11 stored resolvedKeyframes moved into `data` fails K11 with call diffs at "resolvedKeyframes" and "data.resolvedKeyframes" (D127)', async () => {
+      const f = await folder(); await edit(f.dir, 'K11', j => { j.data = { resolvedKeyframes: j.resolvedKeyframes }; delete j.resolvedKeyframes; });
+      const report = await expectOnlyFails(f, 'K11');
+      expect(step(report, 'K11').diffs.filter(d => d.part === 'call').map(d => d.path)).toEqual(['resolvedKeyframes', 'data.resolvedKeyframes']);
+    });
+    it('4w. guard: other tools stay position-agnostic: T03 (setTimeRemap) speedRange moved from `data` to the top level still passes', async () => {
+      const f = await folder(); await edit(f.dir, 'T03', j => { j.speedRange = j.data.speedRange; delete j.data.speedRange; });
+      const report = await run(f); expect(failedIds(report)).toEqual([]); expect(step(report, 'T03').status).toBe('passed');
     });
   });
 });
