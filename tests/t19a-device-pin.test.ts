@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// T19a audit F1 (landed-audit-t19a, D117): the editor's analysis worker is pinned to WASM, the backend every acceptance number
-// was measured on. The WebGPU branch in models.ts stays as it is; the inference-time WASM retry and the WebGPU runs are T36's.
+// T19a audit F1 (landed-audit-t19a, D117): the editor's analysis worker is pinned to WASM, the browser backend of the worker checks
+// and memory runs (accuracy rows are Node CPU); WebGPU per model is T36. The WebGPU branch in models.ts stays as it is; the
+// inference-time WASM retry and the WebGPU runs are T36's.
 // Lane A (05:53): the mask worker's text-prompt grounding (T19a's Florence-2, mask.worker.ts) is the second app site of the pin.
 import { afterEach, expect, it, vi } from 'vitest';
 import { LocalModels } from '../apps/web/src/analysis/models';
@@ -59,9 +60,10 @@ it('the mask worker builds the text-prompt grounding LocalModels with device was
   const said: { id?: number; kind: string; code?: string; message?: string }[] = [], self = { postMessage: (m: typeof said[number]) => said.push(m), onmessage: null as unknown as (e: { data: unknown }) => Promise<void> };
   vi.stubGlobal('self', self);
   mocks.modelOptions.length = 0;
+  // Imported once per file, with no vi.resetModules(): a second row would get a stale self.onmessage and a cached `vision`; use t12-worker-fallback's worker().
   await import('../apps/web/src/masks/mask.worker');
   await self.onmessage({ data: { init: { root: '/models/', wasm: { mjs: 'ort.mjs', wasm: 'ort.wasm' } } } });
   await self.onmessage({ data: { id: 1, request: { task: 'text', source: { blob: new Blob(['x']), rotation: 0 }, atUs: 0, startUs: 0, endUs: 1000, total: 1, prompt: 'the dog' } } });
   expect(said.filter(m => m.kind !== 'progress').pop()).toMatchObject({ id: 1, kind: 'done' });
-  expect(mocks.modelOptions).toEqual([expect.objectContaining({ modelRoot: '/models/', device: 'wasm' })]);
+  expect(mocks.modelOptions).toEqual([{ modelRoot: '/models/', wasm: { mjs: 'ort.mjs', wasm: 'ort.wasm' }, device: 'wasm' }]);
 });
