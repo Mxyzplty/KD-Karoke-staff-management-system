@@ -10,8 +10,8 @@
 // Store check :703, BeatThis fold0 check :707, exit 1 on any fail :730. No scorer threshold is set or changed here (C8).
 // Oracle: the table is written from score.ts and the T19a F2 plan §3 before any run, never from run output.
 // Needs the fixture store and BeatThis fold0 (store vitests' skip); CI has neither, so it skips there.
-// Wall time and timeout: provisional, set after the first measured run.
-// D67, ORT backend and binary of the spawned scorer: provisional, set after the first run.
+// 26 Nov 2026, one run: spawn wall 140.5 s, vitest 140.73 s; T = 282_000 ms is approximately twice the test time.
+// D67: beats wasm; node v26.8.1; onnxruntime-web 1.31.0-dev.20260914-8d85527a0 dist/ort.webgpu.bundle.min.mjs -> ort-wasm-simd-threaded.asyncify.wasm.
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const TSX = path.resolve('node_modules/tsx/dist/cli.mjs');
-const T = 600_000;
+const T = 282_000;
 const root = process.env.CUTFRAME_FIXTURES;
 const fold0 = root ? existsSync(path.join(root, 'models/t19a/CPJKU/beat_this/beat_this_fold0.onnx')) : false;
 
