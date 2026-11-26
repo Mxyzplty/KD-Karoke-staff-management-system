@@ -6,9 +6,10 @@
 // `<id>.vid` (sorted by time: times and values to 1e-9, stored easing names, handles, the timeRemap curve; then the
 // stored order). With `frames` (parity/g02-frames.ts, T15) each captureFrame step is compared with the stored preview frames
 // frames/F1-<t>.jpg / F2-<t>.jpg; the export frames and the export's ffprobe facts are T16's and not compared.
-// Run by Author on D2 only; implementers test it on synthetic folders (parity/g02-synthetic.ts). Provisional choices,
-// not Xapp parity: the `--item` track, schema refusals reported as deferred (T18), and call fields compared wherever
-// each result carries them (Xapp's envelope position is not documented).
+// Run by Author on D2 only; implementers test it on synthetic folders (parity/g02-synthetic.ts). For writeKeyframes steps,
+// ops and resolvedKeyframes are compared at the top level and either one in `data` is a call diff (Xapp's result is flat,
+// lane R raw read, 26 Nov (D127)); every other call field is compared wherever each result carries it. Provisional choices,
+// not Xapp parity: the `--item` track, schema refusals reported as deferred (T18), and that position-agnostic compare.
 import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { atomicJson, inside, resolvedDestination } from './runner';
@@ -64,8 +65,10 @@ function compareKeyframes(v: Json, o: Json, at: string, diffs: Diff[]) {
 
 // ---- The call result (tickets T04 G-02 (2)).
 const FIELDS = ['resolvedKeyframes', 'speedRange', 'warnings', 'ops'];
+/** writeKeyframes fields that sit at the top level of the result, never in `data` (D127). */
+const TOP = new Set(['resolvedKeyframes', 'ops']);
 const schemaErrors = (x: Rec) => { const d = first(x, 'details'); return isObj(d) && Array.isArray(d.errors) ? d.errors.map(e => isObj(e) ? { path: e.path ?? null, code: e.code ?? null } : e) : undefined; };
-function compareCall(v: Rec, o: Rec): Diff[] {
+function compareCall(v: Rec, o: Rec, tool: string): Diff[] {
   const diffs: Diff[] = [], check = (p: string, a: Json | undefined, b: Json | undefined) => { if (!same(a, b)) diffs.push({ part: 'call', path: p, expected: a ?? null, actual: b ?? null }); };
   check('success', v.success, o.success);
   if ('error' in v || 'error' in o) check('error', v.error, o.error);
@@ -73,7 +76,15 @@ function compareCall(v: Rec, o: Rec): Diff[] {
   if ('code' in v) check('code', v.code, o.code);
   if ('message' in v) check('message', v.message, o.message);
   // A warning Cutframe adds is a difference too; the other fields are compared where Xapp's result carries them.
-  for (const f of FIELDS) { const a = first(v, f), b = first(o, f); if (a !== undefined || (f === 'warnings' && b !== undefined)) check(f, a, b); }
+  for (const f of FIELDS) {
+    if (tool === 'writeKeyframes' && TOP.has(f)) {
+      if (first(v, f) !== undefined) check(f, v[f], o[f]);
+      const inData = (x: Rec) => isObj(x.data) ? x.data[f] : undefined, a = inData(v), b = inData(o);
+      if (a !== undefined || b !== undefined) diffs.push({ part: 'call', path: `data.${f}`, expected: a ?? null, actual: b ?? null, note: `writeKeyframes: ${f} sits at the top level, not in data` });
+      continue;
+    }
+    const a = first(v, f), b = first(o, f); if (a !== undefined || (f === 'warnings' && b !== undefined)) check(f, a, b);
+  }
   const errors = schemaErrors(v);
   if (errors) check('details.errors', errors, schemaErrors(o));
   return diffs;
@@ -129,7 +140,7 @@ export async function runG02(referenceDir: string, o: G02Options) {
           remember();
           if (vCall) {
             learnCall(map, vCall, ours, known);
-            const diffs = compareCall(map.translate(vCall) as Rec, ours);
+            const diffs = compareCall(map.translate(vCall) as Rec, ours, tool);
             report.compared.push('call');
             // Results §4 rule 1: INVALID_TOOL_INPUT is the schema validator's (T18); the direct-call handler refuses with its own code.
             if (vCall.code === 'INVALID_TOOL_INPUT' && ours.success === false && ours.code !== 'INVALID_TOOL_INPUT') {
