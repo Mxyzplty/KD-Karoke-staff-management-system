@@ -44,7 +44,7 @@ test(`the pool lags (${DELAY} ms per decode): the clip is handed to the element 
   test.info().annotations.push({ type: 'measured', description: `delay ${DELAY}; behindHandoffs ${s.behindHandoffs}; handoffs ${s.handoffs} ${JSON.stringify(s.handoffMs)}; maxDriftMs ${(s.maxDriftMs as number).toFixed(2)}; poolDrawnFrames ${s.poolDrawnFrames}` });
   expect(s.behindHandoffs, 'handoffs made early because the pool fell behind').toBeGreaterThanOrEqual(1);
   expect(s.handoffs, 'every early handoff is a handoff').toBeGreaterThanOrEqual(s.behindHandoffs);
-  expect(s.skipped, 'frame indices never painted').toBe(0);
+  expect(s.skipped, `frame indices never painted: skippedAt ${JSON.stringify(s.skippedAt)}, maxRafGapMs ${s.maxRafGapMs} at clock ${s.maxRafGapAtMs} ms`).toBe(0);
   expect(s.resyncs, 'element resyncs').toBe(0);
   expect(s.maxDriftMs, 'max drawn-frame drift from the master clock (ms)').toBeLessThan(1.5 * 1000 / FPS);
   expect(firstElement, 'the element draws after the pool').toBeGreaterThan(0);
