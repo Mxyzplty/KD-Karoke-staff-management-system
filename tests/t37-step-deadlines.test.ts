@@ -57,7 +57,7 @@ const real = (ms = 0) => new Promise<void>(res => setTimeout(res, ms));
 /** The analysis deadline for a clip of `s` seconds (its frame count by the T19a rule). */
 const deadline = (s: number) => analysisDeadlineMs(frameTimes(s).length);
 
-/** Fake time: timers fire only inside advance(); setInterval never fires (no heartbeat). Same model as t19-r2. */
+/** Fake time: timers fire only inside advance(), which first lets queued microtasks run, as the event loop does before a timer (t19-r2's fakeTime does not); setInterval never fires (no heartbeat). */
 function fakeTime() {
   let now = Date.parse('2026-11-26T00:00:00Z'), seq = 0;
   const pending = new Map<number, { at: number; fn: () => void }>();
@@ -69,6 +69,7 @@ function fakeTime() {
   } satisfies Timers;
   async function advance(ms: number) {
     const target = now + ms;
+    await real(); // what the last synchronous call (a finish) queued runs before any timer, as in the event loop
     for (;;) {
       const due = [...pending.entries()].filter(([, t]) => t.at <= target).sort((x, y) => x[1].at - y[1].at)[0];
       if (!due) break;
