@@ -22,7 +22,7 @@ import type { Asset } from '../apps/web/src/store/model';
 import type { MediaStore } from '../apps/web/src/store/media';
 import { mediaError } from '../apps/web/src/media/codes';
 import { uploadToLibrary } from '../apps/web/src/media/ingest';
-import { preparationBudgetMs, prepareAsset } from '../apps/web/src/media/prepare';
+import { preparationBudgetMs, prepareAsset, resumePreparations } from '../apps/web/src/media/prepare';
 import type { PreparationRecord, Steps, Timers } from '../apps/web/src/media/prepare';
 import { runWorker } from '../apps/web/src/media/worker-client';
 import { AnalysisService } from '../apps/web/src/analysis/service';
@@ -263,5 +263,25 @@ describe('T37 row 5: frame extraction stays on preparationBudgetMs; the model de
     workers[0].finish(describes()[0], DESCRIBED);
     expect(await pb.promise).toBe('prepared');
     await clean(store, b.id);
+  });
+});
+
+describe('T37 bug 2: an automatic resume does not prepare again an asset that another caller finished after the resume read the asset rows', () => {
+  it('the snapshot still says processing; the asset is ready with a finished record: one probe, the first attempt kept', async () => {
+    const store = setup(), [a] = await upload(store, ['clip30.mp4']);
+    let probes = 0; const steps: Partial<Steps> = { probe: async () => { probes++; return video(30_000) as never; } };
+    const rows = store.rows.bind(store); let first: PreparationRecord | undefined;
+    store.rows = async <T>(name: Parameters<ProjectStore['rows']>[0]) => {
+      const snapshot = await rows<T>(name);
+      // Another caller (the second StrictMode loop, the visible-page resume, an upload's startPreparation) finishes the
+      // asset after this loop's one read of the asset rows (prepare.ts:285).
+      if (name === 'assets' && !first) { expect(await prepareAsset(store, a.id, { steps })).toBe('prepared'); first = await record(store, a.id); }
+      return snapshot;
+    };
+    await resumePreparations(store, { steps });
+    expect(first).toMatchObject({ phase: 'finished' }); // the schedule reached its boundary
+    expect(probes).toBe(1);
+    expect(await record(store, a.id)).toMatchObject({ phase: 'finished', attemptId: first!.attemptId });
+    expect(await stored(store, a.id)).toMatchObject({ processing_status: 'ready', last_error_code: null });
   });
 });
