@@ -117,6 +117,34 @@ test('row 1: Auto backup is off by default; turning it on asks for a folder, per
   expect(second).not.toBe(first);
 });
 
+// T40: pins opfsNames' failure mode (an entry the listing returned is gone before getFile() reads it), not run 5 itself.
+test('T40: an entry the OPFS listing returns can be gone before it is read (a writable closing mid-listing); the poll lists again', async ({ page }) => {
+  await page.goto('/settings');
+  const names = await page.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('t40-race', { create: true });
+    const writable = await (await dir.getFileHandle('a.png', { create: true })).createWritable();
+    await writable.write(new Uint8Array(10)); // left open: Chromium keeps a .crswap swap file in the folder until close
+    (window as unknown as { __t40: { close(): Promise<void> } }).__t40 = writable;
+    const out: string[] = []; // names only: no getFile(), so the listing itself cannot throw on the swap
+    for await (const [name] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) out.push(name);
+    return out;
+  });
+  expect(names, 'the open writable shows as a .crswap swap file').toContain('a.png');
+  expect(names.filter(n => n.endsWith('.crswap')), 'the open writable shows as a .crswap swap file').toHaveLength(1);
+  // One shot: the first getFile() on the swap closes the writable for real (the swap goes), then reads it. No error is faked.
+  await page.evaluate(() => {
+    const getFile = FileSystemFileHandle.prototype.getFile, w = window as unknown as { __t40: { close(): Promise<void> }; __t40Closed: boolean };
+    FileSystemFileHandle.prototype.getFile = async function (this: FileSystemFileHandle) {
+      if (!this.name.endsWith('.crswap')) return getFile.call(this);
+      FileSystemFileHandle.prototype.getFile = getFile; w.__t40Closed = true;
+      await w.__t40.close();
+      return getFile.call(this);
+    };
+  });
+  await expect.poll(() => opfsNames(page, 't40-race')).toEqual({ 'a.png': 10 });
+  expect(await page.evaluate(() => (window as unknown as { __t40Closed: boolean }).__t40Closed), 'the hook fired on the swap').toBe(true);
+});
+
 test('row 1: Allowed directories — Add folder stores the handle, it persists across a reload and is what the agent folder tools list', async ({ page }) => {
   await stubPicker(page, 't21-docs');
   await page.goto('/');
