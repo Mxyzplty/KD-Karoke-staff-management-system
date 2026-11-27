@@ -139,12 +139,12 @@ function Preview({ session, projectId, assets, refresh }: { session: AutosaveSes
   const d = session.document, v = useView(), input = useRef<HTMLInputElement>(null), area = useRef<HTMLElement>(null);
   // The view (T28 rows 1-2): fit and zoom in screen px per canvas px, the pan offset in screen px from the stage's centred
   // place. Until the first wheel zoom (and again after Reset view) a size change of the area fits again and clears the offset.
-  const [cam, setCam] = useState<{ fit: number; zoom: number; x: number; y: number }>(), zoomed = useRef(false);
+  const [cam, setCam] = useState<{ fit: number; zoom: number; x: number; y: number; zoomed: boolean }>();
   useLayoutEffect(() => {
     const el = area.current; if (!el) return;
     const measure = () => {
       const fit = Math.max(1e-3, Math.min((el.clientWidth - 30) / d.size.width, (el.clientHeight - 30) / d.size.height));
-      setCam(c => !c || !zoomed.current ? { fit, zoom: fit, x: 0, y: 0 } : { ...c, fit });
+      setCam(c => !c || !c.zoomed ? { fit, zoom: fit, x: 0, y: 0, zoomed: false } : { ...c, fit });
     };
     measure(); const observer = new ResizeObserver(measure); observer.observe(el); return () => observer.disconnect();
   }, [d.size.width, d.size.height]);
@@ -161,13 +161,12 @@ function Preview({ session, projectId, assets, refresh }: { session: AutosaveSes
         if (!c) return c;
         const zoom = Math.min(3, Math.max(0.1, c.zoom * (1 - 0.003 * e.deltaY)));
         if (zoom === c.zoom) return c;
-        zoomed.current = true;
-        return { fit: c.fit, zoom, x: px - (px - c.x) * zoom / c.zoom, y: py - (py - c.y) * zoom / c.zoom };
+        return { fit: c.fit, zoom, x: px - (px - c.x) * zoom / c.zoom, y: py - (py - c.y) * zoom / c.zoom, zoomed: true };
       });
     };
     el.addEventListener('wheel', wheel, { passive: false }); return () => el.removeEventListener('wheel', wheel);
   }, []);
-  const reset = () => { zoomed.current = false; setCam(c => c && { ...c, zoom: c.fit, x: 0, y: 0 }); };
+  const reset = () => setCam(c => c && { ...c, zoom: c.fit, x: 0, y: 0, zoomed: false });
   // The stage is laid out at the fit size and scaled by zoom ÷ fit about its centre, then moved by the offset.
   const scale = cam ? cam.zoom / cam.fit : 1;
   const upload = (files: File[]) => void uploadToProject(projectStore, projectId, files).then(r => { reportIngest(r); refresh(); }).catch(reportError);

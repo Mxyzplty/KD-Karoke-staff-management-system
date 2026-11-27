@@ -377,9 +377,11 @@ test.describe('T28 rows 1-2: fit, wheel zoom about the pointer, Reset view, refi
   const open = async (page: Page, size = { width: 1920, height: 1080 }) => { await page.setViewportSize({ width: 1280, height: 800 }); await openEditor(page, richDoc({ size })); await fitted(page, size.width, size.height); return size; };
   const resetView = async (page: Page) => { await page.getByRole('button', { name: 'Reset view (fit)' }).click(); await expect(stage(page)).toHaveAttribute('data-scale', '1'); };
 
-  test('fit: the stage is min(area width − 30, (area height − 30) × canvas aspect) wide, centred, at 16:9, 9:16 and 1:1', async ({ page }) => {
-    for (const size of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 1080, height: 1080 }]) {
+  // T28 round 2 (review finding 4): 160 x 90 fits above 3 screen px per canvas px; the fit is not held to the wheel's 0.1..3 range, so its stage is still the fit width.
+  test('fit: the stage is min(area width − 30, (area height − 30) × canvas aspect) wide, centred, at 16:9, 9:16 and 1:1, and at 160 x 90 where the fit is above 3', async ({ page }) => {
+    for (const size of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 1080, height: 1080 }, { width: 160, height: 90 }]) {
       await open(page, size); const s = await rect(page), label = `${size.width}x${size.height}`;
+      if (size.width === 160) expect(s.width / size.width, `${label}: the fit is above the wheel's cap of 3`).toBeGreaterThan(3);
       expect(Math.abs(s.width - await fitWidth(page, size.width, size.height)), label).toBeLessThanOrEqual(1); expect(s.width / s.height, label).toBeCloseTo(size.width / size.height, 2);
       await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
     }
@@ -412,6 +414,16 @@ test.describe('T28 rows 1-2: fit, wheel zoom about the pointer, Reset view, refi
       await page.mouse.wheel(0, deltaY); await frames(page);
       await expect(stage(page)).toHaveAttribute('data-scale', scale); expect(await rect(page), `limit ${limit}`).toEqual(before);
     }
+  });
+
+  // T28 round 2 (review finding 5): a wheel whose zoom comes out equal to the current one changes nothing, the refit rule included. With deltaY 0 (a
+  // sideways swipe) the zoom is unchanged, so it must not count as a wheel zoom: a later size change still refits.
+  test('a wheel that leaves the zoom unchanged (deltaX only, before any zoom) is not a zoom: a size change afterwards still refits', async ({ page }) => {
+    const { width: cw, height: ch } = await open(page); const w0 = (await rect(page)).width; await point(page);
+    await page.mouse.wheel(100, 0); await frames(page);
+    await expect(stage(page)).toHaveAttribute('data-scale', '1'); expect(Math.abs((await rect(page)).width - w0)).toBeLessThanOrEqual(0.5);
+    await page.setViewportSize({ width: 1440, height: 900 }); await fitted(page, cw, ch);
+    expect(Math.abs((await rect(page)).width - w0)).toBeGreaterThan(1); await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
   });
 
   test('Reset view (fit): data-scale 1, the stage centred in the preview at the fit width', async ({ page }) => {

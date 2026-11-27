@@ -18,7 +18,7 @@ import { dispatch } from './commands';
 import { useMaskUi } from './mask-state';
 import { useShapeUi } from './shape-ui';
 import { select, useView, view } from './view';
-import { atPlayhead, boundsOf, cornerDrag, corners, frameOf, handleAt, handles, HANDLE_PX, itemLocal, LINE_PX, MARQUEE_MIN, marqueeHits, moveDrag, pickAt, rotationDrag, screenPx, shownItems, writeEdits } from './selection-box';
+import { atPlayhead, boundsOf, cornerDrag, corners, frameOf, handleAt, handles, HANDLE_PX, itemLocal, LINE_PX, marqueeCounts, marqueeHits, moveDrag, pickAt, rotationDrag, screenPx, shownItems, writeEdits } from './selection-box';
 import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from './selection-box';
 
 /** The live drag's draft document, the only place it is kept: the preview draws it, the box follows it, release drops it. */
@@ -82,7 +82,7 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       drag.current = null; listen(false);
       if (d.kind === 'marquee') {
         setMarquee(null);
-        if (d.to && Math.hypot(d.to.x - d.from.x, d.to.y - d.from.y) > MARQUEE_MIN) select([...new Set([...d.prior!, ...marqueeHits(d.base, d.t, d.from, d.to)])]);
+        if (d.to && marqueeCounts(d.from, d.to)) select([...new Set([...d.prior!, ...marqueeHits(d.base, d.t, d.from, d.to)])]);
         return;
       }
       if (d.edits) dispatch({ type: 'transformOnPreview', edits: d.edits, atMs: d.t });

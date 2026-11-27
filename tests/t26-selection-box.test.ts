@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProjectDocument, RecordData } from '../apps/web/src/store/model';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import {
-  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, MARQUEE_MIN, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
+  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, MARQUEE_MIN, marqueeCounts, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
   rotationDrag, screenPx, shownItems, vectorHit, writeEdits,
 } from '../apps/web/src/editor/selection-box';
 import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from '../apps/web/src/editor/selection-box';
@@ -337,6 +337,19 @@ describe('row 11, 7.1 point 8: the pick, the marquee', () => {
     expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 50, y: 50 }, reads(i => { calls.push(i.id); return 0; }))?.id).toBe('a'); expect(calls).toEqual([]);
   });
   it('T2, D90: the marquee threshold is 2 (canvas px: the overlay compares the canvas-px distance, not screen px)', () => { expect(MARQUEE_MIN).toBe(2); });
+  // T28 round 2 (review finding 1): row 6's 16 px base box makes T2's UI case unobservable, so the canvas-px rule is pinned here, on the overlay's own test.
+  // The points are canvas px; the answer does not depend on any zoom. Exactly 2 does not count: the rule is "more than 2" (the T26 code's `>`).
+  it.each([[1.8, false], [2, false], [2.2, true]])('T28 round 2: a marquee of %f canvas px counts: %s', (dist, want) => {
+    const from = { x: 80, y: 45 };
+    expect(marqueeCounts(from, { x: from.x - dist, y: from.y }), 'straight left').toBe(want);
+    expect(marqueeCounts(from, { x: from.x, y: from.y + dist }), 'straight down').toBe(want);
+    if (dist !== 2) { const d = dist / Math.SQRT2; expect(marqueeCounts(from, { x: from.x + d, y: from.y + d }), 'diagonal (exactly 2 is left out: the diagonal is not exact in floats)').toBe(want); }
+    const to = { x: from.x - dist, y: from.y }; expect(marqueeCounts(to, from), 'from and to swapped').toBe(want);
+  });
+  it('T28 round 2: the straight-line distance counts, not each axis: (1.5, 1.5) is about 2.12 canvas px and counts, either way round', () => {
+    const a = { x: 10, y: 10 }, b = { x: 11.5, y: 11.5 };
+    expect(marqueeCounts(a, b)).toBe(true); expect(marqueeCounts(b, a)).toBe(true);
+  });
   it('a point on no item picks nothing', () => { expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 500, y: 500 }, reads())).toBeNull(); });
   it('marquee: the items at the playhead whose box lies fully inside, in either corner order', () => {
     const doc = docOf([box('a', 10, 10, 100, 100), box('b', 200, 10, 100, 100), box('gone', 20, 20, 50, 50, { display: { from: 5000, to: 6000 } }), mkItem('s', 'V1', 0, 4000, { type: 'audio' })]);

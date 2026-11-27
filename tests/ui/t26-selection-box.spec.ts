@@ -796,20 +796,27 @@ test.describe('T26 C4: presses are read on the preview area; outside the stage o
 });
 
 test.describe('T26 T2 (D90, row 11): the marquee threshold is 2 canvas px, not screen px', () => {
-  // A 160 x 90 canvas gives a high zoom; at the zoom cap (3 screen px per canvas px, T28 row 1) one canvas px is more than 2 screen px. The item is 0.4 x 0.4 canvas px at (80, 45)
-  // (the stage centre; the wheel is at the stage centre, which a zoom about the pointer keeps in place). The press is 0.2 canvas px outside its top left corner (empty space);
-  // the marquee then covers the whole item, so the distance alone decides. 1.8 canvas px is under the threshold (5.4 screen px: a screen-px threshold of 2 would select), 2.2 is over it.
+  // T28 round 2: row 6 supersedes T2 at UI level (T28 notes). The 0.4 x 0.4 item now has a 16 x 16 box, which no marquee near 2 canvas px can hold, so the
+  // selection on release is the same either side of the threshold. The threshold itself is pinned on the overlay's own function, marqueeCounts
+  // (tests/t26-selection-box.test.ts, 'T28 round 2: a marquee of ...'). What the UI still pins: the drawn marquee is in canvas px (viewBox units), at any size, while held.
+  // A 160 x 90 canvas at the zoom cap (3 screen px per canvas px, T28 row 1); the press is at (79.8, 44.8), empty space just outside the item's top left corner.
+  // The pointer goes a whole number of screen px on each axis (about 1.8 / sqrt 2 and 2.2 / sqrt 2 canvas px), so the expected rect is the screen offset / zoom.
   const TINY = { width: 160, height: 90 };
   const tiny = () => doc([shape('s', 'o1', 80, 45, 0.4, 0.4)], TRACKS, { size: TINY });
-  const run = async (page: Page, dist: number) => {
-    const g = await geo(page, TINY), from = g.at(79.8, 44.8), d = dist / Math.SQRT2, to = g.at(79.8 + d, 44.8 + d);
-    await drag(page, from, to, 6); return selection(page);
+  const marquee = (page: Page) => page.locator('[data-testid="selection-marquee"]');
+  const run = async (page: Page, dist: number, under: boolean) => {
+    const g = await geo(page, TINY), f = g.at(79.8, 44.8), from = { x: Math.round(f.x), y: Math.round(f.y) }, s = Math.round(dist / Math.SQRT2 * g.k), to = { x: from.x + s, y: from.y + s };
+    const side = s / g.k; expect(Math.hypot(side, side) < 2, `${dist}: the held distance ${Math.hypot(side, side)} is ${under ? 'under' : 'over'} 2 canvas px`).toBe(under);
+    await hold(page, from, to, 6); await expect(marquee(page)).toHaveCount(1);
+    near(Number(await marquee(page).getAttribute('width')), side, 0.05, `${dist}: marquee width in canvas px`); near(Number(await marquee(page).getAttribute('height')), side, 0.05, `${dist}: marquee height in canvas px`);
+    near(Number(await marquee(page).getAttribute('x')), g.canvas(from).x, 0.05, `${dist}: marquee left at the press`);
+    await page.mouse.up(); await expect(marquee(page)).toHaveCount(0); return selection(page);
   };
-  test('at the zoom limit: a marquee of 1.8 canvas px covering the item selects nothing, one of 2.2 canvas px selects it', async ({ page }) => {
+  test('at the zoom cap the held marquee is drawn in canvas px (about 1.8 and 2.2 canvas px, 5.4 and 6.6 screen px); release leaves the selection empty in both, as row 6\'s 16 px box fits neither', async ({ page }) => {
     await open(page, tiny()); await zoomToCap(page, await stageCentre(page));
     expect(await selection(page)).toEqual([]);
-    expect(await run(page, 1.8), '1.8 canvas px: under the threshold').toEqual([]);
-    expect(await run(page, 2.2), '2.2 canvas px: over the threshold').toEqual(['s']);
+    expect(await run(page, 1.8, true), 'about 1.8 canvas px').toEqual([]);
+    expect(await run(page, 2.2, false), 'about 2.2 canvas px').toEqual([]);
     expect(await undoLabels(page)).toEqual([]);
   });
 });

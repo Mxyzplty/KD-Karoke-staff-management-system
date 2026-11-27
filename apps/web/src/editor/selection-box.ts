@@ -145,6 +145,8 @@ export function maskHit(doc: ProjectDocument, item: RecordData, t: number, p: Pt
 /** The first candidate that passes the mask test. */
 export const pickAt = (doc: ProjectDocument, t: number, p: Pt, reads: MaskReads): RecordData | null =>
   candidates(doc, t, p).find(i => maskHit(doc, i, t, p, reads)) ?? null;
+/** A marquee selects only when the pointer has gone more than 2 canvas px (straight-line distance) from the press. */
+export const marqueeCounts = (from: Pt, to: Pt) => Math.hypot(to.x - from.x, to.y - from.y) > MARQUEE_MIN;
 /** The items at the playhead whose turned box lies fully inside the marquee from a to b. */
 export function marqueeHits(doc: ProjectDocument, t: number, a: Pt, b: Pt): string[] {
   const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
