@@ -399,11 +399,45 @@ test.describe('T28 rows 1-2: fit, wheel zoom about the pointer, Reset view, refi
     expect(k, `k ${k}`).toBeGreaterThanOrEqual(0.185); expect(k, `k ${k}`).toBeLessThanOrEqual(0.228);
   });
 
+  // T28 audit C4 (26 Nov): a case that is width-bound by construction, whatever the top bar's height. 1920 x 300 at 1280 x 800: the width term is about
+  // (614 − 30) / 1920 = 0.30, and the height term stays above it while the area is over about 121 px high. The guard checks it on the measured area.
+  test('T28 audit C4: fit, width-bound: 1920 x 300 at 1280 x 800, the stage is area width − 30 wide +/- 1 px', async ({ page }) => {
+    const size = await open(page, { width: 1920, height: 300 });
+    const { W, H } = await preview(page).evaluate(el => ({ W: el.clientWidth, H: el.clientHeight })), s = await rect(page);
+    expect(W - 30, 'the width term is the smaller one').toBeLessThan((H - 30) * size.width / size.height);
+    expect(Math.abs(s.width - (W - 30)), 'the stage is the width term').toBeLessThanOrEqual(1);
+    await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
+  });
+
+  // T28 audit C5 (26 Nov): the lower side of "not held to the wheel's range". 8000 x 800 at 1280 x 800: the fit is about (614 − 30) / 8000 = 0.073, under the
+  // wheel's 0.1, and is used as it is. The stage width decides it: data-scale is 1 with or without a hold.
+  test('T28 audit C5: fit below the wheel\'s 0.1: 8000 x 800 at 1280 x 800, the stage is the fit width (unheld) +/- 1 px', async ({ page }) => {
+    const size = await open(page, { width: 8000, height: 800 });
+    const { W, H } = await preview(page).evaluate(el => ({ W: el.clientWidth, H: el.clientHeight })), s = await rect(page);
+    expect(Math.min(W - 30, (H - 30) * size.width / size.height) / size.width, 'the fit is below the wheel\'s minimum of 0.1').toBeLessThan(0.1);
+    expect(s.width / size.width, 'the stage is not held to 0.1').toBeLessThan(0.1);
+    expect(Math.abs(s.width - await fitWidth(page, size.width, size.height)), 'the stage is the fit width').toBeLessThanOrEqual(1);
+  });
+
   test('a plain wheel (no key) over the preview zooms, and the page does not scroll', async ({ page }) => {
     await open(page); await page.evaluate(() => { (window as any).__t28wheel = []; window.addEventListener('wheel', e => (window as any).__t28wheel.push(e.defaultPrevented)); });
     const scrollY = await page.evaluate(() => window.scrollY); await point(page); await wheel(page, -100);
     expect(await stage(page).getAttribute('data-scale')).not.toBe('1'); expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
     const seen: boolean[] = await page.evaluate(() => (window as any).__t28wheel); expect(seen.length).toBeGreaterThan(0); expect(seen.every(Boolean)).toBe(true); // the default (page scroll) was prevented
+  });
+
+  // T28 audit C3 (26 Nov): "no key is read", with a key held. Control, because the old handler read ctrlKey; not Shift, which Chromium may turn into a
+  // sideways scroll. Plain, then Reset view, then Control + wheel at the same pointer: the same × 1.3 and the same stage.
+  test('T28 audit C3: a wheel with Control held zooms as a plain one: × 1.3 about the pointer, the same data-scale and the same stage', async ({ page }) => {
+    await open(page); await point(page); const s0 = await rect(page);
+    await wheel(page, -100); const plain = (await stage(page).getAttribute('data-scale'))!, s1 = await rect(page);
+    await resetView(page); const r = await rect(page);
+    for (const k of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(r[k] - s0[k]), `after Reset view: ${k}`).toBeLessThanOrEqual(0.5);
+    await point(page); await page.keyboard.down('Control');
+    try { await wheel(page, -100); } finally { await page.keyboard.up('Control'); }
+    const s2 = await rect(page);
+    expect(Math.abs(s2.width / s0.width - 1.3)).toBeLessThan(3e-3); await expect(stage(page)).toHaveAttribute('data-scale', plain);
+    for (const k of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(s2[k] - s1[k]), k).toBeLessThanOrEqual(0.5);
   });
 
   test('deltaY −100 multiplies the zoom by 1.3 about the pointer: the canvas point under the pointer stays under it (twice, so the offset carries)', async ({ page }) => {

@@ -761,4 +761,12 @@ describe('T28 row 6: the overlay\'s base size is at least 16 canvas px on each a
     delete p.width; delete p.height;
     expect(frameOf(doc, doc.items[0], 1000)).toMatchObject({ w: W, h: H });
   });
+  // T28 audit C1 (26 Nov): the height half of the floor. The 8 x 8 corner drag above gives the same numbers with the height floor gone.
+  it('T28 audit C1: width 100, height 8, scale 1: the box is 100 x 16 from positionY (centre y = positionY + 8); a press at positionY + 12 hits, at positionY + 17 it misses', () => {
+    const doc = docOf([box('a', 100, 200, 100, 8)]), a = doc.items[0];
+    expect(frameOf(doc, a, 1000)).toMatchObject({ cx: 100 + 50, cy: 200 + 8, w: 100, h: 16, rotation: 0 });
+    expect(itemBox(doc, a, itemLocal(a, 1000)).H).toBe(8);
+    expect(pickAt(doc, 1000, { x: 150, y: 212 }, reads())?.id).toBe('a');
+    expect(pickAt(doc, 1000, { x: 150, y: 217 }, reads())).toBeNull();
+  });
 });

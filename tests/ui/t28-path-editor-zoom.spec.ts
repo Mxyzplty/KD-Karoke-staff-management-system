@@ -3,7 +3,7 @@
 // The editor sizes its point markers (5 screen px half-side, 10 across) and its close snap (8 screen px from the first point) from px = canvas width ÷ the svg's
 // screen width; a wheel zoom changes only the stage's transform and data-scale, never its layout size. Pen Tool, no resize. Screen px throughout.
 import { test, expect, type Page } from '@playwright/test';
-import { openEditor, skipTour } from './t02-support';
+import { clip, openEditor, skipTour } from './t02-support';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.beforeEach(async ({ page }) => { test.setTimeout(120_000); await skipTour(page); });
@@ -54,5 +54,31 @@ test.describe('T28 round 2: the shape path editor\'s screen px after a wheel zoo
     // Before the fix the markers were 0.7 x 10 = 7 px and the snap 0.7 x 8 = 5.6 px, so this 7 px click added a 4th point instead.
     await expect.poll(async () => (await markerWidths(page)).map(w => Math.abs(w - 10)).reduce((m, d) => Math.max(m, d), 0), { message: 'markers 10 screen px +/- 0.5' }).toBeLessThanOrEqual(0.5);
     await click(page, { x: a.x + 7, y: a.y }); await expect(pathEditor(page), '7 px from the first point closes the path').toBeVisible();
+  });
+});
+
+// T28 audit C2 (26 Nov): the same fix in the mask path editor (mask-ui.tsx, its own px, markers and 8 px close snap). The editor is opened before the wheel:
+// opened after it, its first measure reads the zoomed rect and the case would pass without the data-scale observer.
+const maskEditor = (page: Page) => page.getByRole('application', { name: 'Mask editor' });
+const maskMarkers = (page: Page) => maskEditor(page).locator('rect');
+const maskPen = (page: Page) => page.getByRole('toolbar', { name: 'Editing path' }).getByRole('button', { name: 'Pen Tool' });
+
+test.describe('T28 audit: the mask path editor\'s screen px after a wheel zoom (pen markers 10 px, close snap 8 px)', () => {
+  test('T28 audit C2: mask Pen Tool opened at fit, then zoomed in 4 wheel steps (2.86 x fit): a marker is 10 screen px across; a click 12 px from the first point adds a 4th point, one 6 px away closes the mask', async ({ page }) => {
+    await openEditor(page, DOC); await expect(stage(page)).toHaveAttribute('data-scale', '1');
+    await clip(page, 'img').click(); // the editor leaves unless the item is the selection
+    await page.evaluate(async () => { const m = '/src/editor/mask-state.ts'; const s = await import(m); s.openMaskEditor('img', null); s.setMaskTool('pen'); });
+    await expect(maskEditor(page)).toBeVisible(); await expect(maskPen(page)).toHaveAttribute('aria-pressed', 'true');
+    const a = await centre(page), b = { x: a.x + 40, y: a.y }, c = { x: a.x + 20, y: a.y + 40 };
+    await page.mouse.move(a.x, a.y);
+    for (let n = 0; n < 4; n++) await page.mouse.wheel(0, -100);
+    await expect.poll(async () => Number(await stage(page).getAttribute('data-scale')), { message: 'zoom ÷ fit = 1.3^4' }).toBeCloseTo(1.3 ** 4, 2);
+    await click(page, a); await click(page, b); await click(page, c); await expect(maskMarkers(page)).toHaveCount(3);
+    // Without the observer px keeps the fit's value: markers 2.86 x 10 px, and the snap 2.86 x 8 = 22.8 px, so the 12 px click below would close the mask.
+    await expect.poll(async () => (await maskMarkers(page).evaluateAll(els => els.map(e => e.getBoundingClientRect().width))).map(w => Math.abs(w - 10)).reduce((m, d) => Math.max(m, d), 0), { message: 'markers 10 screen px +/- 0.5' }).toBeLessThanOrEqual(0.5);
+    await click(page, { x: a.x + 12, y: a.y }); await expect(maskMarkers(page), '12 px from the first point: outside the 8 px snap, a 4th point').toHaveCount(4);
+    await expect(maskPen(page)).toHaveAttribute('aria-pressed', 'true');
+    await click(page, { x: a.x, y: a.y + 6 }); await expect(maskPen(page), '6 px from the first point: inside the snap, the mask is drawn and the path tool opens').toHaveAttribute('aria-pressed', 'false');
+    await expect(maskEditor(page).getByRole('button', { name: /^Point \d+$/ })).toHaveCount(4);
   });
 });
