@@ -64,7 +64,7 @@ export const preparingHere = (assetId: string) => localAttempts.has(assetId);
 /** The user cancels this tab's running attempt: CLIENT_PREPARATION_CANCELLED, no retry budget used, and it is not resumed
  *  automatically (Retry restarts it). Returns false when this tab runs no attempt for the asset. */
 export function cancelPreparation(assetId: string): boolean { const cancel = localAttempts.get(assetId); cancel?.(); return !!cancel; }
-export async function prepareAsset(store: ProjectStore, assetId: string, options: PrepareOptions = {}): Promise<'prepared' | 'already-active' | 'cancelled' | 'failed' | 'gone'> {
+export async function prepareAsset(store: ProjectStore, assetId: string, options: PrepareOptions = {}, resume = false): Promise<'prepared' | 'already-active' | 'cancelled' | 'failed' | 'gone'> {
   const clock = options.clock ?? Date.now, timers = options.timers ?? globalThis;
   const attemptId = crypto.randomUUID(), pageSignal = page.signal;
   try {
@@ -75,6 +75,7 @@ export async function prepareAsset(store: ProjectStore, assetId: string, options
         const asset = await store.row<Asset>('assets', assetId);
         if (!asset) return { result: 'gone' as const };
         if (asset.processing_steps?.upload !== 'complete') { await recordFailure(store, assetId, mediaError('SOURCE_MISSING'), false); return { result: 'failed' as const }; }
+        if (resume && !retryable(asset)) return { result: 'already-active' as const }; // T37 bug 2: finished by another caller after the resume read its snapshot
         const now = clock();
         let userCancelled = false;
         const record = await store.swapRow<PreparationRecord>('preparations', assetId, current => {
@@ -290,12 +291,16 @@ export async function scanInterrupted(store: ProjectStore, clock = Date.now): Pr
   }
   return found;
 }
+/** What an automatic resume prepares again: an interrupted (processing) asset, or a failed one with retry budget left.
+ *  The claim checks it again on the fresh row (T37 bug 2), so a stale snapshot cannot restart an asset another caller finished. */
+function retryable(a: Asset) {
+  return a.processing_status === 'processing' || (a.processing_status === 'failed' && a.last_error_code !== 'RETRY_LIMIT_EXCEEDED' && a.last_error_code !== 'UPLOAD_INTERRUPTED' && (a.preparationAttempts ?? 0) < RETRY_BUDGET);
+}
 /** Resume unfinished preparations (automatic retries stop at the retry budget: RETRY_LIMIT_EXCEEDED). */
 export async function resumePreparations(store: ProjectStore, options: PrepareOptions = {}): Promise<void> {
   const userCancelled = new Set((await store.rows<PreparationRecord>('preparations')).filter(r => r.phase === 'cancelled' && r.cancelledBy === 'user').map(r => r.id));
   for (const a of await store.rows<Asset>('assets')) {
     if (userCancelled.has(a.id)) continue; // a user's Cancel stays cancelled until Retry (the claim re-checks it: review R12)
-    const retryable = a.processing_status === 'processing' || (a.processing_status === 'failed' && a.last_error_code !== 'RETRY_LIMIT_EXCEEDED' && a.last_error_code !== 'UPLOAD_INTERRUPTED' && (a.preparationAttempts ?? 0) < RETRY_BUDGET);
-    if (retryable && a.processing_steps?.upload === 'complete') await prepareAsset(store, a.id, options);
+    if (retryable(a) && a.processing_steps?.upload === 'complete') await prepareAsset(store, a.id, options, true);
   }
 }
