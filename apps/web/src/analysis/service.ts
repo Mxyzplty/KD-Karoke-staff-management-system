@@ -24,7 +24,16 @@ export type AnalysisRow = { id: string; analysis: VisualAnalysis; created_at: st
 export type TranscriptRow = { id: string; status: 'complete' | 'skipped' | 'failed'; transcript: Transcript | null; music?: boolean; reason?: string; error?: string; created_at: string };
 /** `analysis: null` = audio the classifier treats as speech or sound (BEATS_NOT_MUSIC), kept so it is not re-run. */
 export type RhythmRow = { id: string; analysis: BeatAnalysis | null; reason?: 'BEATS_NOT_MUSIC'; created_at: string };
-type Current = { worker: AnalysisWorker; ready: Promise<unknown>; indexed: Map<string, string> };
+/** `ahead` (T37): what each request posted on this worker and not settled counts in a later request's queue cap. */
+type Current = { worker: AnalysisWorker; ready: Promise<unknown>; indexed: Map<string, string>; ahead: Set<{ ms: number }> };
+/** T37 (D120 item 4): a model step's request. `onQueued` arms its queue cap before it waits; `onStart` arms its model
+ *  deadline when the worker starts it (prepare.ts arms both on the step's timers). */
+export type ModelTiming = { deadlineMs: number; onQueued(capMs: number): void; onStart(): void };
+/** The queue cap's fixed part. Lane A, 26 Nov about 04:40: about 10 × the 2 854 ms gap (T37 notes l.19). */
+export const QUEUE_SLACK_MS = 30_000;
+/** What a request ahead with no deadline of its own (search, sync, embed, beats, available, …), running or queued, counts
+ *  in a queue cap: the 30 min ceiling of preparationBudgetMs (prepare.ts:42), lane A 27 Nov 06:30. */
+export const UNTIMED_AHEAD_MS = 1_800_000;
 
 export const assetInput = (asset: Asset, projectIds?: string[]): AssetInput => ({ id: asset.id, filename: asset.name, type: asset.type, duration: (asset.durationMs ?? 0) / 1000, ...(projectIds ? { projectIds } : {}) });
 export class AnalysisService {
@@ -36,7 +45,7 @@ export class AnalysisService {
       // D117: WASM, the browser backend of the worker checks and memory runs (accuracy rows are Node CPU); WebGPU per model is T36.
       const worker = this.spawn(), ready = worker.init({ modelRoot: this.modelRoot, device: 'wasm' });
       ready.catch(() => {}); // awaited by each inference request
-      this.current = { worker, ready, indexed: new Map() };
+      this.current = { worker, ready, indexed: new Map(), ahead: new Set() };
     }
     return this.current;
   }
@@ -48,10 +57,15 @@ export class AnalysisService {
   /** C12: ANALYSIS_UNAVAILABLE when the capability's local models are not served. */
   async require(capability: Capability) { if (!(await this.available())[capability]) throw unavailableError(capability); }
   /** One worker request. Aborting `signal` terminates the worker (ANALYSIS_CANCELLED for every pending request).
-   *  `skipQueued` (audit F1 (c), the sync only): a request not posted or not started yet is skipped instead, the worker kept. */
-  async request<T>(request: AnalysisRequest, transfer: Transferable[] = [], signal?: AbortSignal, skipQueued = false): Promise<T> {
+   *  `skipQueued` (audit F1 (c), the sync only): a request not posted or not started yet is skipped instead, the worker kept.
+   *  `timing` (T37): a model step's request; its queue cap is the sum of what the requests ahead count + QUEUE_SLACK_MS.
+   *  'covered': inside a timed step whose deadline already covers it (`entry` after `index`), so it counts 0. */
+  async request<T>(request: AnalysisRequest, transfer: Transferable[] = [], signal?: AbortSignal, skipQueued = false, timing?: ModelTiming | 'covered'): Promise<T> {
     signal?.throwIfAborted();
     const current = this.open(), ticket: QueueTicket = {};
+    const timed = timing === 'covered' ? undefined : timing, own = { ms: timed ? timed.deadlineMs : timing ? 0 : UNTIMED_AHEAD_MS };
+    timed?.onQueued([...current.ahead].reduce((sum, r) => sum + r.ms, QUEUE_SLACK_MS));
+    current.ahead.add(own);
     let posted = false;
     const cancel = () => { if (skipQueued && (!posted || ticket.cancelQueued?.())) return; this.drop(current, new AnalysisError('ANALYSIS_CANCELLED', 'Analysis was cancelled.')); };
     signal?.addEventListener('abort', cancel, { once: true });
@@ -59,11 +73,11 @@ export class AnalysisService {
       if (request.task !== 'available') await current.ready;
       if (skipQueued) signal?.throwIfAborted();
       posted = true;
-      return (await current.worker.run(request, transfer, ticket)).value as T;
+      return (await current.worker.run(request, transfer, ticket, timed?.onStart)).value as T;
     } catch (e) {
       if ((e as AnalysisError).code === 'ANALYSIS_WORKER_FAILED') this.drop(current, e as AnalysisError);
       throw signal?.aborted ? signal.reason : e;
-    } finally { signal?.removeEventListener('abort', cancel); }
+    } finally { current.ahead.delete(own); signal?.removeEventListener('abort', cancel); }
   }
   /** The footage search's text embedder on any texts (T21 help search); ANALYSIS_UNAVAILABLE without its model. */
   async embed(texts: string[]): Promise<number[][]> { await this.require('embeddings'); return this.request<number[][]>({ task: 'embed', texts }); }
@@ -71,11 +85,16 @@ export class AnalysisService {
    *  Aborting `signal` (syncAndSwap's deadline, audit F1) drops the worker only once the sync has started; a sync still
    *  queued behind another task is skipped and that task keeps its worker (lane A ruling (c)). */
   syncOffset(source: Transcript, target: Transcript, signal?: AbortSignal): Promise<SyncResult> { return this.request<SyncResult>({ task: 'sync', source, target }, [], signal, true); }
-  /** Index one asset in the worker and return the row that persists it. */
-  async index(asset: AssetInput, analysis: VisualAnalysis | null, transcript: Transcript | null, signal?: AbortSignal): Promise<IndexRow> {
+  /** Index one asset in the worker and return the row that persists it. `timing` (T37): the embeddings step's. `entry` is
+   *  posted in the same turn as `index`, so it sits next to it in the worker's queue and that one deadline covers both
+   *  (lane A 27 Nov 06:30 §4). A failed `index` wins: `entry`'s rejection is caught and no row is returned. */
+  async index(asset: AssetInput, analysis: VisualAnalysis | null, transcript: Transcript | null, signal?: AbortSignal, timing?: ModelTiming): Promise<IndexRow> {
     const current = this.open();
-    await this.request({ task: 'index', asset, analysis, transcript }, [], signal);
-    const { entry, embedder } = await this.request<{ entry: IndexEntry | null; embedder: string }>({ task: 'entry', assetId: asset.id }, [], signal);
+    const indexed = this.request({ task: 'index', asset, analysis, transcript }, [], signal, false, timing);
+    const read = this.request<{ entry: IndexEntry | null; embedder: string }>({ task: 'entry', assetId: asset.id }, [], signal, false, timing && 'covered');
+    read.catch(() => {});
+    await indexed;
+    const { entry, embedder } = await read;
     if (!entry) throw new AnalysisError('ANALYSIS_CANCELLED', 'Analysis was cancelled.'); // the worker was replaced in between
     current.indexed.set(asset.id, indexKey(asset.filename, asset.projectIds ?? []));
     return { id: asset.id, embedder, entry };

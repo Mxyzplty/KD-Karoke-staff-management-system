@@ -11,6 +11,8 @@ import type { MediaCode } from './codes';
 import { lockNames, tryLock } from './locks';
 import { placeName } from './geocode';
 import type { MediaInfo } from './probe';
+import { AnalysisError } from '../analysis/types';
+import type { ModelTiming } from '../analysis/service';
 
 export type PreparationRecord = { id: string; attemptId: string; phase: 'running' | 'finished' | 'failed' | 'interrupted' | 'cancelled'; startedAt: number; updatedAt: number; sourceRevision: string | null; budgetMs: number; code?: string; cancelledBy?: 'user'; stepErrors?: Record<string, StepError> };
 /** Our own record of why a T19 step failed (the asset's Xapp fields keep the generic step code and message). */
@@ -20,7 +22,7 @@ export type WaveformRow = { id: string; version: 1; bucketsPerSecond: number; du
 export type ProxyResult = { blob: Blob; codec: string; container: string; width: number; height: number };
 type StepArgs = { blob: Blob; asset: Asset; info: MediaInfo; signal: AbortSignal };
 /** T19 step input: `results` holds each earlier T19 step's value by step name (null when it failed or gave none). */
-export type AnalysisArgs = StepArgs & { results: Record<string, unknown> };
+export type AnalysisArgs = StepArgs & { results: Record<string, unknown>; model?: (deadlineMs: number) => ModelTiming };
 /** A T19 step's outcome: its state (or one state per recorded step name), the rows published with it, and the value later
  *  steps read. void = complete with nothing stored. */
 export type StepOutcome = void | { state?: ProcessingStep; states?: Record<string, ProcessingStep>; puts?: { store: StoreName; value: unknown }[]; value?: unknown };
@@ -202,7 +204,14 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
       if (!step) { await setSteps(all('unavailable')); continue; }
       const own = new AbortController(), link = () => own.abort(controller.signal.reason);
       if (controller.signal.aborted) link(); else controller.signal.addEventListener('abort', link, { once: true });
-      const deadline = timers.setTimeout(() => own.abort(mediaError('CLIENT_PREPARATION_TIMEOUT')), budgetMs);
+      // T37 (D120 item 4): one timer at a time. From the step's call, preparationBudgetMs bounds its extraction; once its
+      // model request is queued, the queue cap (the deadlines ahead + slack, service.ts); from the worker's first
+      // `started`, the step's model deadline. Later requests of the step do not re-arm it.
+      let timer = timers.setTimeout(() => own.abort(mediaError('CLIENT_PREPARATION_TIMEOUT')), budgetMs), queued = false, started = false;
+      const arm = (ms: number, reason: Error) => { timers.clearTimeout(timer); timer = timers.setTimeout(() => own.abort(reason), ms); };
+      const model = (deadlineMs: number): ModelTiming => ({ deadlineMs,
+        onQueued: capMs => { if (!started) { queued = true; arm(capMs, new AnalysisError('ANALYSIS_QUEUE_TIMEOUT', 'The analysis worker did not start this step in time.')); } },
+        onStart: () => { if (!started) { started = true; arm(deadlineMs, mediaError('CLIENT_PREPARATION_TIMEOUT')); } } });
       // Review R1: ANALYSIS_CANCELLED while this step's signal is not aborted = another request terminated the shared
       // analysis worker. The step is re-run (it decodes its input again) at most twice; its rows are never published.
       const collateral = (e: unknown) => (e as { code?: string }).code === 'ANALYSIS_CANCELLED' && !own.signal.aborted;
@@ -210,7 +219,9 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
         await setSteps(all('processing'));
         let outcome: Awaited<ReturnType<typeof step>>;
         for (let rerun = 0; ; rerun++) {
-          try { outcome = await raceAbort(step({ ...args, signal: own.signal, results }), own.signal); break; } catch (e) { if (rerun < 2 && collateral(e)) continue; throw e; }
+          // A re-run decodes its input again: its extraction is bounded by preparationBudgetMs again (T37).
+          if (queued) { queued = started = false; arm(budgetMs, mediaError('CLIENT_PREPARATION_TIMEOUT')); }
+          try { outcome = await raceAbort(step({ ...args, signal: own.signal, results, model }), own.signal); break; } catch (e) { if (rerun < 2 && collateral(e)) continue; throw e; }
         }
         const states = outcome?.states ?? all(outcome?.state ?? 'complete');
         await owned({ puts: outcome?.puts ?? [], asset: a => ({ ...a, processing_steps: { ...a.processing_steps, ...states } }) }, true);
@@ -224,7 +235,7 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
         const puts = own.signal.aborted || collateral(e) ? undefined : (e as { puts?: { store: StoreName; value: unknown }[] }).puts;
         if (!puts?.length) await setSteps(all('failed'));
         else { await owned({ puts, asset: a => ({ ...a, processing_steps: { ...a.processing_steps, ...all('failed') } }) }, true); Object.assign(stepState, all('failed')); }
-      } finally { timers.clearTimeout(deadline); controller.signal.removeEventListener('abort', link); }
+      } finally { timers.clearTimeout(timer); controller.signal.removeEventListener('abort', link); }
     }
     const failure = proxyFailure ?? analysisFailure;
     await owned({ preparation: row => ({ ...row, phase: 'finished', updatedAt: clock(), code: failure, ...(Object.keys(stepErrors).length ? { stepErrors } : {}) }),

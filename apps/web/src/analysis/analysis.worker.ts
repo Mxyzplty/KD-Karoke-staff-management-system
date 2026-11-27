@@ -2,12 +2,12 @@
 import { AnalysisEngine, AnalysisError, syncOffset, snapCuts, planSilenceRemoval } from './engine';
 import { MODEL_IDS } from './models';
 import { modelAvailability } from './availability';
-import type { AnalysisMessage, AnalysisReply } from './protocol';
+import type { AnalysisMessage, AnalysisReply, AnalysisStarted } from './protocol';
 let engine: AnalysisEngine | undefined;
 let queue = Promise.resolve();
 /** Ids received and not started. A `{ cancel: id }` removes one, so it is skipped when it reaches the head (audit F1 (c)). */
 const waiting = new Set<number>();
-const scope = globalThis as unknown as { onmessage: ((event: MessageEvent<AnalysisMessage>) => void) | null; postMessage(value: AnalysisReply): void };
+const scope = globalThis as unknown as { onmessage: ((event: MessageEvent<AnalysisMessage>) => void) | null; postMessage(value: AnalysisReply | AnalysisStarted): void };
 scope.onmessage = event => {
   const data = event.data;
   // Recorded at once, outside the queue (not behind the running task); an id already started or never sent changes nothing.
@@ -17,6 +17,7 @@ scope.onmessage = event => {
   queue = queue.then(async () => {
     const { id, request } = data, start = performance.now();
     if (!waiting.delete(id)) { scope.postMessage({ id, ok: false, error: { code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } }); return; }
+    if (data.started) scope.postMessage({ id, started: true }); // T37: the request asked to be told when it starts
     try {
       let value: unknown;
       switch (request.task) {
