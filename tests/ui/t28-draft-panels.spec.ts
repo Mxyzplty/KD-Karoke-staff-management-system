@@ -68,6 +68,15 @@ async function shows(scope: Locator, want: { x: number; y: number }, tol = 1e-5)
 const marks = (page: Page, id: string, key: string, z: number) => page.locator(`[data-item-id="${id}"] .clip-kf[data-kf-key="${key}"]`)
   .evaluateAll((es, z) => es.map(e => Math.round(parseFloat((e as HTMLElement).style.left) / z)).sort((a, b) => a - b), z);
 const zoom = (page: Page) => viewState(page, v => v.zoom as number);
+/** The marks at the timeline zoom current at the read: the draft and the commit settle the duration (bus post-op), and the zoom follows it (timeline.tsx). */
+const marksNow = async (page: Page, id: string, key: string) => marks(page, id, key, await zoom(page));
+const draftDuration = (page: Page) => page.evaluate(async () => { const m = '/src/editor/selection-overlay.tsx'; return (await import(m)).useSelectionDraft.getState().doc?.duration as number | undefined; });
+/** Released: the timeline zoom is the one just before release, and the stored duration is the draft's (fixtures: stored 6000, content end 4000). */
+async function settled(page: Page, zoomHeld: number, durationHeld: number | undefined) {
+  expect(durationHeld, 'the draft\'s duration during the drag: the content end').toBe(4000);
+  expect((await liveDoc(page)).duration, 'the stored duration after release equals the draft\'s').toBe(durationHeld);
+  await expect.poll(() => zoom(page), { message: 'the timeline zoom after release equals the zoom just before release' }).toBe(zoomHeld);
+}
 const storedKeys = async (page: Page, id: string, key: string) => ((await item(page, id)).properties[key].keyframes as { time: number }[]).map(k => k.time).sort((a, b) => a - b);
 /** Nothing written while held: the live and the saved items as before, no transformOnPreview intent, no undo entry. */
 async function unwritten(page: Page, projectId: string, live: string, saved: string) {
@@ -142,11 +151,13 @@ test.describe('T28 row 3: the inspector and the timeline show the drag\'s draft'
     await expect(tf.locator('.prop-row', { has: page.locator('[data-slider="X"]') }).locator('.kf-time')).toContainText('1.50s');
     await shows(tf, { x: added.value, y: await draftValue(page, 'k', 'positionY') ?? NaN });
     // Timeline: a third positionX mark at the playhead.
-    await expect.poll(() => marks(page, 'k', 'positionX', z)).toEqual([0, 1500, 3000]);
+    await expect.poll(() => marksNow(page, 'k', 'positionX')).toEqual([0, 1500, 3000]);
     await unwritten(page, id, live, saved); expect(await storedKeys(page, 'k', 'positionX'), 'stored: still 2 keyframes').toEqual([0, 3000]);
+    const zoomHeld = await zoom(page), durationHeld = await draftDuration(page);
     await page.mouse.up(); await expect.poll(() => draftLive(page)).toBe(false);
     expect(await undoLabels(page)).toEqual(['Edit items']); expect(await storedKeys(page, 'k', 'positionX'), 'after release the keyframe is stored').toEqual([0, 1500, 3000]);
-    await expect.poll(() => marks(page, 'k', 'positionX', z)).toEqual([0, 1500, 3000]);
+    await settled(page, zoomHeld, durationHeld);
+    await expect.poll(() => marksNow(page, 'k', 'positionX')).toEqual([0, 1500, 3000]);
   });
 
   // A mark carries only a time, so a value-only change does not show on the timeline; this case pins that the marks follow the draft's keyframe list:
@@ -162,15 +173,17 @@ test.describe('T28 row 3: the inspector and the timeline show the drag\'s draft'
     const x = await draftKeyframes(page, 'q', 'positionX'), y = await draftKeyframes(page, 'q', 'positionY');
     expect(x.map(k => [k.id, k.time]), 'X: the keyframe at 1450 takes the value and keeps its time').toEqual([['x1', 0], ['x2', 1450]]); near(x[1].value, 250, 2, 'X keyframe value');
     expect(y.map(k => k.time), 'Y: a new keyframe at the playhead').toEqual([0, 1500, 3000]); near(y[1].value, 460, 2, 'new Y keyframe value');
-    await expect.poll(() => marks(page, 'q', 'positionY', z)).toEqual([0, 1500, 3000]);
-    expect(await marks(page, 'q', 'positionX', z), 'X: no new mark, the marks stay').toEqual([0, 1450]);
+    await expect.poll(() => marksNow(page, 'q', 'positionY')).toEqual([0, 1500, 3000]);
+    expect(await marksNow(page, 'q', 'positionX'), 'X: no new mark, the marks stay').toEqual([0, 1450]);
     await shows(tf, { x: x[1].value, y: y[1].value });
     await expect(tf.getByRole('button', { name: 'Add X keyframe' })).toHaveAttribute('aria-pressed', 'false'); // 50 ms is more than half a frame: not "at playhead"
     await expect(tf.getByRole('button', { name: 'Y keyframe at playhead' })).toHaveAttribute('aria-pressed', 'true');
     await unwritten(page, id, live, saved);
     expect(await storedKeys(page, 'q', 'positionY')).toEqual([0, 3000]); expect((await item(page, 'q')).properties.positionX.keyframes[1].value).toBe(400);
+    const zoomHeld = await zoom(page), durationHeld = await draftDuration(page);
     await page.mouse.up(); await expect.poll(() => draftLive(page)).toBe(false); expect(await undoLabels(page)).toEqual(['Edit items']);
-    expect(await storedKeys(page, 'q', 'positionY')).toEqual([0, 1500, 3000]); await expect.poll(() => marks(page, 'q', 'positionY', z)).toEqual([0, 1500, 3000]);
+    expect(await storedKeys(page, 'q', 'positionY')).toEqual([0, 1500, 3000]); await settled(page, zoomHeld, durationHeld);
+    await expect.poll(() => marksNow(page, 'q', 'positionY')).toEqual([0, 1500, 3000]);
   });
 
   // Compact layout (W3-ED-01: below 1024 CSS px). The drawer is a modal <dialog> (shell.tsx Drawer, showModal), which makes the preview inert, so it cannot be

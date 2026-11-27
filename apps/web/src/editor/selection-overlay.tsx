@@ -18,7 +18,7 @@ import { dispatch } from './commands';
 import { useMaskUi } from './mask-state';
 import { useShapeUi } from './shape-ui';
 import { select, useView, view } from './view';
-import { atPlayhead, boundsOf, cornerDrag, corners, frameOf, handleAt, handles, HANDLE_PX, itemLocal, LINE_PX, marqueeCounts, marqueeHits, moveDrag, pickAt, rotationDrag, screenPx, shownItems, writeEdits } from './selection-box';
+import { atPlayhead, boundsOf, cornerDrag, corners, frameOf, handleAt, handles, HANDLE_PX, itemLocal, LINE_PX, marqueeCounts, marqueeHits, moveDrag, pickAt, previewDraft, rotationDrag, screenPx, shownItems } from './selection-box';
 import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from './selection-box';
 
 /** The live drag's draft document, the only place it is kept: the preview draws it, the box follows it, release drops it. */
@@ -71,9 +71,7 @@ export function SelectionOverlay({ doc }: { doc: ProjectDocument }) {
       if (d.kind === 'move') { const r = moveDrag(d.base, d.ids, d.t, { x: p.x - d.from.x, y: p.y - d.from.y }, zoomNow()); edits = r.edits; setGuides(r.snap); }
       else { const i = itemOf(d.base, d.ids[0])!; edits = [{ itemId: i.id, values: d.kind === 'corner' ? cornerDrag(d.base, i, d.t, d.corner!, p) : rotationDrag(d.base, i, d.t, d.from, p) }]; }
       d.edits = edits;
-      const next = { ...d.base, items: d.base.items.map(i => edits.some(x => x.itemId === i.id) ? structuredClone(i) : i) };
-      writeEdits(next, edits, d.t);
-      useSelectionDraft.setState({ doc: next });
+      useSelectionDraft.setState({ doc: previewDraft(d.base, edits, d.t) });
     };
     // Release and pointer cancel both commit (7.1 point 5); Escape does not cancel a drag. Window blur commits too: not from Xapp,
     // needed because the drag uses window listeners, not pointer capture (relay R9, confirmed by Author).

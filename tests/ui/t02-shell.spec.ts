@@ -387,6 +387,18 @@ test.describe('T28 rows 1-2: fit, wheel zoom about the pointer, Reset view, refi
     }
   });
 
+  // The fit pinned at the specs' 1440 x 900 viewport with the 9:16 fixture. The exact pin is the formula check (stage = fit width +/- 0.5 px; the old layout is
+  // 26 px off it); the band on k only guards the preview height. Windows measured k 0.203646 (preview area 774 x 421, run 1 of 0439e25). The band [0.185, 0.228]
+  // is wide for Ubuntu's fonts (a wrapped top row gives about 0.196); 0.228 is the physical maximum (preview at 52 % of 900). It fails the old layout's 0.1798 and
+  // a halving to 0.10. Source: tickets l.571, Xapp facts l.2371.
+  test('fit pin: at 1440 x 900 with 1080 x 1920 the stage is min(W − 30, (H − 30) × 1080 / 1920) wide +/- 0.5 px, and k = stage width / 1080 is in [0.185, 0.228]', async ({ page }) => {
+    const size = { width: 1080, height: 1920 };
+    await page.setViewportSize({ width: 1440, height: 900 }); await openEditor(page, richDoc({ size })); await fitted(page, size.width, size.height);
+    const s = await rect(page), k = s.width / size.width;
+    expect(Math.abs(s.width - await fitWidth(page, size.width, size.height)), 'the stage width is the fit width').toBeLessThanOrEqual(0.5);
+    expect(k, `k ${k}`).toBeGreaterThanOrEqual(0.185); expect(k, `k ${k}`).toBeLessThanOrEqual(0.228);
+  });
+
   test('a plain wheel (no key) over the preview zooms, and the page does not scroll', async ({ page }) => {
     await open(page); await page.evaluate(() => { (window as any).__t28wheel = []; window.addEventListener('wheel', e => (window as any).__t28wheel.push(e.defaultPrevented)); });
     const scrollY = await page.evaluate(() => window.scrollY); await point(page); await wheel(page, -100);

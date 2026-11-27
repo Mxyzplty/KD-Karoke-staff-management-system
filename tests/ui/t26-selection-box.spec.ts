@@ -296,7 +296,7 @@ test.describe('T26 rows 12 and A1: several selected items', () => {
   test('row 12: 2 or more selected items at the playhead show one plain box around them and no handles', async ({ page }) => {
     await open(page, doc([shape('a', 'o1', 200, 400, 400, 300), shape('b', 'o2', 700, 1200, 200, 100)])); await choose(page, ['a', 'b']);
     await expect(groupBox(page)).toHaveCount(1); await expect(boxOf(page)).toHaveCount(0); await expect(knobs(page)).toHaveCount(0);
-    // The rect's own canvas-px geometry: its screen box would include half the 1.5 screen px stroke (about 4 canvas px at k 0.18).
+    // The rect's own canvas-px geometry: its screen box would include half the 1.5 screen px stroke (about 4 canvas px at k 0.20).
     const r = await groupBox(page).evaluate(e => ['x', 'y', 'width', 'height'].map(k => Number(e.getAttribute(k)))), a = { x: r[0], y: r[1] }, b = { x: r[0] + r[2], y: r[1] + r[3] };
     near(a.x, 200, 2, 'left'); near(a.y, 400, 2, 'top'); near(b.x, 900, 2, 'right'); near(b.y, 1300, 2, 'bottom'); // the union of the two boxes
     await choose(page, ['a']); await expect(groupBox(page)).toHaveCount(0); await expect(boxOf(page)).toHaveCount(1);
@@ -305,8 +305,13 @@ test.describe('T26 rows 12 and A1: several selected items', () => {
     await open(page, doc([shape('a', 'o1', 200, 400, 400, 300), shape('later', 'o2', 700, 1200, 200, 100, { display: { from: 3000, to: 4000 } })])); await choose(page, ['a', 'later']);
     await expect(boxOf(page)).toHaveCount(1); await expect(knobs(page)).toHaveCount(5);
     const g = await geo(page), se = await knob(page, 'se'), inside = { x: se.x - 2, y: se.y - 2 }; // on the handle and inside the item
-    await drag(page, inside, { x: inside.x + 30, y: inside.y + 20 });
-    await closeTo(() => pv(page, 'a', 'positionX'), 200 + 30 / g.k); await closeTo(() => pv(page, 'a', 'positionY'), 400 + 20 / g.k);
+    // tol: T26's 2 canvas px at k 0.1798 is 0.36 screen px, held in screen px at this k. The box spans a and 'later' (centre 550, 850); the move must keep
+    // both centre axes out of the 8 screen px snap to the canvas centre (540, 960), so the wanted values are unsnapped (the snap: T26's snap cases).
+    const tol = 0.36 / g.k;
+    expect(Math.abs(850 + 40 / g.k - 960), 'setup: the moved centre Y stays outside the 8 px snap to 960').toBeGreaterThan(8 / g.k + tol);
+    expect(Math.abs(550 + 30 / g.k - 540), 'setup: the moved centre X stays outside the 8 px snap to 540').toBeGreaterThan(8 / g.k + tol);
+    await drag(page, inside, { x: inside.x + 30, y: inside.y + 40 });
+    await closeTo(() => pv(page, 'a', 'positionX'), 200 + 30 / g.k, tol); await closeTo(() => pv(page, 'a', 'positionY'), 400 + 40 / g.k, tol);
     expect(await pv(page, 'a', 'scale')).toBe(1); expect([...await selection(page)].sort()).toEqual(['a', 'later']);
   });
 });

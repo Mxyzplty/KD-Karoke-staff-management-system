@@ -8,9 +8,10 @@ import type { Box } from '../render/model';
 import { frameMasks, masksOf } from '../masks/model';
 import type { FrameMask } from '../masks/model';
 import { ensureProp, keyframeId, prop, propertyTime, setStatic } from '../timeline/properties';
-import { fail, item as itemOf, stack, trackLocked } from '../timeline/model';
+import { CommandError, fail, item as itemOf, stack, trackLocked } from '../timeline/model';
 import { invert } from '../timeline/shapes';
 import type { Pt, ShapePath } from '../timeline/shapes';
+import { settle } from '../timeline/bus';
 
 /** 7.1 point 7 (screen px unless named), point 1 (canvas px, factor), point 3, point 6 (ms), point 8. */
 export const HANDLE_PX = 10, ROTATE_GAP_PX = 28, LINE_PX = 1.5, SNAP_PX = 8, MIN_EDGE = 16, MIN_BASE = 16, MIN_FACTOR = 0.05, MARQUEE_MIN = 2, KEYFRAME_WINDOW_MS = 100;
@@ -175,6 +176,17 @@ export function writeEdits(doc: ProjectDocument, edits: PreviewEdit[], t: number
     }
   }
   return wrote;
+}
+/** The live drag's draft, built as the commit is (bus.ts run): the commit's own op, then settle, on a full copy of base, so the
+ *  draft shows what the commit will hold (T28 row 3, lane A: duration, captions, transitions). When the commit would refuse
+ *  (TRACK_LOCKED, a caption dependency), the plain draft shows the drag and the commit at release reports the refusal (lane A's
+ *  A2). An error that is not a refusal is warned about, never thrown from a pointermove. */
+export function previewDraft(base: ProjectDocument, edits: PreviewEdit[], t: number): ProjectDocument {
+  try { const next = structuredClone(base); if (applyPreviewEdit(next, edits, t)) settle(base, next); return next; }
+  catch (e) { if (!(e instanceof CommandError)) console.warn('previewDraft: the commit preview failed, showing the plain draft', e); }
+  const plain = { ...base, items: base.items.map(i => edits.some(x => x.itemId === i.id) ? structuredClone(i) : i) };
+  writeEdits(plain, edits, t);
+  return plain;
 }
 /** The committed edit (intent transformOnPreview, "Edit items"): an item on a locked track refuses the whole edit with
  *  TRACK_LOCKED, as transformItem does (timeline/items.ts), so every item goes back (lane A's A2). */
