@@ -7,6 +7,10 @@
 // frame plan through the shared compositor (render/model.ts framePlan + render/compositor.ts, the export path).
 import { createServer, type ViteDevServer } from 'vite';
 import { chromium, type Browser, type Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { readdirSync, realpathSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { ParityAdapter, Frame } from '../../../../parity/runner';
 import type { Json } from '../../../../parity/normalise';
 import { framePlan } from '../render/model';
@@ -24,6 +28,24 @@ type Graphic = { id: string; code: string; summary?: string; startMs?: number; d
 /** assets: agent id → URL (a data URL in a scenario) that timeline graphics reach with getAssetUrl. itemFrameOverrides: item id →
  *  sample time (ms) → the graphic frame a stored frame prints, as a graphic's frameOverrides (ticket T08 golden suite). */
 type Project = { width: number; height: number; fps: number; graphics: Graphic[]; assets?: Record<string, string>; itemFrameOverrides?: Record<string, Record<string, number>> };
+/** T39 cache isolation: every adapter server in one process shares one pre-bundle folder under the temp folder; no two
+ *  processes (vitest workers, the `npm run parity` child) ever share one. Vite deletes and renames its cache folder when its
+ *  hash differs, which broke other processes' page loads on the shared node_modules/.vite. One folder per process is safe
+ *  only because no two adapters in one process are alive at once; a test that opens two at once would share one again. */
+const CACHE_PREFIX = 'cutframe-vite-mg-adapter-' + createHash('sha256').update(realpathSync(process.cwd())).digest('hex').slice(0, 12) + '-';
+const CACHE_DIR = path.join(os.tmpdir(), CACHE_PREFIX + process.pid);
+let pruned = false;
+/** Folders of processes that have ended hold no live server; a worker is killed without exit handlers, so prune them here. */
+function pruneDeadCaches(): void {
+  if (pruned) return; pruned = true;
+  try {
+    for (const name of readdirSync(os.tmpdir())) {
+      const pid = Number(name.startsWith(CACHE_PREFIX) ? name.slice(CACHE_PREFIX.length) : NaN);
+      if (!Number.isInteger(pid) || pid === process.pid) continue;
+      try { process.kill(pid, 0); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ESRCH') rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); }
+    }
+  } catch {} // best effort: a prune failure never fails open()
+}
 export class MotionGraphicParityAdapter implements ParityAdapter {
   name = 'cutframe-motion-graphic-runtime'; private server?: ViteDevServer; private browser?: Browser; private page?: Page; private state!: Project; private url = '';
   private editor!: EditorHarness; private timeline = false;
@@ -38,7 +60,8 @@ export class MotionGraphicParityAdapter implements ParityAdapter {
       links: assets.map(id => ({ id: `link-${id}`, projectId: 'parity', assetId: `asset-${id}`, agent_id: id, content_type: 'image', added_at: '', deleted_at: null }) as AssetLink) });
     // T08 notes, 101-frame abort: a content change to a watched module mid-run made Vite full-reload the harness page and
     // the next evaluate died with "Execution context was destroyed". A parity run serves a fixed snapshot: no watcher, no HMR.
-    this.server = await createServer({ configFile: false, root: 'apps/web', server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }, logLevel: 'error', optimizeDeps: { include: ['@babel/standalone','react','react-dom','react-dom/client','@react-three/fiber','three','lottie-web','svg-path-properties','simplex-noise'] } });
+    pruneDeadCaches();
+    this.server = await createServer({ configFile: false, root: 'apps/web', cacheDir: CACHE_DIR, server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }, logLevel: 'error', optimizeDeps: { include: ['@babel/standalone','react','react-dom','react-dom/client','@react-three/fiber','three','lottie-web','svg-path-properties','simplex-noise'] } });
     await this.server.listen(); const address = this.server.httpServer!.address(); if (!address || typeof address === 'string') throw Error('MG parity server did not bind.');
     this.browser = await chromium.launch({ headless: true }); this.page = await this.browser.newPage({ deviceScaleFactor: 1 });
     this.url = `http://127.0.0.1:${address.port}/src/mg/harness.html`; await this.load();
