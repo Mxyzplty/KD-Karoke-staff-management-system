@@ -22,7 +22,7 @@ const row = (page: Page, store: string, id: string) => page.evaluate(async ({ st
 const opfsNames = (page: Page, folder: string) => page.evaluate(async folder => {
   const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folder, { create: true });
   const out: Record<string, number> = {};
-  for await (const [name, handle] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) out[name] = handle.kind === 'file' ? (await (handle as FileSystemFileHandle).getFile()).size : -1;
+  for await (const [name, handle] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) { if (handle.kind !== 'file') { out[name] = -1; continue; } const file = await (handle as FileSystemFileHandle).getFile().catch((e: unknown) => { if (e instanceof DOMException && e.name === 'NotFoundError') return null; throw e; }); if (file) out[name] = file.size; } // T40: an entry the listing returned can be gone before getFile() reads it (a writable's .crswap): leave it out; the next poll lists again
   return out;
 }, folder);
 
