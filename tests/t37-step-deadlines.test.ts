@@ -2,7 +2,7 @@
 // T37 (D120 item 4), red first: each local model step gets its own deadline, sized from its work (analysis: model load +
 // frames × time per frame, × margin), armed when the worker starts the step's request (`started` → `onStart`), not while the
 // request waits in the queue. Frame extraction keeps preparationBudgetMs. A request that never starts fails at a queue cap
-// with the cap's own code. Real prepareAsset + the real analysisStep + a real AnalysisService over a fake worker that keeps
+// (computed by the AnalysisService, above the fake worker) with ANALYSIS_QUEUE_TIMEOUT (lane A). Real prepareAsset + the real analysisStep + a real AnalysisService over a fake worker that keeps
 // the worker's serial queue; frame extraction (runWorker) is mocked. Fake time via options.clock / options.timers, as in
 // t19-r2-step-deadline (setInterval is inert: no heartbeat). Every checkpoint is a fraction of a deadline computed from the
 // TBD constants; no value is written for them. Synthetic data only.
@@ -23,10 +23,10 @@ import type { MediaStore } from '../apps/web/src/store/media';
 import { mediaError } from '../apps/web/src/media/codes';
 import { uploadToLibrary } from '../apps/web/src/media/ingest';
 import { preparationBudgetMs, prepareAsset } from '../apps/web/src/media/prepare';
-import type { PreparationRecord, Timers } from '../apps/web/src/media/prepare';
+import type { PreparationRecord, Steps, Timers } from '../apps/web/src/media/prepare';
 import { runWorker } from '../apps/web/src/media/worker-client';
 import { AnalysisService } from '../apps/web/src/analysis/service';
-import { analysisDeadlineMs, analysisStep, frameTimes, MARGIN, MODEL_LOAD_VISION, PER_FRAME } from '../apps/web/src/analysis/steps';
+import { analysisDeadlineMs, analysisStep, embeddingsStep, frameTimes, MARGIN, MODEL_LOAD_VISION, PER_FRAME } from '../apps/web/src/analysis/steps';
 import { AnalysisError } from '../apps/web/src/analysis/types';
 import type { AnalysisRequest } from '../apps/web/src/analysis/protocol';
 
@@ -76,41 +76,45 @@ function fakeTime() {
     }
     now = target; await real();
   }
-  return { now: () => now, timers, advance };
+  /** The last timer id handed out, and the timers still pending (id order = arming order). */
+  const seq_ = () => seq, armed = () => [...pending.entries()].map(([id, t]) => ({ id, ms: t.at - now }));
+  return { now: () => now, timers, advance, seq: seq_, armed };
 }
 
-/** The analysis worker as the main thread sees it: one serial queue; the head request starts (its `onStart` is called,
- *  standing for the worker's `started` message) when every earlier request has replied. `silent`: nothing ever starts or
- *  replies (a dead or hung worker). `close` rejects every pending request, like AnalysisWorker.close. */
-type Job = { request: AnalysisRequest; onStart?: () => void; started: boolean; resolve(v: unknown): void; reject(e: unknown): void };
+/** The analysis worker as the main thread sees it (AnalysisWorker, below the AnalysisService that holds the queue cap):
+ *  one serial queue; the head request starts when every earlier request has replied, and its `onStart` is called a
+ *  microtask later, standing for the worker's `started` message. `silent`: nothing ever starts or replies (a dead or hung
+ *  worker). `close` rejects every pending request, like AnalysisWorker.close. `seqAtPost`: the last fake timer id when the
+ *  request was posted, so a row can tell timers armed after the post from timers armed before it. */
+type Job = { request: AnalysisRequest; onStart?: () => void; started: boolean; seqAtPost: number; resolve(v: unknown): void; reject(e: unknown): void };
 class FakeWorker {
   jobs: Job[] = []; closed = false;
   private queue: Job[] = [];
-  constructor(private silent: boolean) {}
+  constructor(private silent: boolean, private seq: () => number) {}
   init() { return Promise.resolve({ id: 0, ok: true, value: true, elapsedMs: 0, backends: {} }); }
   run(request: AnalysisRequest, _transfer: Transferable[] = [], _ticket?: unknown, onStart?: () => void) {
     if (this.closed) return Promise.reject(new AnalysisError('ANALYSIS_CANCELLED', 'The analysis worker is closed.'));
-    return new Promise((resolve, reject) => { const job: Job = { request, onStart, started: false, resolve, reject }; this.jobs.push(job); this.queue.push(job); this.pump(); });
+    return new Promise((resolve, reject) => { const job: Job = { request, onStart, started: false, seqAtPost: this.seq(), resolve, reject }; this.jobs.push(job); this.queue.push(job); this.pump(); });
   }
   finish(job: Job, value: unknown) {
     expect(this.queue[0]).toBe(job); // only the running request can reply
     this.queue.shift(); job.resolve({ id: 0, ok: true, value, elapsedMs: 0, backends: {} }); this.pump();
   }
   close(error: unknown) { this.closed = true; for (const j of this.queue) j.reject(error); this.queue = []; }
-  private pump() { const head = this.queue[0]; if (head && !head.started && !this.silent) { head.started = true; head.onStart?.(); } }
+  private pump() { const head = this.queue[0]; if (head && !head.started && !this.silent) { head.started = true; queueMicrotask(() => head.onStart?.()); } }
 }
-function rig(silent = false) {
+function rig(silent = false, seq: () => number = () => 0) {
   const workers: FakeWorker[] = [];
-  const svc = new AnalysisService('/models/', (() => { const w = new FakeWorker(silent); workers.push(w); return w; }) as never);
+  const svc = new AnalysisService('/models/', (() => { const w = new FakeWorker(silent, seq); workers.push(w); return w; }) as never);
   vi.spyOn(svc, 'available').mockResolvedValue({ analysis: true, transcription: true, embeddings: true, beats: true });
   h.svc = svc;
   vi.mocked(runWorker).mockImplementation((async (req: { times: number[] }) => frames(req.times)) as never);
   const describes = () => workers.flatMap(w => w.jobs.filter(j => j.request.task === 'describe'));
   return { workers, describes };
 }
-function prepare(store: ProjectStore, asset: Asset, time: ReturnType<typeof fakeTime>) {
+function prepare(store: ProjectStore, asset: Asset, time: ReturnType<typeof fakeTime>, steps: Partial<Steps> = { analysis: analysisStep }) {
   const promise = prepareAsset(store, asset.id, { clock: time.now, timers: time.timers, steps: {
-    probe: async (_blob, a) => video(SECONDS[a.name] * 1000) as never, analysis: analysisStep,
+    probe: async (_blob, a) => video(SECONDS[a.name] * 1000) as never, ...steps,
   } });
   const t = { promise, settled: false }; void promise.then(() => { t.settled = true; }); return t;
 }
@@ -189,18 +193,45 @@ describe('T37 the model deadline starts at `started`, not while the request wait
 });
 
 describe('T37 row 4: a request that never starts fails at the queue cap, with the cap\'s own code', () => {
-  it('row 4: the worker never posts started → the step fails with a stored code that is not CLIENT_PREPARATION_TIMEOUT; the asset keeps GEMINI_FAILED and ends ready', async () => {
+  it('row 4: the worker never posts started → the step fails with ANALYSIS_QUEUE_TIMEOUT (not CLIENT_PREPARATION_TIMEOUT); the attempt records GEMINI_FAILED, the step\'s rows are dropped, the asset ends ready', async () => {
     const store = setup(), [b] = await upload(store, ['clip30.mp4']), time = fakeTime(), { describes } = rig(true);
     const pb = prepare(store, b, time); await vi.waitFor(() => expect(describes()).toHaveLength(1));
     expect(describes()[0].started).toBe(false);
-    // The cap's slack is TBD: advance until the step settles, at most 24 h of fake time.
+    // The cap (deadlines ahead, none here, + slack) is advanced past without naming the slack: until the step settles, at
+    // most 24 h of fake time.
     for (let i = 0; i < 24 * 60 && !pb.settled; i++) await time.advance(MIN);
     expect(pb.settled).toBe(true);
     expect(await pb.promise).toBe('prepared');
-    const code = (await record(store, b.id))?.stepErrors?.analysis?.code;
-    expect(code).not.toBe('CLIENT_PREPARATION_TIMEOUT');
-    expect(typeof code).toBe('string');
-    expect(await stored(store, b.id)).toMatchObject({ processing_status: 'ready', last_error_code: 'GEMINI_FAILED', processing_steps: { analysis: 'failed' } });
+    expect((await record(store, b.id))?.stepErrors?.analysis?.code).toBe('ANALYSIS_QUEUE_TIMEOUT');
+    expect(await record(store, b.id)).toMatchObject({ phase: 'finished', code: 'GEMINI_FAILED' });
+    expect(await stored(store, b.id)).toMatchObject({ processing_status: 'ready', last_error_code: 'GEMINI_FAILED', last_error_message: mediaError('GEMINI_FAILED').message, processing_steps: { analysis: 'failed' } });
+    expect(await store.row('analyses', b.id)).toBeUndefined();
+  });
+});
+
+describe('T37 row 8: a step that sends several requests (index, then entry) has one deadline, armed at the first started', () => {
+  it('row 8: one timer is armed when index starts and none when entry starts; entry hangs → the step times out at the index start + that deadline: CLIENT_PREPARATION_TIMEOUT, EMBEDDING_FAILED, asset ready', async () => {
+    const store = setup(), [b] = await upload(store, ['clip30.mp4']), time = fakeTime(), { workers } = rig(false, time.seq);
+    const jobs = (task: string) => workers.flatMap(w => w.jobs.filter(j => j.request.task === task));
+    const pb = prepare(store, b, time, { embeddings: embeddingsStep });
+    await vi.waitFor(() => expect(jobs('index')).toHaveLength(1));
+    const [ji] = jobs('index'); expect(ji.started).toBe(true); await real();
+    // The deadline: the only timer armed after index was posted and still pending once it started (the unit of work is
+    // TBD, so its size is read from the timer, not computed). A timer armed at the step's call is not counted.
+    const atIndex = time.armed().filter(t => t.id > ji.seqAtPost);
+    expect(atIndex).toHaveLength(1);
+    const [{ id: deadlineId, ms: d }] = atIndex;
+    await time.advance(0.6 * d); workers[0].finish(ji, true);
+    await vi.waitFor(() => expect(jobs('entry')).toHaveLength(1));
+    const [je] = jobs('entry'); expect(je.started).toBe(true); await real();
+    expect(time.armed().filter(t => t.id > je.seqAtPost)).toEqual([]); // not re-armed on entry
+    expect(time.armed().some(t => t.id === deadlineId)).toBe(true); // the index deadline still covers it
+    await time.advance(0.3 * d); expect(pb.settled).toBe(false); // 0.9 × d since index started
+    await time.advance(0.2 * d);
+    expect(await pb.promise).toBe('prepared');
+    expect(await stored(store, b.id)).toMatchObject({ processing_status: 'ready', last_error_code: 'EMBEDDING_FAILED', processing_steps: { embeddings_description: 'failed', embeddings_transcript: 'failed' } });
+    expect(await record(store, b.id)).toMatchObject({ stepErrors: { embeddings: { code: 'CLIENT_PREPARATION_TIMEOUT' } } });
+    expect(await store.row('search_index', b.id)).toBeUndefined();
   });
 });
 
