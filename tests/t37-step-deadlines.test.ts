@@ -221,10 +221,10 @@ describe('T37 row 8: a step that sends several requests (index, then entry) has 
     const atIndex = time.armed().filter(t => t.id > ji.seqAtPost);
     expect(atIndex).toHaveLength(1);
     const [{ id: deadlineId, ms: d }] = atIndex;
-    await time.advance(0.6 * d); workers[0].finish(ji, true);
+    await time.advance(0.6 * d); workers[0].finish(ji, true); const atEntry = time.seq(); // entry starts here (it may have been posted with index)
     await vi.waitFor(() => expect(jobs('entry')).toHaveLength(1));
     const [je] = jobs('entry'); expect(je.started).toBe(true); await real();
-    expect(time.armed().filter(t => t.id > je.seqAtPost)).toEqual([]); // not re-armed on entry
+    expect(time.armed().filter(t => t.id > atEntry)).toEqual([]); // not re-armed on entry
     expect(time.armed().some(t => t.id === deadlineId)).toBe(true); // the index deadline still covers it
     await time.advance(0.3 * d); expect(pb.settled).toBe(false); // 0.9 × d since index started
     await time.advance(0.2 * d);
@@ -283,5 +283,29 @@ describe('T37 bug 2: an automatic resume does not prepare again an asset that an
     expect(probes).toBe(1);
     expect(await record(store, a.id)).toMatchObject({ phase: 'finished', attemptId: first!.attemptId });
     expect(await stored(store, a.id)).toMatchObject({ processing_status: 'ready', last_error_code: null });
+  });
+});
+
+describe('T37 row 9: a request ahead with no deadline of its own counts as the 30 min ceiling in the queue cap (lane A 27 Nov 06:30)', () => {
+  it('row 9: an untimed beats request ahead never replies → the queued step is not settled 1 800 000 ms after it was queued, then fails at the cap: ANALYSIS_QUEUE_TIMEOUT, then GEMINI_FAILED, asset ready', async () => {
+    const store = setup(), [b] = await upload(store, ['clip30.mp4']), time = fakeTime(), { workers, describes } = rig();
+    // No deadline of its own; it starts and never replies. Closing the worker rejects it.
+    void (h.svc as AnalysisService).request({ task: 'beats', pcm: { sampleRate: 16000, channels: 1, data: [new Float32Array(16)] }, asset: { filename: 'beats.wav', type: 'audio' } }).catch(() => {});
+    await vi.waitFor(() => expect(workers[0]?.jobs.map(j => j.request.task)).toEqual(['beats']));
+    const pb = prepare(store, b, time); await vi.waitFor(() => expect(describes()).toHaveLength(1));
+    expect(describes()[0].started).toBe(false);
+    // preparationBudgetMs's 30 min ceiling (1 800 000 ms), what the untimed request ahead counts: nothing has fired yet.
+    // Advanced a minute at a time (as row 4), so a step that settled earlier has written its record by the check.
+    const ceiling = preparationBudgetMs(Infinity);
+    for (let t = 0; t < ceiling; t += MIN) await time.advance(MIN);
+    expect(pb.settled ? `settled, ${(await record(store, b.id))?.stepErrors?.analysis?.code}` : 'not settled').toBe('not settled');
+    // Then the slack (not named): until the step settles, at most 24 h of fake time.
+    for (let i = 0; i < 24 * 60 && !pb.settled; i++) await time.advance(MIN);
+    expect(pb.settled).toBe(true);
+    expect(await pb.promise).toBe('prepared');
+    expect((await record(store, b.id))?.stepErrors?.analysis?.code).toBe('ANALYSIS_QUEUE_TIMEOUT');
+    expect(await record(store, b.id)).toMatchObject({ phase: 'finished', code: 'GEMINI_FAILED' });
+    expect(await stored(store, b.id)).toMatchObject({ processing_status: 'ready', last_error_code: 'GEMINI_FAILED', last_error_message: mediaError('GEMINI_FAILED').message, processing_steps: { analysis: 'failed' } });
+    expect(await store.row('analyses', b.id)).toBeUndefined();
   });
 });
