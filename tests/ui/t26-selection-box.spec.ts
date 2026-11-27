@@ -8,6 +8,7 @@ import { presetPoints } from '../../apps/web/src/timeline/shapes';
 import { ffmpegAvailable } from '../media-fixtures';
 import { clearIntents, createProject, intents, openEditor, setViewState, skipTour, typesDoc, viewState, watchIntents } from './t02-support';
 import { liveDoc, savedDoc, undoLabels } from './t03-support';
+import { rasterMask as dmkMask, rasterReady, rasterRef as dmkRef, writeRaster } from './t12-support';
 import { panel } from './t04-support';
 import { completed, decodeRgba, rectShape, runExport } from './t16a-support';
 
@@ -107,17 +108,18 @@ test.describe('T26 rows 1 and 6: the box, the handles, their size', () => {
   });
   test('row 1, 7.1 point 7: sizes keep their screen px at fit, zoomed in, zoomed out and after Reset view', async ({ page }) => {
     await open(page, A()); await choose(page, ['a']); await expect(boxOf(page)).toHaveCount(1);
-    const preview = page.locator('[aria-label="Preview"]'), stage = page.locator('.stage');
+    const stage = page.locator('.stage');
     const check = async (label: string) => {
       await expect.poll(async () => { const m = await measure(page); return Math.abs(m.zoomAttr - m.k) / m.k; }, { message: `${label}: data-zoom follows the stage` }).toBeLessThan(0.02);
       const m = await measure(page);
       near(m.outer, 10, 0.7, `${label} handle`); near(m.border, 1, 0.05, `${label} border in canvas px`); near(m.line, 1.5, 0.1, `${label} line`); near(m.gap, 28, 0.8, `${label} rotation gap`);
     };
     await check('fit');
-    for (let n = 0; n < 6; n++) await preview.dispatchEvent('wheel', { deltaY: -100, ctrlKey: true });
+    // T28 rows 1-2: a plain wheel zooms (no key), about the pointer, which sits on the stage centre.
+    await wheel(page, 6, -100, await stageCentre(page));
     await expect(stage).not.toHaveAttribute('data-scale', '1'); await check('zoomed in');
     await page.getByRole('button', { name: 'Reset view (fit)' }).click(); await expect(stage).toHaveAttribute('data-scale', '1');
-    for (let n = 0; n < 5; n++) await preview.dispatchEvent('wheel', { deltaY: 100, ctrlKey: true });
+    await wheel(page, 2, 100, await stageCentre(page));
     await expect(stage).not.toHaveAttribute('data-scale', '1'); await check('zoomed out');
     await page.getByRole('button', { name: 'Reset view (fit)' }).click(); await expect(stage).toHaveAttribute('data-scale', '1'); await check('after Reset view');
   });
@@ -452,8 +454,7 @@ test.describe('T26 Q6: the mask test of the pick', () => {
     await click(page, g.at(150, 350)); expect(await selection(page), 'visible part, top left').toEqual(['masked']);
     await click(page, g.at(650, 850)); expect(await selection(page), 'visible part, bottom right').toEqual(['masked']);
   });
-  // The raster case (background removal, alpha 4 and 5, a raster with no frame yet) is unit level only: no .dmk helper in tests/ui/t12-support.ts is importable
-  // without a T12 file; the pick's alpha rule is pinned with a stub in tests/t26-selection-box.test.ts.
+  // The raster case with a real .dmk file is in 'T28 row 5' below (tests/ui/t12-support.ts writeRaster); a raster with no frame yet stays unit level (tests/t26-selection-box.test.ts).
   // Author's answer of 13 Nov on l.746. A raster ref whose `file` does not exist is never loaded when frameMasks drops it (out of range or disabled): the
   // preview reads rasterPlane only for the masks that count (masks/render.ts l.83, selection-overlay.tsx l.32), and the inspector card reads only the ref's numbers.
   // The playhead is 500 ms, trim.from 0, rate 1: source time 500 ms = 500_000 us. Item (100, 300), 600 x 600; the rectangle is item-local (150,150)-(450,450).
@@ -484,6 +485,75 @@ test.describe('T26 Q6: the mask test of the pick', () => {
     await open(page, pair([rectPath({ source: 'smart', keyframes })])); const g = await geo(page);
     await click(page, g.at(150, 350)); expect(await selection(page), 'outside the rectangle').toEqual(['masked']);
     await click(page, g.at(400, 600)); expect(await selection(page), 'inside the rectangle').toEqual(['masked']);
+  });
+});
+
+test.describe('T28 row 4: the pick traces a vector mask as the render does (masks/render.ts trace, §54.2 1.2)', () => {
+  // Item (100, 300), 600 x 600, scale 1 over base: an item-local point is the canvas point minus (100, 300). Mask points are item-local px.
+  const vmask = (points: unknown[], closed = true) => ({ id: 'vm', name: 'Mask 1', enabled: true, points, closed, mode: 'add', order: 0, colorIndex: 0, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'shape' });
+  const pair = (mask: unknown) => doc([image('base', 'v1', 100, 300, 600, 600), image('masked', 'o2', 100, 300, 600, 600, { masks: [mask] })]);
+  test('a 1-point mask is a circle of radius 3: a press 2 canvas px from the point picks the item, one 3.5 px away passes through to the item below', async ({ page }) => {
+    // The point is item-local (300, 300) = canvas (400, 600). 3 canvas px is under 1 screen px at fit, so the stage is zoomed to its cap (3) about that point first.
+    await open(page, pair(vmask([{ anchor: { x: 300, y: 300 } }], false))); await zoomToCap(page, (await geo(page)).at(400, 600)); const g = await geo(page);
+    await click(page, g.at(402, 600)); expect(await selection(page), '2 px right of the point').toEqual(['masked']);
+    await click(page, g.at(403.5, 600)); expect(await selection(page), '3.5 px right of the point').toEqual(['base']);
+    await click(page, g.at(400, 602)); expect(await selection(page), '2 px below the point').toEqual(['masked']);
+    await click(page, g.at(400, 596.5)); expect(await selection(page), '3.5 px above the point').toEqual(['base']);
+  });
+  test('a bezier mask: a press in the curve\'s bulge past the chord picks the item; past the curve it passes through', async ({ page }) => {
+    // Item-local: (150, 300) with handleOut (0, 200), (450, 300) with handleIn (0, 200), (300, 150). The first segment is the cubic (150,300) (150,500) (450,500) (450,300),
+    // whose lowest point is y = 0.125 * 300 + 0.75 * 500 + 0.125 * 300 = 450 at x 300. Straight lines would stop at the chord y = 300.
+    const points = [{ anchor: { x: 150, y: 300 }, handleOut: { x: 0, y: 200 } }, { anchor: { x: 450, y: 300 }, handleIn: { x: 0, y: 200 } }, { anchor: { x: 300, y: 150 } }];
+    await open(page, pair(vmask(points))); const g = await geo(page);
+    await click(page, g.at(400, 700)); expect(await selection(page), 'item-local (300, 400): in the bulge, past the chord').toEqual(['masked']);
+    await click(page, g.at(400, 800)); expect(await selection(page), 'item-local (300, 500): past the curve').toEqual(['base']);
+    await click(page, g.at(400, 520)); expect(await selection(page), 'item-local (300, 220): inside the straight part above the chord').toEqual(['masked']);
+  });
+});
+
+test.describe('T28 row 6: the overlay\'s base size is at least 16 canvas px on each axis (7.1 l.1729); the picture keeps the stored size', () => {
+  test('a shape stored 8 wide (100 high, scale 1) shows a box 16 canvas px wide (16 x zoom on screen) from positionX; the drawn rectangle stays 8 wide', async ({ page }) => {
+    await open(page, doc([shape('s', 'o1', 500, 500, 8, 100)])); await choose(page, ['s']); await expect(boxOf(page)).toHaveCount(1);
+    await zoomToCap(page, (await geo(page)).at(508, 550)); const g = await geo(page), nw = await knob(page, 'nw'), se = await knob(page, 'se');
+    near(se.x - nw.x, 16 * g.k, 1, 'box width on screen'); near(se.y - nw.y, 100 * g.k, 1, 'box height on screen');
+    near(g.canvas(nw).x, 500, 0.5, 'left edge at positionX'); near(g.canvas(nw).y, 500, 0.5, 'top edge at positionY');
+    await expect.poll(async () => isRed(await pixel(page, 504, 550)), { message: 'drawn inside the stored 8 px' }).toBe(true);
+    expect(isRed(await pixel(page, 512, 550)), 'not drawn between 8 and 16: the picture keeps the stored width').toBe(false);
+  });
+});
+
+test.describe('T28 row 5: the pick on an item with a raster (.dmk) mask, a real file in the project\'s mask folder', () => {
+  // Author's rule (ruling e; 13 Nov): masks that do not count at the playhead are dropped first (disabled ones, rasters outside [sourceStartUs, sourceEndUs));
+  // then a raster mask picks where the combined alpha is above 4 of 255, and at 4 or below the press passes through to the item below.
+  // masked: 600 x 600 at (100, 300) on o2, over base (the same box on v1). The raster is 600 x 600 in item space, so raster px = item px.
+  // Playhead 500 ms, trim.from 0, rate 1: source time 500_000 us. Quadrants (item px): top left 255, top right 5, bottom left 4, bottom right 0;
+  // their centres (150,150) (450,150) (150,450) (450,450) are canvas (250,450) (550,450) (250,750) (550,750), 150 px from every edge between values.
+  const pair = (masks: unknown[]) => doc([image('base', 'v1', 100, 300, 600, 600), image('masked', 'o2', 100, 300, 600, 600, { masks })]);
+  const QUADS = [[0, 0, 300, 300, 255], [300, 0, 600, 300, 5], [0, 300, 300, 600, 4], [300, 300, 600, 600, 0]];
+  /** Creates the project, writes its raster file before the editor opens it, opens it at 500 ms and waits for the frame. */
+  async function withRaster(page: Page, ref: ReturnType<typeof dmkRef>, masks: unknown[], fill: number, rects: number[][] = []) {
+    const id = await createProject(page, pair(masks), 'T28 raster pick'); await writeRaster(page, id, ref, fill, rects);
+    await page.goto(`/project/${id}`); await expect(page.getByRole('status')).toHaveText('Saved locally');
+    await watchIntents(page); await setViewState(page, { playheadMs: 500 });
+    if (ref.sourceStartUs <= 500_000 && 500_000 < ref.sourceEndUs) await rasterReady(page, ref, 500_000);
+    return geo(page);
+  }
+  test('alpha 255 and 5 pick the masked item; alpha 4 and 0 pass through to the item below', async ({ page }) => {
+    const ref = dmkRef('quads.dmk', 600, 600), g = await withRaster(page, ref, [dmkMask(ref)], 0, QUADS);
+    for (const [x, y, want, what] of [[250, 450, 'masked', 'alpha 255'], [550, 450, 'masked', 'alpha 5: above 4'], [250, 750, 'base', 'alpha 4: not above 4'], [550, 750, 'base', 'alpha 0']] as const) {
+      await click(page, g.at(x, y)); expect(await selection(page), what).toEqual([want]);
+    }
+    expect(await undoLabels(page), 'a pick writes nothing').toEqual([]);
+  });
+  test('masks that do not count are dropped before the alpha read: an alpha-0 raster that is disabled, or out of range at the playhead, lets the item be picked everywhere in its box', async ({ page }) => {
+    const points = [[150, 350], [400, 600], [650, 850]];
+    // The control: the same alpha-0 file, enabled and in range, passes every press through.
+    const on = dmkRef('zero.dmk', 600, 600); let g = await withRaster(page, on, [dmkMask(on)], 0);
+    for (const [x, y] of points) { await click(page, g.at(x, y)); expect(await selection(page), `enabled, in range (${x}, ${y})`).toEqual(['base']); }
+    const off = dmkRef('zero-off.dmk', 600, 600); g = await withRaster(page, off, [dmkMask(off, { enabled: false })], 0);
+    for (const [x, y] of points) { await click(page, g.at(x, y)); expect(await selection(page), `disabled (${x}, ${y})`).toEqual(['masked']); }
+    const late = dmkRef('zero-late.dmk', 600, 600, { sourceStartUs: 2_000_000, sourceEndUs: 3_000_000 }); g = await withRaster(page, late, [dmkMask(late)], 0);
+    for (const [x, y] of points) { await click(page, g.at(x, y)); expect(await selection(page), `out of range (${x}, ${y})`).toEqual(['masked']); }
   });
 });
 
@@ -610,7 +680,11 @@ const pixel = (page: Page, x: number, y: number, W = SIZE.width) => page.evaluat
   return Array.from(g.getImageData(Math.floor(x * o.width / W), Math.floor(y * o.width / W), 1, 1).data);
 }, [x, y, W]);
 const isRed = (px: number[]) => px[0] > 200 && px[1] < 60 && px[2] < 60 && px[3] > 200; // rectShape's fill #ff0000
-const wheel = async (page: Page, steps: number, deltaY: number) => { const preview = page.locator('[aria-label="Preview"]'); for (let n = 0; n < steps; n++) await preview.dispatchEvent('wheel', { deltaY, ctrlKey: true }); };
+/** T28 rows 1-2: a plain wheel (no key) zooms about the pointer, so it is a real wheel at a known point: at `at`, or where the mouse already is (a held drag). */
+const wheel = async (page: Page, steps: number, deltaY: number, at?: Pt) => { if (at) await page.mouse.move(at.x, at.y); for (let n = 0; n < steps; n++) await page.mouse.wheel(0, deltaY); };
+const stageCentre = async (page: Page): Promise<Pt> => { const b = (await page.locator('.stage').boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+/** Wheels in at `at` until the zoom is at its cap of 3 screen px per canvas px (T28 row 1), then waits for the overlay to follow. */
+const zoomToCap = async (page: Page, at: Pt) => { await wheel(page, 20, -100, at); await expect.poll(async () => Number(await overlay(page).getAttribute('data-zoom')), { message: 'zoomed to the cap' }).toBeCloseTo(3, 2); };
 
 test.describe('T26 T1 (7.1 point 5): during the drag the preview shows the real item at its new place', () => {
   test('a move held down (no release): the preview draws the item itself at the new place and not at the old one; the document is unwritten until release; undo brings it back', async ({ page }) => {
@@ -633,11 +707,12 @@ test.describe('T26 T1 (7.1 point 5): during the drag the preview shows the real 
 
 test.describe('T26 C2: the snap limit reads the zoom at each move, not at the press', () => {
   test('the stage is zoomed out during a held move: a centre 6 screen px off at the new zoom (10.6 at the press zoom) snaps', async ({ page }) => {
-    // a's centre x is 400 and the canvas centre x is 540. Zooming out 6 wheel steps (factor 1.1 each, shell.tsx l.149) divides the zoom by 1.77.
-    // At the new zoom the centre is put 6 screen px (6 / k canvas px) short of 540: that is 10.6 screen px at the press zoom (limit 8), so only a limit read at the move snaps.
+    // a's centre x is 400 and the canvas centre x is 540. Zooming out 2 plain wheel steps of deltaY 100 (factor 0.7 each, T28 row 1) at the held pointer
+    // multiplies the zoom by 0.49 (or less, at the 0.1 floor). At the new zoom the centre is put 6 screen px (6 / k canvas px) short of 540: that is 12 screen px
+    // or more at the press zoom (limit 8), so only a limit read at the move snaps.
     await open(page, A()); const g = await geo(page), guideX = page.locator('[data-testid="selection-guide-x"]');
     await hold(page, g.at(400, 550), g.at(450, 550)); expect(await draftLive(page)).toBe(true); await expect(guideX).toHaveCount(0); // 90 canvas px off: no snap
-    const k0 = g.k; await wheel(page, 6, 100);
+    const k0 = g.k; await wheel(page, 2, 100);
     await expect.poll(async () => Number(await overlay(page).getAttribute('data-zoom')), { message: 'the overlay zoom follows the zoom out' }).toBeLessThan(k0 * 0.7);
     const g2 = await geo(page); expect(g2.k).toBeLessThan(k0 * 0.7);
     const short = 6 / g2.k; // canvas px
@@ -721,9 +796,9 @@ test.describe('T26 C4: presses are read on the preview area; outside the stage o
 });
 
 test.describe('T26 T2 (D90, row 11): the marquee threshold is 2 canvas px, not screen px', () => {
-  // A 160 x 90 canvas gives a high zoom; zoomed in to the limit (scale 8) one canvas px is far more than 2 screen px. The item is 0.4 x 0.4 canvas px at (80, 45) (the stage centre,
-  // which a zoom keeps in place). The press is 0.2 canvas px outside its top left corner (empty space); the marquee then covers the whole item, so the distance alone decides.
-  // 1.8 canvas px is under the threshold (3 screen px or more: a screen-px threshold of 2 would select), 2.2 is over it.
+  // A 160 x 90 canvas gives a high zoom; at the zoom cap (3 screen px per canvas px, T28 row 1) one canvas px is more than 2 screen px. The item is 0.4 x 0.4 canvas px at (80, 45)
+  // (the stage centre; the wheel is at the stage centre, which a zoom about the pointer keeps in place). The press is 0.2 canvas px outside its top left corner (empty space);
+  // the marquee then covers the whole item, so the distance alone decides. 1.8 canvas px is under the threshold (5.4 screen px: a screen-px threshold of 2 would select), 2.2 is over it.
   const TINY = { width: 160, height: 90 };
   const tiny = () => doc([shape('s', 'o1', 80, 45, 0.4, 0.4)], TRACKS, { size: TINY });
   const run = async (page: Page, dist: number) => {
@@ -731,8 +806,7 @@ test.describe('T26 T2 (D90, row 11): the marquee threshold is 2 canvas px, not s
     await drag(page, from, to, 6); return selection(page);
   };
   test('at the zoom limit: a marquee of 1.8 canvas px covering the item selects nothing, one of 2.2 canvas px selects it', async ({ page }) => {
-    await open(page, tiny()); await wheel(page, 25, -100);
-    await expect.poll(async () => Number(await overlay(page).getAttribute('data-zoom')), { message: 'zoomed in: well over 5 screen px per canvas px' }).toBeGreaterThan(5);
+    await open(page, tiny()); await zoomToCap(page, await stageCentre(page));
     expect(await selection(page)).toEqual([]);
     expect(await run(page, 1.8), '1.8 canvas px: under the threshold').toEqual([]);
     expect(await run(page, 2.2), '2.2 canvas px: over the threshold').toEqual(['s']);

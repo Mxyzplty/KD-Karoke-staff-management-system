@@ -13,7 +13,7 @@ import { invert } from '../timeline/shapes';
 import type { Pt, ShapePath } from '../timeline/shapes';
 
 /** 7.1 point 7 (screen px unless named), point 1 (canvas px, factor), point 3, point 6 (ms), point 8. */
-export const HANDLE_PX = 10, ROTATE_GAP_PX = 28, LINE_PX = 1.5, SNAP_PX = 8, MIN_EDGE = 16, MIN_FACTOR = 0.05, MARQUEE_MIN = 2, KEYFRAME_WINDOW_MS = 100;
+export const HANDLE_PX = 10, ROTATE_GAP_PX = 28, LINE_PX = 1.5, SNAP_PX = 8, MIN_EDGE = 16, MIN_BASE = 16, MIN_FACTOR = 0.05, MARQUEE_MIN = 2, KEYFRAME_WINDOW_MS = 100;
 /** Author's ruling e (12 Nov; §54.10 point 8): with a raster mask, the mask test passes when the combined alpha is above 4 of 255. */
 export const PICK_ALPHA_ABOVE = 4;
 export type Corner = 'nw' | 'ne' | 'se' | 'sw';
@@ -42,8 +42,11 @@ export const valueOf = (item: RecordData, key: TransformKey, t: number) => Numbe
 
 const axes = (rotation: number) => { const r = rotation * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); return { ux: { x: c, y: s }, uy: { x: -s, y: c } }; };
 const frameFrom = (b: Box): Frame => { const w = Math.abs(b.W * b.sx), h = Math.abs(b.H * b.sy); return { cx: b.x + w / 2, cy: b.y + h / 2, w, h, rotation: b.rotation }; };
+/** T28 row 6 (7.1 l.1729, Author 14 Nov): the overlay's base size is the drawn one, at least 16 canvas px on each axis; the render
+ *  keeps the stored size. An item with no stored size keeps the canvas size (the recorded 100 × 100 difference, not built). */
+const baseBox = (doc: ProjectDocument, item: RecordData, local: number): Box => { const b = itemBox(doc, item, local); return { ...b, W: Math.max(MIN_BASE, b.W), H: Math.max(MIN_BASE, b.H) }; };
 /** The box drawn from itemBox (lane A's Q5: scale ≠ 1 wins over scaleX / scaleY), so it sits on the drawn item. */
-export const frameOf = (doc: ProjectDocument, item: RecordData, t: number) => frameFrom(itemBox(doc, item, itemLocal(item, t)));
+export const frameOf = (doc: ProjectDocument, item: RecordData, t: number) => frameFrom(baseBox(doc, item, itemLocal(item, t)));
 const point = (f: Frame, sx: number, sy: number): Pt => { const { ux, uy } = axes(f.rotation); return { x: f.cx + ux.x * sx * f.w / 2 + uy.x * sy * f.h / 2, y: f.cy + ux.y * sx * f.w / 2 + uy.y * sy * f.h / 2 }; };
 export const corners = (f: Frame): Record<Corner, Pt> => ({ nw: point(f, -1, -1), ne: point(f, 1, -1), se: point(f, 1, 1), sw: point(f, -1, 1) });
 /** The 5 handle centres: the corners, and the rotation handle 28 screen px above the middle of the top edge. */
@@ -73,7 +76,7 @@ export const shownItems = (doc: ProjectDocument, selection: string[], t: number)
 /** 7.1 point 1: the opposite corner stays fixed; one factor h = max(0.05, min(e_x / w0, e_y / h0)), e_x, e_y ≥ 16, in the item's
  *  turned axes. The new position comes from the change in size, so a fixed edge keeps its exact stored value. */
 export function cornerDrag(doc: ProjectDocument, item: RecordData, t: number, corner: Corner, p: Pt): Record<'scale' | 'positionX' | 'positionY', number> {
-  const local = itemLocal(item, t), b = itemBox(doc, item, local), f = frameFrom(b), [sx, sy] = SIGN[corner], { ux, uy } = axes(f.rotation);
+  const local = itemLocal(item, t), b = baseBox(doc, item, local), f = frameFrom(b), [sx, sy] = SIGN[corner], { ux, uy } = axes(f.rotation);
   const o = point(f, -sx, -sy), dx = p.x - o.x, dy = p.y - o.y;
   const ex = Math.max(MIN_EDGE, sx * (dx * ux.x + dy * ux.y)), ey = Math.max(MIN_EDGE, sy * (dx * uy.x + dy * uy.y));
   // Row 2 multiplies scale by one factor: a start scale of 0 stays 0, and a box with no shown size on either axis has no factor;

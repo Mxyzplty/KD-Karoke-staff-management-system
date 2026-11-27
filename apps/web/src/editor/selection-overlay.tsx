@@ -10,9 +10,9 @@ import type { ProjectDocument } from '../store/model';
 import { apply, boxMatrix, fpsOf, itemBox, projectSize, snapTime } from '../render/model';
 import { frameMasks } from '../masks/model';
 import { rasterPlane } from '../masks/raster';
-import { maskCanvas } from '../masks/render';
+import { maskCanvas, trace } from '../masks/render';
 import { item as itemOf } from '../timeline/model';
-import { invert, segments } from '../timeline/shapes';
+import { invert } from '../timeline/shapes';
 import type { Pt } from '../timeline/shapes';
 import { dispatch } from './commands';
 import { useMaskUi } from './mask-state';
@@ -36,18 +36,10 @@ const maskAlpha = (doc: ProjectDocument, t: number): AlphaAt => (item, p) => {
   const [u, v] = apply(inv, p.x, p.y), x = Math.min(W - 1, Math.max(0, Math.floor(u))), y = Math.min(H - 1, Math.max(0, Math.floor(v)));
   return maskCanvas(item.id, masks, W, H).getContext('2d')!.getImageData(x, y, 1, 1).data[3];
 };
-/** The vector branch's read: inside the bare path by the non-zero rule. The path is a copy of masks/render.ts `trace` (0 points empty,
- *  1 point a circle of radius 3, coordinates rounded to 0.01 px), which is not exported; the follow-up ticket exports it and imports it here. */
+/** The vector branch's read: inside the bare path, traced as the render traces it (masks/render.ts `trace`), by the non-zero rule. */
 let probe: OffscreenCanvasRenderingContext2D | null = null;
 const insidePath: InsidePath = (path, p) => {
-  const { points } = path, r = (v: number) => Math.round(v * 100) / 100, q = new Path2D();
-  if (!points.length) return false;
-  if (points.length === 1) q.arc(r(points[0].anchor.x), r(points[0].anchor.y), 3, 0, 2 * Math.PI);
-  else {
-    q.moveTo(r(points[0].anchor.x), r(points[0].anchor.y));
-    for (const g of segments(path)) if (g.c1 && g.c2) q.bezierCurveTo(r(g.c1.x), r(g.c1.y), r(g.c2.x), r(g.c2.y), r(g.to.x), r(g.to.y)); else q.lineTo(r(g.to.x), r(g.to.y));
-    if (path.closed && points.length >= 3) q.closePath();
-  }
+  const q = new Path2D(); trace(q, path);
   return (probe ??= new OffscreenCanvas(1, 1).getContext('2d')!).isPointInPath(q, p.x, p.y, 'nonzero');
 };
 const reads = (doc: ProjectDocument, t: number): MaskReads => ({ alpha: maskAlpha(doc, t), inside: insidePath });

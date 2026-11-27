@@ -136,24 +136,50 @@ function TopBar({ session, record, assets, navigate, checkpoints }: { session: A
 /** Preview area (part 3 §46.2): stage at the project aspect, Reset view (fit), global Preview quality, the empty-project
  *  upload target, drop zone and the Background Jobs corner. The frames are T15's (preview-stage.tsx). */
 function Preview({ session, projectId, assets, refresh }: { session: AutosaveSession; projectId: string; assets: Asset[]; refresh: () => void }) {
-  const d = session.document, v = useView(), input = useRef<HTMLInputElement>(null), [scale, setScale] = useState(1), area = useRef<HTMLElement>(null), [fit, setFit] = useState<{ w: number; h: number }>();
-  // The stage fits inside the preview in both dimensions at the project's aspect ratio (review R2).
+  const d = session.document, v = useView(), input = useRef<HTMLInputElement>(null), area = useRef<HTMLElement>(null);
+  // The view (T28 rows 1-2): fit and zoom in screen px per canvas px, the pan offset in screen px from the stage's centred
+  // place. Until the first wheel zoom (and again after Reset view) a size change of the area fits again and clears the offset.
+  const [cam, setCam] = useState<{ fit: number; zoom: number; x: number; y: number }>(), zoomed = useRef(false);
   useLayoutEffect(() => {
     const el = area.current; if (!el) return;
-    const measure = () => { const r = d.size.width / d.size.height, w = Math.max(1, Math.min(el.clientWidth * 0.92, el.clientHeight * 0.82 * r)); setFit({ w, h: w / r }); };
+    const measure = () => {
+      const fit = Math.max(1e-3, Math.min((el.clientWidth - 30) / d.size.width, (el.clientHeight - 30) / d.size.height));
+      setCam(c => !c || !zoomed.current ? { fit, zoom: fit, x: 0, y: 0 } : { ...c, fit });
+    };
     measure(); const observer = new ResizeObserver(measure); observer.observe(el); return () => observer.disconnect();
   }, [d.size.width, d.size.height]);
+  // Every wheel event over the area zooms about the pointer, no key read, held to 0.1-3. React's onWheel is passive, so a
+  // native listener stops the page scrolling.
+  useEffect(() => {
+    const el = area.current; if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      // The Jobs list is our own panel with its own scroll; the Xapp facts are silent on it (D26 reading, lane A 15 Nov).
+      if (e.target instanceof Element && e.target.closest('.jobs')) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect(), px = e.clientX - (r.left + r.width / 2), py = e.clientY - (r.top + r.height / 2);
+      setCam(c => {
+        if (!c) return c;
+        const zoom = Math.min(3, Math.max(0.1, c.zoom * (1 - 0.003 * e.deltaY)));
+        if (zoom === c.zoom) return c;
+        zoomed.current = true;
+        return { fit: c.fit, zoom, x: px - (px - c.x) * zoom / c.zoom, y: py - (py - c.y) * zoom / c.zoom };
+      });
+    };
+    el.addEventListener('wheel', wheel, { passive: false }); return () => el.removeEventListener('wheel', wheel);
+  }, []);
+  const reset = () => { zoomed.current = false; setCam(c => c && { ...c, zoom: c.fit, x: 0, y: 0 }); };
+  // The stage is laid out at the fit size and scaled by zoom ÷ fit about its centre, then moved by the offset.
+  const scale = cam ? cam.zoom / cam.fit : 1;
   const upload = (files: File[]) => void uploadToProject(projectStore, projectId, files).then(r => { reportIngest(r); refresh(); }).catch(reportError);
   const qualities = [['full', 'Full', ''], ['half', '1/2', 'smoother on slow machines'], ['quarter', '1/4', 'smoothest']] as const;
   return <section ref={area} className="preview" aria-label="Preview" data-zone="preview" tabIndex={0}
-    onWheel={e => { if (e.ctrlKey) { e.preventDefault(); setScale(s => Math.min(8, Math.max(0.1, s * (e.deltaY < 0 ? 1.1 : 1 / 1.1)))); } }}
     onDragOver={e => { if (carriesPayload(e.dataTransfer) || e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
     onDrop={e => { e.preventDefault(); if (e.dataTransfer.files.length) upload(Array.from(e.dataTransfer.files)); else { const payload = readPayload(e.dataTransfer); if (payload) dispatch({ type: 'drop', payload, trackId: null, timeMs: view().playheadMs, below: false }); } }}>
     <div className="preview-controls">
-      <button aria-label="Reset view (fit)" onClick={() => setScale(1)}>⤢</button>
+      <button aria-label="Reset view (fit)" onClick={reset}>⤢</button>
       <MenuButton label={`Preview quality: ${qualities.find(q => q[0] === v.quality)![1]}`} items={qualities.map(([id, label, hint]) => ({ label: hint ? `${label} (${hint})` : label, checked: v.quality === id, onSelect: () => setQuality(id) }))}>{qualities.find(q => q[0] === v.quality)![1]}</MenuButton>
     </div>
-    <div className="stage" style={{ ...stageBackground(d), width: fit?.w, height: fit?.h, aspectRatio: `${d.size.width} / ${d.size.height}`, transform: `scale(${scale})` }} data-scale={scale}>
+    <div className="stage" style={{ ...stageBackground(d), width: cam && d.size.width * cam.fit, height: cam && d.size.height * cam.fit, aspectRatio: `${d.size.width} / ${d.size.height}`, transform: `translate(${cam?.x ?? 0}px, ${cam?.y ?? 0}px) scale(${scale})` }} data-scale={scale}>
       <PreviewFrames doc={d} assets={assets} />
       {!d.items.length && <div className="empty-stage"><button aria-label="Add media" onClick={() => input.current?.click()}>＋</button><p>Click to upload, or drag and drop media here.</p></div>}
       {/* Canvas overlays, lowest interaction first. TextEditOverlay (text double-click to edit) must sit UNDER any tool that

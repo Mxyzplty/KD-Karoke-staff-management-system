@@ -19,10 +19,10 @@ function sized(ctx: Ctx | null, W: number, H: number): Ctx {
   return ctx;
 }
 const alphaOf = (rgba: Uint8ClampedArray, out: Uint8ClampedArray) => { for (let i = 0; i < out.length; i++) out[i] = rgba[i * 4 + 3]; return out; };
-/** §54.2 1.2: 0 points empty; 1 point a circle of radius 3; else Bézier or line segments, coordinates rounded to 0.01 px. */
-function trace(ctx: Ctx, path: ShapePath) {
+/** §54.2 1.2: 0 points empty; 1 point a circle of radius 3; else Bézier or line segments, coordinates rounded to 0.01 px. Onto a
+ *  context's current path or a Path2D (the pick's inside test, editor/selection-overlay.tsx). */
+export function trace(ctx: CanvasPath, path: ShapePath) {
   const { points } = path, r = (v: number) => Math.round(v * 100) / 100;
-  ctx.beginPath();
   if (!points.length) return;
   if (points.length === 1) { ctx.arc(r(points[0].anchor.x), r(points[0].anchor.y), 3, 0, 2 * Math.PI); return; }
   ctx.moveTo(r(points[0].anchor.x), r(points[0].anchor.y));
@@ -33,7 +33,7 @@ function trace(ctx: Ctx, path: ShapePath) {
 function vectorCoverage(path: ShapePath, m: FrameMask, W: number, H: number, out: Uint8ClampedArray) {
   const ctx = draw = sized(draw, W, H);
   ctx.fillStyle = ctx.strokeStyle = '#000';
-  trace(ctx, path);
+  ctx.beginPath(); trace(ctx, path);
   ctx.fill('nonzero');
   if (m.expansion !== 0) {
     ctx.lineWidth = 2 * Math.abs(m.expansion); ctx.lineJoin = ctx.lineCap = 'round';
