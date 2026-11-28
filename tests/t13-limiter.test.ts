@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T13 output limiter. Oracle: "written-spec" = findings §7 + agent tool results §10 (G-09): linked stereo peak, −1 dBFS ceiling,
 // 5 ms lookahead, 50 ms exponential release in LINEAR gain, no make-up gain. The G-09 table (measured on Xapp's AAC export)
-// is reported, not gated, where it depends on the stored fixture's layout (see the comparison tests at the end).
+// is reported, not gated, where it depends on the stored fixture's layout (see the comparison tests at the end). The limit
+// eases in (l.109); the rule test is t13-limiter-rule.test.ts.
 import { describe, it, expect } from 'vitest';
 import { Limiter } from '../apps/web/src/audio/limiter';
 import { FS, db, noise, peak, rms, maxAbsDiff } from './t13-support';
