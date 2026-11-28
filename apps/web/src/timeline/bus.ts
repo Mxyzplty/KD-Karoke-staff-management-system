@@ -48,14 +48,6 @@ export type BusOptions = {
 export const snapshot = (doc: ProjectDocument): Snapshot => structuredClone(Object.fromEntries(SNAPSHOT_KEYS.map(k => [k, doc[k]])) as Snapshot);
 export const applySnapshot = (doc: ProjectDocument, s: Snapshot): ProjectDocument => ({ ...doc, ...structuredClone(s) });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-/** The steps every command's draft takes after its op, in place on draft (T28: the preview drag's draft takes them too). */
-export function settle(base: ProjectDocument, draft: ProjectDocument) {
-  // Linked captions follow the items the command moved, and a locked or overlapping dependency refuses the whole edit
-  // (T09, caption contract §3/§6): this runs after the op, so a throw here leaves the host document untouched.
-  reconcileCaptions(base, draft);
-  // Duration follows the content after every item edit (G-01); transitions are repaired then (T11, part 5 §55.1).
-  if (!same(draft.items, base.items)) { draft.duration = contentEnd(draft); repairTransitions(draft); }
-}
 
 export class CommandBus {
   undoStack: HistoryEntry[] = [];
@@ -75,7 +67,11 @@ export class CommandBus {
     this.draft = draft; this.tx = tx;
     let result: T;
     try { result = op(draft, tx); } finally { this.draft = undefined; this.tx = undefined; }
-    settle(base, draft);
+    // Linked captions follow the items the command moved, and a locked or overlapping dependency refuses the whole edit
+    // (T09, caption contract §3/§6): this runs after the op, so a throw here leaves the host document untouched.
+    reconcileCaptions(base, draft);
+    // Duration follows the content after every item edit (G-01); transitions are repaired then (T11, part 5 §55.1).
+    if (!same(draft.items, base.items)) { draft.duration = contentEnd(draft); repairTransitions(draft); }
     const before = snapshot(base), after = snapshot(draft);
     if (this.options.noOp === 'reference' ? tx.noop : same(before, after)) return result;
     this.undoStack.push({ label: tx.label, source, before, after, timestamp: (this.options.now ?? Date.now)() });

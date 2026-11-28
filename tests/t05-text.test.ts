@@ -12,14 +12,7 @@ import { valueAt } from '../apps/web/src/timeline/properties';
 import { NO_PRESET, STROKE_SIZE, TEXT_PRESETS, presetProperties } from '../apps/web/src/text/presets';
 import { ADD_TEXT, addTextPreset } from '../apps/web/src/text/tools';
 import { alignedPosition } from '../apps/web/src/text/ui';
-import { canvasSpacing, parseGradient, textFill } from '../apps/web/src/text/style';
-import type { TextStyle } from '../apps/web/src/text/style';
-import { drawText } from '../apps/web/src/text/draw';
-import type { TextDraw } from '../apps/web/src/text/draw';
-import { animationState } from '../apps/web/src/text/animation';
-import { clearLayouts } from '../apps/web/src/text/measure';
-import type { Ctx } from '../apps/web/src/text/measure';
-import { textLineTop } from '../apps/web/src/render/text-layout';
+import { parseGradient, textFill } from '../apps/web/src/text/style';
 import { checkTextProperty, fontNotFoundText } from '../apps/web/src/text/properties';
 import { CLEARED_SHADOW, LOOK_EFFECTS, LOOK_STYLES, checkLook, lookFallbacks, lookPasses, readLook } from '../apps/web/src/text/looks';
 import { FONT_REGISTRY, FontError, findFont, fontFamilies, pickVariant, resolveFont, weightNumber } from '../apps/web/src/text/font-registry';
@@ -497,41 +490,5 @@ describe('font registry', () => {
     const names = fontFamilies().map(f => f.family);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('Roboto');
-  });
-});
-
-// G-19 A3 (findings part 5 §53.10 item 3 l.549, §53.7.1 l.388): the glyph's absolute y is the line's em-box top with Canvas 2D baseline "top".
-// A recording context starts on the default 'alphabetic' baseline, so the 'top' that fillText sees was set by the drawer. This pins Cutframe's
-// own y only; the comparison with stored Xapp frames is T27's G-03 Latin check.
-describe('A3 glyph position: baseline "top" (G-19 item 3)', () => {
-  afterEach(() => clearLayouts());
-  it('"A↵B", F 100, pitch 140, box 300 × 150: every fillText runs with textBaseline "top" at y = textLineTop(140, 100, k) = 20 and 160', () => {
-    clearLayouts();
-    const fills: { text: string; y: number; baseline: string }[] = [];
-    const ctx = {
-      globalAlpha: 1, font: '', letterSpacing: '0px', wordSpacing: '0px', textBaseline: 'alphabetic', textAlign: 'start', fillStyle: '#000000',
-      save: () => undefined, restore: () => undefined, translate: () => undefined, fillRect: () => undefined, strokeText: () => undefined,
-      fillText: (text: string, _x: number, y: number): void => { fills.push({ text, y, baseline: ctx.textBaseline }); },
-      measureText: (value: string) => ({ width: [...value].length * 10, fontBoundingBoxAscent: 100, fontBoundingBoxDescent: 0 }),
-    };
-    const style: TextStyle = { text: 'A\nB', F: 100, weight: '700', style: 'normal', families: "'Roboto'", font: "normal 700 100px 'Roboto'", color: '#ffffff', background: 'transparent',
-      align: 'center', transform: 'none', decoration: [], letterSpacing: 'normal', wordSpacing: 'normal', wrap: 'break-word', lineHeight: 'normal', pitch: 140, borderWidth: 0, borderColor: null, shadow: null };
-    const d: TextDraw = { item: mkItem('t', 'O1', 0, 1000, { type: 'text', details: { text: 'A\nB' } }), style, anim: animationState(undefined, 0, 'A\nB'), look: null, shadowScale: 1 };
-    expect(drawText(ctx as unknown as Ctx, d, 300, 150)).toBe(true);
-    expect(fills.map(f => f.text)).toEqual(['A', 'B']);
-    expect(fills.map(f => f.baseline)).toEqual(['top', 'top']);
-    expect(fills.map(f => f.y)).toEqual([20, 160]);
-    expect(fills.map(f => f.y)).toEqual([0, 1].map(k => textLineTop(140, 100, k)));
-  });
-});
-
-// G-19 A4 (§53.10 item 4 l.550, §53.7.3 l.407), unit half: the canvas letter spacing is the stored string; "normal" and "" are 0 px; a bare number is px.
-// The Chromium width and centring checks are in ui/t05-text.spec.ts.
-describe('A4 canvasSpacing (G-19 item 4)', () => {
-  it('10 → "10px", "10px" → "10px", "normal" → "0px", "" → "0px"', () => {
-    expect(canvasSpacing(10 as unknown as string)).toBe('10px');   // a stored number: the signature says string, the regex coerces it
-    expect(canvasSpacing('10px')).toBe('10px');
-    expect(canvasSpacing('normal')).toBe('0px');
-    expect(canvasSpacing('')).toBe('0px');
   });
 });

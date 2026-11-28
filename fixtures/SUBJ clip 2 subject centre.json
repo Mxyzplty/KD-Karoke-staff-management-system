@@ -1,0 +1,47 @@
+{
+  "fixture": "SUBJ clip 2 subject centre",
+  "usedBy": "RF-P02 (master plan prerequisite SUBJ): reframed 9:16 output keeps this centre inside the middle 30 % of the width in >= 90 % of the 0.5 s samples",
+  "clip": {
+    "file": "tos-action-30s.mp4",
+    "store_path": "$CUTFRAME_FIXTURES/corpus/tos-action-30s.mp4",
+    "sha256": "1150283b06fdd183f496086daa37e989e08f010f056491e6c421007c5b7d805e",
+    "width": 1280,
+    "height": 534,
+    "fps": 24,
+    "duration": 30.0
+  },
+  "shot": {
+    "start_s": 10.291667,
+    "end_s": 18.916667,
+    "start_frame": 247,
+    "end_frame_exclusive": 454,
+    "how_found": "No doc states the boundaries numerically for RF-P02; the OT-3 search relevance key lists this clip's rifle-scope rooftop shot with the combat robot as 10.29-18.92 s (ffmpeg scdet, threshold 8). Re-run here on the store file with ffmpeg 8.1.2: `ffmpeg -i tos-action-30s.mp4 -an -vf \"scdet=threshold=8,metadata=print:file=-\" -f null -` reports cuts at 10.291667 s and 18.916667 s (frames 247 and 454 at 24 fps), matching OT-3."
+  },
+  "extraction": {
+    "command": "ffmpeg -i \"$CUTFRAME_FIXTURES/corpus/tos-action-30s.mp4\" -an -vf \"select='between(n\\,252\\,444)*not(mod(n\\,12))'\" -fps_mode passthrough -frame_pts 1 f%03d.png",
+    "ffmpeg_version": "ffmpeg version 8.1.2-full_build-www.gyan.dev",
+    "note": "Frames at source resolution 1280x534, PNG; file number = frame index n; t_s = n / 24."
+  },
+  "sample_step_s": 0.5,
+  "points": [
+    {"t_s": 10.5, "x": null, "y": null, "note": "robot not in frame yet (rooftops only)"},
+    {"t_s": 11.0, "x": null, "y": null, "note": "robot not in frame yet (rooftops only)"},
+    {"t_s": 11.5, "x": null, "y": null, "note": "robot not in frame yet (rooftops only)"},
+    {"t_s": 12.0, "x": null, "y": null, "note": "robot not in frame yet (rooftops only)"},
+    {"t_s": 12.5, "x": null, "y": null, "note": "uncertain: only a small dark mechanical shape behind the roof ridge near (690, 295), possibly the robot's first part; not identifiable as the robot"},
+    {"t_s": 13.0, "x": 630, "y": 310, "note": "robot emerging, mostly hidden behind the roof ridge; centre of the visible parts (about x 540-725, y 255-365)"},
+    {"t_s": 13.5, "x": 628, "y": 275},
+    {"t_s": 14.0, "x": 650, "y": 262},
+    {"t_s": 14.5, "x": 705, "y": 250},
+    {"t_s": 15.0, "x": 610, "y": 290},
+    {"t_s": 15.5, "x": 525, "y": 325},
+    {"t_s": 16.0, "x": 565, "y": 282},
+    {"t_s": 16.5, "x": 615, "y": 285},
+    {"t_s": 17.0, "x": 605, "y": 292},
+    {"t_s": 17.5, "x": 610, "y": 290},
+    {"t_s": 18.0, "x": 642, "y": 265},
+    {"t_s": 18.5, "x": 630, "y": 265}
+  ],
+  "method": "All times (t_s) are SOURCE-clip seconds of tos-action-30s.mp4, not timeline seconds; each sample is the exact frame n = 24 x t_s. Samples run on the 0.5 s grid inside the shot (10.5-18.5 s, 17 samples). Each frame was viewed at source resolution with a 100 px reference grid (early frames also as 2x crops with a 50 px grid), and the point is the centre of the bounding box of the visible robot body, limbs and mounted weapon included, in source pixels (origin top-left). Lower legs partly hidden in rubble are judged by the visible part. Precision is about +-25 px. Samples where the robot is not identifiable have x and y null with a note; a test should count only non-null samples, or state how it treats the nulls. Checked by drawing the points on 4 frames and viewing them.",
+  "annotator": {"model": "claude-opus-5-5", "date": "2026-11-15"}
+}

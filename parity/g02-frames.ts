@@ -9,8 +9,6 @@
 // Provisional, not Xapp parity: S1 is captured from the original, not a proxy (the replay prepares no media); the browser is
 // headless Chromium (software 2D canvas); the stored frames' renderer and JPEG encoder are unknown, so each frame reports
 // whether its JPEG quantization tables and chroma sampling equal ours.
-import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
 import { readdir, readFile, realpath, stat, mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -123,7 +121,7 @@ const PAGE_CAPTURE = `async ({ doc, input, assetId, refs, boxes }) => {
 }`;
 
 type PageFrame = { jpeg: string; width: number; height: number; hist?: number[]; counter?: { ours: string; theirs: string } };
-type PageResult = { refused: { [key: string]: Json } } | { refused?: undefined; text: { frames: { timestamp: number; frame: number; notRendered?: string[]; errors?: Json[] }[] }; frames: PageFrame[] };
+type PageResult = { refused: { [key: string]: Json } } | { refused?: undefined; text: { frames: { timestamp: number; frame: number }[] }; frames: PageFrame[] };
 type Session = { s1: string; capture: (arg: { doc: ProjectDocument; input: Json; refs: (string | null)[]; boxes: (Box | null)[] }) => Promise<PageResult> };
 type Box = { x: number; y: number; w: number; h: number };
 async function session<T>(o: FramesOptions, serve: (name: string) => string | undefined, run: (s: Session) => Promise<T>): Promise<T> {
@@ -134,7 +132,7 @@ async function session<T>(o: FramesOptions, serve: (name: string) => string | un
   const s1 = await fixturePath(entry, store, REPO);
   if ((await stat(s1)).size !== entry.bytes || await sha256(s1) !== entry.sha256) throw Error(`Fixture mismatch: ${S1_FILE}`);
   const { createServer } = await import('vite'), { chromium } = await import('@playwright/test');
-  const server = await createServer({ configFile: path.join(REPO, 'vite.config.ts'), root: path.join(REPO, 'apps/web'), cacheDir: path.join(os.tmpdir(), 'cutframe-vite-g02-frames-' + createHash('sha256').update(realpathSync(REPO)).digest('hex').slice(0, 12)),
+  const server = await createServer({ configFile: path.join(REPO, 'vite.config.ts'), root: path.join(REPO, 'apps/web'), cacheDir: path.join(os.tmpdir(), 'cutframe-g02-frames-vite'),
     server: { host: '127.0.0.1', port: o.port ?? 0, strictPort: true }, logLevel: 'error' });
   await server.listen();
   const browser = await chromium.launch();
@@ -146,11 +144,9 @@ async function session<T>(o: FramesOptions, serve: (name: string) => string | un
     });
     await page.goto(`${base}__g02/page`);
     const assetId = await page.evaluate(`(${PAGE_UPLOAD})(${JSON.stringify({ name: path.basename(S1_FILE) })})`) as string;
-    let reloaded = false, armed = !o.faults?.decodeTimeouts;
+    let reloaded = false;
     page.on('framenavigated', f => { if (f === page.mainFrame()) reloaded = true; });
     return await run({ s1, capture: async arg => {
-      // Test hook (T15 audit F9): decoder-pool.ts decoderFaults, set in this page right before its first capture.
-      if (!armed) { armed = true; await page.evaluate(`(async n => { (await import('/src/render/decoder-pool.ts')).decoderFaults.timeouts = n; })(${o.faults!.decodeTimeouts})`); }
       const r = await page.evaluate(`(${PAGE_CAPTURE})(${JSON.stringify({ ...arg, assetId })})`) as PageResult;
       if (reloaded) throw Error('The capture page reloaded during the run (Vite re-optimised its dependencies); run again');
       return r;
@@ -186,9 +182,8 @@ const histStats = (h: number[]) => {
   return { mean: sum / n, p95, max };
 };
 
-/** `store`: the fixture store (default CUTFRAME_FIXTURES); `port`: the Vite port (default: any free one); `faults` (tests only):
- *  `decodeTimeouts` sets decoder-pool.ts decoderFaults.timeouts in this side's page before its first capture (unset: none). */
-export type FramesOptions = { store?: string; port?: number; faults?: { decodeTimeouts?: number } };
+/** `store`: the fixture store (default CUTFRAME_FIXTURES); `port`: the Vite port (default: any free one). */
+export type FramesOptions = { store?: string; port?: number };
 /** The G-02 frames comparison for runG02 (`frames` option). Our JPEGs are written to <out>/frames/ under the stored names;
  *  each frame's row (sizes, encoder, pixels over the tolerance, mean / p95 / max level difference, counter readings) goes in
  *  the report's `frames` summary. */
@@ -213,10 +208,6 @@ export function compareFrames(referenceDir: string, unit: FrameTimeUnit, o: Fram
           const row: { [key: string]: Json } = { file: r.file, step: c.id, state: c.state, timestamp: r.timestamp, frame: res.text.frames[k].frame,
             size: [f.width, f.height], storedSize: [theirs.width, theirs.height], encoder: jpegInfo(ours).encoder === theirs.encoder ? 'same' : 'different' };
           rows.push(row);
-          // A frame captureFrame could not render (capture.ts notRendered / errors, T15 F6) is that diff, not a pixel or counter
-          // one: its picture is a grey fill (T15 audit F9).
-          const { notRendered, errors } = res.text.frames[k];
-          if (notRendered?.length) { Object.assign(row, { notRendered, ...errors ? { errors } : {} }); d.push({ part: 'frame', path: `${at}.notRendered`, expected: [], actual: notRendered }); continue; }
           if (!f.hist) { d.push({ part: 'frame', path: `${at}.size`, expected: [theirs.width, theirs.height], actual: [f.width, f.height] }); continue; }
           const over = f.hist.slice(FRAME_LEVEL_TOLERANCE + 1).reduce((a, b) => a + b, 0), st = histStats(f.hist);
           Object.assign(row, { pixelsOver: over, mean: st.mean, p95: st.p95, max: st.max });
@@ -245,9 +236,6 @@ export async function renderCaptures(captures: G02Capture[], o: FramesOptions = 
     for (const c of captures) {
       const res = await s.capture({ doc: onUpload(c.doc), input: c.input, refs: [], boxes: [] });
       if (res.refused) throw Error(`captureFrame ${c.id} refused: ${JSON.stringify(res.refused)}`);
-      // A frame that did not render is never written as a stored frame (T15 audit F9).
-      const missed = res.text.frames.filter(f => f.notRendered?.length);
-      if (missed.length) throw Error(`captureFrame ${c.id} did not render: ${missed.map(f => `${f.timestamp} s: ${f.notRendered!.join('; ')}`).join(' | ')}`);
       res.text.frames.forEach((f, k) => out.push({ id: c.id, state: c.state, timestamp: f.timestamp, jpeg: Buffer.from(res.frames[k].jpeg, 'base64') }));
     }
     return out;

@@ -102,8 +102,7 @@ export function manageTrack(doc: ProjectDocument, args: RecordData): { message: 
     default: {
       const p = placement(doc, args, id);
       guardGroupList(doc, siblings(doc, id)); guardGroupList(doc, p.list);
-      // The anchor skips the track itself, so a move to the place it already holds keeps the stack.
-      const anchor = p.index !== null ? p.list.slice(p.index).find(e => e.id !== id) ?? null : null;
+      const anchor = p.index !== null && p.index < p.list.length ? p.list[p.index] : null;
       removeEntry(doc, id);
       let index = p.index === null ? p.list.length : anchor ? p.list.indexOf(anchor) : p.list.length;
       if (args.toIndex !== undefined) index = Math.min(args.toIndex, p.list.length);

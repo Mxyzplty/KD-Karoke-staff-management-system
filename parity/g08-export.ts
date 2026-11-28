@@ -15,8 +15,6 @@
 // Provisional, not Xapp parity: the media are S1 from the fixture store (checked against the manifest) or the files given with
 // --media (always for S2c, which is not in our store: QE4; their SHA-256 is recorded, not checked); headless Chromium.
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -196,7 +194,7 @@ export async function exportRanges(doc: ProjectDocument, media: Record<string, s
   const fps = fpsOf(doc), dir = path.join(out, 'export');
   await mkdir(dir, { recursive: true });
   const { createServer } = await import('vite'), { chromium } = await import('@playwright/test');
-  const server = await createServer({ configFile: path.join(REPO, 'vite.config.ts'), root: path.join(REPO, 'apps/web'), cacheDir: path.join(os.tmpdir(), 'cutframe-vite-g08-export-' + createHash('sha256').update(realpathSync(REPO)).digest('hex').slice(0, 12)),
+  const server = await createServer({ configFile: path.join(REPO, 'vite.config.ts'), root: path.join(REPO, 'apps/web'), cacheDir: path.join(os.tmpdir(), 'cutframe-g08-export-vite'),
     server: { host: '127.0.0.1', port: o.port ?? 0, strictPort: true }, logLevel: 'error' });
   await server.listen();
   const browser = await chromium.launch();

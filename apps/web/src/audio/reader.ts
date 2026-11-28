@@ -22,8 +22,7 @@ export async function openReader(blob: Blob, forceWasm: boolean, whole: (blob: B
     async block(k) {
       const from = Math.max(0, k * BLOCK_S - PADDING_S), to = (k + 1) * BLOCK_S + PADDING_S, first = Math.floor(from * rate), length = Math.ceil(to * rate) - first;
       const data = Array.from({ length: channels }, () => new Float32Array(length));
-      const start = k === 0 ? Math.min(0, await track.getFirstTimestamp()) : from; // block 0 decodes the pre-roll (AAC priming) before 0 so the decoder is warm at 0
-      for await (const sample of sink.samples(start, to)) {
+      for await (const sample of sink.samples(from, to)) {
         try {
           const at = Math.round(sample.timestamp * rate) - first, plane = new Float32Array(sample.numberOfFrames);
           for (let c = 0; c < channels; c++) {

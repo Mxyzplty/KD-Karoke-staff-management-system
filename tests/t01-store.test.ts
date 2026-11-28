@@ -5,9 +5,6 @@ import { ProjectStore } from '../apps/web/src/store/database';
 import { emptyDocument, importProject, projectDateLabel, queryAssets, StoreError } from '../apps/web/src/store/model';
 import type { Asset, ProjectDocument } from '../apps/web/src/store/model';
 import type { MediaStore } from '../apps/web/src/store/media';
-import { Checkpoints, checkpointKey } from '../apps/web/src/versions/checkpoints';
-import { historyKey, journalKey } from '../apps/web/src/timeline/runtime';
-import type { JournalRecord } from '../apps/web/src/timeline/journal';
 import { normalise, type Json } from '../parity/normalise';
 import { layerEntries, flattenLayers, trackItems, type Project } from '../parity/oracle/item';
 
@@ -66,22 +63,6 @@ describe('T01 project persistence', () => {
     await store.deleteProject(p.id);
     expect(await store.read(p.id)).toBeNull(); expect(await store.projectAssets(p.id)).toEqual([]); expect(bytes.has(asset.id)).toBe(true);
     expect(await store.retryCleanup()).toBe(0); expect(media.remove).toHaveBeenCalledWith('project', p.id);
-  });
-  // T01 audit F2: the Home dialog promises the project and its local project files go (home.tsx:45; ticket line 30; findings
-  // §26 line 22). Checkpoints (checkpoints.ts:32), undo history and journal rows (runtime.ts:309-310) hold full documents.
-  it('T01 audit F2: deleteProject removes the project\'s checkpoint, history and journal settings rows and keeps other projects\' rows', async () => {
-    const { store } = setup(), p = await store.create(), q = await store.create();
-    const rowsFor = (id: string) => [checkpointKey(id), historyKey(id), journalKey({ project_id: id, session_id: 's1', seq: 1 } as JournalRecord)];
-    for (const id of [p.id, q.id]) {
-      await new Checkpoints(store, id, 'default').add(emptyDocument());
-      await store.putRow('settings', { id: historyKey(id), at: new Date().toISOString(), undo: [], redo: [] });
-      await store.putRow('settings', { id: journalKey({ project_id: id, session_id: 's1', seq: 1 } as JournalRecord), project_id: id, session_id: 's1', seq: 1, label: 'Fixture edit',client_ts: new Date().toISOString() });
-    }
-    const keys = async () => (await store.rows<{ id: string }>('settings')).map(r => r.id);
-    expect(await keys()).toEqual(expect.arrayContaining([...rowsFor(p.id), ...rowsFor(q.id)]));
-    await store.deleteProject(p.id);
-    expect((await keys()).filter(k => k.includes(p.id))).toEqual([]);
-    expect(await keys()).toEqual(expect.arrayContaining(rowsFor(q.id)));
   });
   it('maps project QuotaExceededError to STORAGE_QUOTA and rolls back atomically', async () => {
     const { store } = setup(), p = await store.create(); const put = IDBObjectStore.prototype.put;

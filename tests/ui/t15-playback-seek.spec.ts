@@ -80,7 +80,7 @@ test('three seeks while playing S2: skipped 0, resyncs 0, notReady 0, droppedVid
   await page.getByRole('button', { name: 'Pause', exact: true }).click(); await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
   console.log(`T15 seek while playing: holds ${JSON.stringify(holds)} ms, stats ${JSON.stringify({ ...stats, maxDriftMs })}\nwindows ${JSON.stringify(windows)}`);
   test.info().annotations.push({ type: 'measured', description: `holds ${JSON.stringify(holds)} ms; handoffs ${stats.handoffs} ${JSON.stringify(stats.handoffMs)}; unconverged ${stats.unconverged}; maxDriftMs ${maxDriftMs.toFixed(2)}; windows ${JSON.stringify(windows)}; elementMaxDriftMs ${(stats.elementMaxDriftMs as number).toFixed(2)}` });
-  expect(stats.skipped, `frame indices never painted (a seek is never a skip): skippedAt ${JSON.stringify(stats.skippedAt)}, maxRafGapMs ${stats.maxRafGapMs} at clock ${stats.maxRafGapAtMs} ms`).toBe(0);
+  expect(stats.skipped, 'frame indices never painted (a seek is never a skip)').toBe(0);
   expect(stats.resyncs, 'element resyncs').toBe(0);
   expect(maxDriftMs, 'max drawn-frame drift from the master clock (ms)').toBeLessThan(1000 / FPS);
   expect(stats.notReady, 'draws with no picture yet').toBe(0);

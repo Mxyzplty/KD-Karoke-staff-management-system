@@ -11,18 +11,14 @@ import type { MediaCode } from './codes';
 import { lockNames, tryLock } from './locks';
 import { placeName } from './geocode';
 import type { MediaInfo } from './probe';
-import { AnalysisError } from '../analysis/types';
-import type { ModelTiming } from '../analysis/service';
 
-export type PreparationRecord = { id: string; attemptId: string; phase: 'running' | 'finished' | 'failed' | 'interrupted' | 'cancelled'; startedAt: number; updatedAt: number; sourceRevision: string | null; budgetMs: number; code?: string; cancelledBy?: 'user'; stepErrors?: Record<string, StepError> };
-/** Our own record of why a T19 step failed (the asset's Xapp fields keep the generic step code and message). */
-export type StepError = { code?: string; message: string };
+export type PreparationRecord = { id: string; attemptId: string; phase: 'running' | 'finished' | 'failed' | 'interrupted' | 'cancelled'; startedAt: number; updatedAt: number; sourceRevision: string | null; budgetMs: number; code?: string; cancelledBy?: 'user' };
 export type ThumbnailRow = { id: string; width: number; height: number; poster: Blob; frames: { t: number; blob: Blob }[] };
 export type WaveformRow = { id: string; version: 1; bucketsPerSecond: number; durationMs: number; sampleRate: number; channels: number; peaks: Float32Array };
 export type ProxyResult = { blob: Blob; codec: string; container: string; width: number; height: number };
 type StepArgs = { blob: Blob; asset: Asset; info: MediaInfo; signal: AbortSignal };
 /** T19 step input: `results` holds each earlier T19 step's value by step name (null when it failed or gave none). */
-export type AnalysisArgs = StepArgs & { results: Record<string, unknown>; model?: (deadlineMs: number) => ModelTiming };
+export type AnalysisArgs = StepArgs & { results: Record<string, unknown> };
 /** A T19 step's outcome: its state (or one state per recorded step name), the rows published with it, and the value later
  *  steps read. void = complete with nothing stored. */
 export type StepOutcome = void | { state?: ProcessingStep; states?: Record<string, ProcessingStep>; puts?: { store: StoreName; value: unknown }[]; value?: unknown };
@@ -64,7 +60,7 @@ export const preparingHere = (assetId: string) => localAttempts.has(assetId);
 /** The user cancels this tab's running attempt: CLIENT_PREPARATION_CANCELLED, no retry budget used, and it is not resumed
  *  automatically (Retry restarts it). Returns false when this tab runs no attempt for the asset. */
 export function cancelPreparation(assetId: string): boolean { const cancel = localAttempts.get(assetId); cancel?.(); return !!cancel; }
-export async function prepareAsset(store: ProjectStore, assetId: string, options: PrepareOptions = {}, resume = false): Promise<'prepared' | 'already-active' | 'cancelled' | 'failed' | 'gone'> {
+export async function prepareAsset(store: ProjectStore, assetId: string, options: PrepareOptions = {}): Promise<'prepared' | 'already-active' | 'cancelled' | 'failed' | 'gone'> {
   const clock = options.clock ?? Date.now, timers = options.timers ?? globalThis;
   const attemptId = crypto.randomUUID(), pageSignal = page.signal;
   try {
@@ -75,7 +71,6 @@ export async function prepareAsset(store: ProjectStore, assetId: string, options
         const asset = await store.row<Asset>('assets', assetId);
         if (!asset) return { result: 'gone' as const };
         if (asset.processing_steps?.upload !== 'complete') { await recordFailure(store, assetId, mediaError('SOURCE_MISSING'), false); return { result: 'failed' as const }; }
-        if (resume && !retryable(asset)) return { result: 'already-active' as const }; // T37 bug 2: finished by another caller after the resume read its snapshot
         const now = clock();
         let userCancelled = false;
         const record = await store.swapRow<PreparationRecord>('preparations', assetId, current => {
@@ -197,7 +192,6 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
     timers.clearTimeout(budget);
     let analysisFailure: MediaCode | undefined;
     const results: Record<string, unknown> = {};
-    const stepErrors: Record<string, StepError> = {};
     const t19 = [['analysis', 'GEMINI_FAILED', ['analysis']], ['transcription', 'TRANSCRIPTION_FAILED', ['transcription']], ['embeddings', 'EMBEDDING_FAILED', ['embeddings_description', 'embeddings_transcript']]] as const;
     for (const [name, code, recorded] of t19) {
       const step = steps[name], all = (state: ProcessingStep) => Object.fromEntries(recorded.map(n => [n, state]));
@@ -205,14 +199,7 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
       if (!step) { await setSteps(all('unavailable')); continue; }
       const own = new AbortController(), link = () => own.abort(controller.signal.reason);
       if (controller.signal.aborted) link(); else controller.signal.addEventListener('abort', link, { once: true });
-      // T37 (D120 item 4): one timer at a time. From the step's call, preparationBudgetMs bounds its extraction; once its
-      // model request is queued, the queue cap (the deadlines ahead + slack, service.ts); from the worker's first
-      // `started`, the step's model deadline. Later requests of the step do not re-arm it.
-      let timer = timers.setTimeout(() => own.abort(mediaError('CLIENT_PREPARATION_TIMEOUT')), budgetMs), queued = false, started = false;
-      const arm = (ms: number, reason: Error) => { timers.clearTimeout(timer); timer = timers.setTimeout(() => own.abort(reason), ms); };
-      const model = (deadlineMs: number): ModelTiming => ({ deadlineMs,
-        onQueued: capMs => { if (!started) { queued = true; arm(capMs, new AnalysisError('ANALYSIS_QUEUE_TIMEOUT', 'The analysis worker did not start this step in time.')); } },
-        onStart: () => { if (!started) { started = true; arm(deadlineMs, mediaError('CLIENT_PREPARATION_TIMEOUT')); } } });
+      const deadline = timers.setTimeout(() => own.abort(mediaError('CLIENT_PREPARATION_TIMEOUT')), budgetMs);
       // Review R1: ANALYSIS_CANCELLED while this step's signal is not aborted = another request terminated the shared
       // analysis worker. The step is re-run (it decodes its input again) at most twice; its rows are never published.
       const collateral = (e: unknown) => (e as { code?: string }).code === 'ANALYSIS_CANCELLED' && !own.signal.aborted;
@@ -220,26 +207,22 @@ async function run(store: ProjectStore, asset: Asset, record: PreparationRecord,
         await setSteps(all('processing'));
         let outcome: Awaited<ReturnType<typeof step>>;
         for (let rerun = 0; ; rerun++) {
-          // A re-run decodes its input again: its extraction is bounded by preparationBudgetMs again (T37).
-          if (queued) { queued = started = false; arm(budgetMs, mediaError('CLIENT_PREPARATION_TIMEOUT')); }
-          try { outcome = await raceAbort(step({ ...args, signal: own.signal, results, model }), own.signal); break; } catch (e) { if (rerun < 2 && collateral(e)) continue; throw e; }
+          try { outcome = await raceAbort(step({ ...args, signal: own.signal, results }), own.signal); break; } catch (e) { if (rerun < 2 && collateral(e)) continue; throw e; }
         }
         const states = outcome?.states ?? all(outcome?.state ?? 'complete');
         await owned({ puts: outcome?.puts ?? [], asset: a => ({ ...a, processing_steps: { ...a.processing_steps, ...states } }) }, true);
         Object.assign(stepState, states); results[name] = outcome?.value ?? null;
       } catch (e) {
         if (abortError) throw abortError; if ((e as { code?: string }).code?.startsWith('LOCAL_PREPARATION_')) throw e; analysisFailure ??= code;
-        const reason = e as { code?: unknown; message?: unknown } | null;
-        stepErrors[name] = { ...(typeof reason?.code === 'string' ? { code: reason.code } : {}), message: typeof reason?.message === 'string' ? reason.message : String(e) };
         // A step that failed by itself may carry rows that say why (T19 C2: the transcript row `{status: "failed", error}`);
         // not one that ran out of time or was cancelled by another request.
         const puts = own.signal.aborted || collateral(e) ? undefined : (e as { puts?: { store: StoreName; value: unknown }[] }).puts;
         if (!puts?.length) await setSteps(all('failed'));
         else { await owned({ puts, asset: a => ({ ...a, processing_steps: { ...a.processing_steps, ...all('failed') } }) }, true); Object.assign(stepState, all('failed')); }
-      } finally { timers.clearTimeout(timer); controller.signal.removeEventListener('abort', link); }
+      } finally { timers.clearTimeout(deadline); controller.signal.removeEventListener('abort', link); }
     }
     const failure = proxyFailure ?? analysisFailure;
-    await owned({ preparation: row => ({ ...row, phase: 'finished', updatedAt: clock(), code: failure, ...(Object.keys(stepErrors).length ? { stepErrors } : {}) }),
+    await owned({ preparation: row => ({ ...row, phase: 'finished', updatedAt: clock(), code: failure }),
       asset: a => ({ ...a, processing_status: 'ready', preparationAttempts: 0, last_error_code: failure ?? null, last_error_message: failure ? mediaError(failure).message : null }) });
     return 'prepared';
   } catch (e) {
@@ -291,16 +274,12 @@ export async function scanInterrupted(store: ProjectStore, clock = Date.now): Pr
   }
   return found;
 }
-/** What an automatic resume prepares again: an interrupted (processing) asset, or a failed one with retry budget left.
- *  The claim checks it again on the fresh row (T37 bug 2), so a stale snapshot cannot restart an asset another caller finished. */
-function retryable(a: Asset) {
-  return a.processing_status === 'processing' || (a.processing_status === 'failed' && a.last_error_code !== 'RETRY_LIMIT_EXCEEDED' && a.last_error_code !== 'UPLOAD_INTERRUPTED' && (a.preparationAttempts ?? 0) < RETRY_BUDGET);
-}
 /** Resume unfinished preparations (automatic retries stop at the retry budget: RETRY_LIMIT_EXCEEDED). */
 export async function resumePreparations(store: ProjectStore, options: PrepareOptions = {}): Promise<void> {
   const userCancelled = new Set((await store.rows<PreparationRecord>('preparations')).filter(r => r.phase === 'cancelled' && r.cancelledBy === 'user').map(r => r.id));
   for (const a of await store.rows<Asset>('assets')) {
     if (userCancelled.has(a.id)) continue; // a user's Cancel stays cancelled until Retry (the claim re-checks it: review R12)
-    if (retryable(a) && a.processing_steps?.upload === 'complete') await prepareAsset(store, a.id, options, true);
+    const retryable = a.processing_status === 'processing' || (a.processing_status === 'failed' && a.last_error_code !== 'RETRY_LIMIT_EXCEEDED' && a.last_error_code !== 'UPLOAD_INTERRUPTED' && (a.preparationAttempts ?? 0) < RETRY_BUDGET);
+    if (retryable && a.processing_steps?.upload === 'complete') await prepareAsset(store, a.id, options);
   }
 }

@@ -119,7 +119,7 @@ const isBezierEasing = (e: unknown): e is { type: 'bezier'; points: [number, num
   !!e && typeof e === 'object' && (e as RecordData).type === 'bezier' && Array.isArray((e as RecordData).points) && (e as RecordData).points.length === 4 && (e as RecordData).points.every(Number.isFinite);
 /** An input easing is valid when it is one of the 15 names or a 4-number bezier object (unknown input is refused). */
 export const validEasing = (e: unknown, allowBezier = true) => typeof e === 'string' ? EASINGS.includes(e) : allowBezier && isBezierEasing(e);
-/** Control points of an easing (its default bezier handles). Back / elastic / bounce / unknown: linear's (lane R raw read, 26 Nov (D127)). */
+/** Control points of an easing (its default bezier handles). Back / elastic / bounce / unknown: linear's (provisional). */
 export const controlPoints = (e: unknown): [number, number, number, number] => isBezierEasing(e) ? e.points : typeof e === 'string' && BEZIER[e] ? BEZIER[e] : BEZIER.linear;
 /** The curve of an easing; an unknown stored name falls back to linear (§40). */
 export function easingCurve(e: unknown): (x: number) => number {

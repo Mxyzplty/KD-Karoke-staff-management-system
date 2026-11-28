@@ -61,10 +61,8 @@ export function wavBytes(rate: number, data: Float32Array[]): Uint8Array {
 
 // ---- Media: decoded at the mix rate, probed into asset records.
 const isWav = (file: string) => /\.wav$/i.test(file);
-// About 2 GiB of decoded PCM (≈ 1.5 h of 48 kHz stereo float); `1 << 31` is int32 −2^31, which Node refuses.
-const MAX_OUTPUT = 2 ** 31;
 function ffmpeg(tool: string, args: string[]) {
-  const r = spawnSync(tool, args, { maxBuffer: MAX_OUTPUT });
+  const r = spawnSync(tool, args, { maxBuffer: 1 << 31 });
   if (r.error || r.status !== 0) throw Error(`${tool} failed: ${r.error?.message ?? r.stderr?.toString().slice(-300)}`);
   return r.stdout;
 }

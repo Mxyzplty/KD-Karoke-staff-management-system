@@ -76,11 +76,10 @@ export function PreviewFrames({ doc: stored, assets }: { doc: ProjectDocument; a
   }, []);
   // Paused: the exact frame at the project size. A newer change discards an older render that finishes late. data-exact says
   // what was drawn: 'true' only when every draw has its picture (a failed source's grey fill is not the frame) and the effect
-  // stage drew every item. Play counts as a newer change: a paused render still in flight never paints over playback (T15 audit F2).
+  // stage drew every item.
   useEffect(() => {
-    const g = ++generation.current;
     if (playing) return;
-    const size = projectSize(doc), frame = String(previewFrame(t, fps));
+    const g = ++generation.current, size = projectSize(doc), frame = String(previewFrame(t, fps));
     let retry: number | undefined;
     runs.forEach((run, i) => {
       const c = canvases.current[i];

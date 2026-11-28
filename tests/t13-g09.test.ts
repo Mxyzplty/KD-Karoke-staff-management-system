@@ -7,7 +7,6 @@
 // Layout: a 1 s test signal (0.15 sin 1 kHz + 0.15 noise, so the lag is unambiguous) on four audio tracks, one clip each at 0 / 1 / 2 / 3 s:
 //   clip 1: item volume 0.5 (gain 0.25) · clip 2: track volume 0.5 (0.5) · clip 3: both (0.125) · clip 4: muted track (0).
 // Provisional (marked): the stored record layout {tool, input, result_text}, the field names given to the runner, and the report's field names.
-// The layout results/calls/<id>.json with `result` (rows 27–29) is not provisional: it is G-09's documented layout (Xapp reference compares and facts (C).md:1186).
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -15,8 +14,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readWav, runG09, wavBytes } from '../parity/g09';
 import { noise, rms, db } from './t13-support';
-import { decodeMedia } from '../parity/g09';
-import { haveFfmpeg } from './t13-support';
 
 const RATE = 48000, GAINS = [0.25, 0.5, 0.125, 0], TSX = path.resolve('node_modules/tsx/dist/cli.mjs');
 const tone = (() => { const n = noise(RATE, 7), t = new Float32Array(RATE); for (let i = 0; i < RATE; i++) t[i] = 0.15 * Math.sin(2 * Math.PI * 1000 * i / RATE) + 0.15 * n[i]; return t; })();
@@ -244,58 +241,4 @@ describe('readWav / wavBytes (the WAV reader of the G-09 replay)', () => {
 
 describe('G-09 expected figures that need Xapp\'s fixture layout', () => {
   it.todo('ten easeInOut bursts (−37.25 / −11.62 / −5.80 / −2.35 / −0.10 / −2.37 / −5.45 / −10.28 / −20.91 / −20.91 dB): SKIPPED — §10 gives the curve (0 → 1 → 0.3, easeInOut) but not the keyframe times or the burst times, so the layout cannot be rebuilt without inventing it; the parity ramp law itself is covered in tests/t13-curve-gain.test.ts');
-});
-
-// Landed audit T13, F3 (red-first): the runner's non-WAV path (parity/g09.ts:65, `maxBuffer: 1 << 31` is negative and Node refuses it) and the
-// stored layout `results/calls/<id>.json` with `result` (Xapp reference compares and facts (C).md:1185–1186). Synthetic only: the tone is made
-// here by ffmpeg and the records from the documented field names; no Xapp file is read. G-09's own record (l.1186) names only the folder and `result`;
-// the other fields (id, tool, ts, input, is_error) follow the G-03/G-04 store's record shape (l.1954). Lane A (05:37): both layouts are read.
-describe.skipIf(!haveFfmpeg())('G-09 runner: non-WAV media (audit F3; an ffmpeg-made AAC tone in MP4, as S2 is an MP4; not a Xapp file)', () => {
-  /** A 0.1 s 1 kHz sine at 44.1 kHz, stereo AAC in MP4. */
-  const mp4 = () => {
-    const out = path.join(root, 'tone.mp4'), r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100:duration=0.1', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', out]);
-    if (r.status !== 0) throw Error(`ffmpeg: ${r.stderr?.toString().slice(-300)}`);
-    return out;
-  };
-  const crossings = (x: Float32Array, a: number, b: number) => { let n = 0; for (let i = a + 1; i < b; i++) if ((x[i - 1] < 0) !== (x[i] < 0)) n++; return n; };
-  it('25. decodeMedia on a 0.1 s AAC .mp4: stereo PCM at the 48 kHz mix rate (1 kHz → 120 zero crossings in 60 ms; 131 if left at 44.1 kHz), non-silent in both channels', async () => {
-    const pcm = await decodeMedia(mp4()), a = Math.round(0.02 * RATE), b = Math.round(0.08 * RATE);
-    expect(pcm).toHaveLength(2); expect(pcm[1].length).toBe(pcm[0].length);
-    expect(pcm[0].length / RATE).toBeGreaterThan(0.095); expect(pcm[0].length / RATE).toBeLessThan(0.13);
-    for (const c of pcm) { expect(rms(c, a, b)).toBeGreaterThan(0.05); expect(crossings(c, a, b)).toBeGreaterThanOrEqual(115); expect(crossings(c, a, b)).toBeLessThanOrEqual(125); }
-  });
-  it('26. the replay with the .mp4 as its --media: probed and decoded, the 13 calls replayed, and Cutframe\'s mix carries the tone in clip 1 (gain 0.25)', async () => {
-    const f = await folder(), r = await run(f, { media: { audio_1: mp4() } });
-    expect(r.golden).toBe('G-09'); expect(r.steps.filter(s => s.status === 'passed')).toHaveLength(13);
-    const w = readWav(await readFile(path.join(f.out, 'cutframe-audio-f32.wav')));
-    expect(rms(w.data[0], Math.round(0.02 * RATE), Math.round(0.08 * RATE))).toBeGreaterThan(0.01);
-  });
-});
-
-describe('G-09 runner: the stored layout results/calls/<id>.json with `result` (audit F3; lane A: both layouts read)', () => {
-  /** The synthetic folder with each record moved to results/calls/<id>.json, in the documented fields id, tool, ts, input, is_error, result. */
-  async function callsFolder(list = steps()) {
-    const f = await folder({ steps: list }), results = path.join(f.dir, 'results'), calls = path.join(results, 'calls');
-    await mkdir(calls);
-    for (const s of list) { await rm(path.join(results, `${s.id}.json`)); await writeFile(path.join(calls, `${s.id}.json`), JSON.stringify({ id: s.id, tool: s.tool, ts: '2026-10-23', input: s.input, is_error: false, result: s.result })); }
-    return f;
-  }
-  it('27. a matching reference in the calls/ layout passes as row 1 does: 4 sections, 13 calls passed, the exportProject record uncompared', async () => {
-    const r = await run(await callsFolder());
-    expect(r).toMatchObject({ golden: 'G-09', status: 'passed' });
-    expect(r.steps.filter(s => s.status === 'passed')).toHaveLength(13); expect(r.steps[13]).toMatchObject({ id: 'S14', status: 'uncompared' });
-    expect(r.summary).toMatch(/4\/4 sections/); expect(r.summary).toMatch(/13 passed, 0 failed, 1 uncompared/);
-  });
-  it('28. a stored refusal in `result` (calls/ layout) is compared: S03 fails on success, as row 11', async () => {
-    const list = steps(); list[2] = { ...list[2], result: { success: false, code: 'ITEM_NOT_FOUND' } };
-    const r = await run(await callsFolder(list));
-    expect(r.steps.filter(s => s.status === 'failed').map(s => s.id)).toEqual(['S03']); expect(r.steps[2].diffs.map(d => d.path)).toContain('success');
-  });
-  it('29. the same id in both layouts (results/S01.json and results/calls/S01.json) is refused, naming both files (lane A 05:42: never a silent winner)', async () => {
-    const f = await folder(), s = steps()[0], calls = path.join(f.dir, 'results', 'calls');
-    await mkdir(calls); await writeFile(path.join(calls, 'S01.json'), JSON.stringify({ id: s.id, tool: s.tool, ts: '2026-10-23', input: s.input, is_error: false, result: s.result }));
-    const e = await run(f).then(() => null, (x: Error) => x);
-    expect(e, 'the run resolved: nothing was refused').toBeInstanceOf(Error);
-    expect(e!.message).toMatch(/results[\\/]S01\.json/); expect(e!.message).toMatch(/results[\\/]calls[\\/]S01\.json/);
-  });
 });

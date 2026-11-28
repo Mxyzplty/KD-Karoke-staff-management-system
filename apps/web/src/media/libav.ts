@@ -4,7 +4,6 @@
 import frontendUrl from '../../../../vendor/libav/libav-6.10.9.0-cutframe.mjs?url';
 import factoryUrl from '../../../../vendor/libav/libav-6.10.9.0-cutframe.wasm.mjs?url';
 import wasmUrl from '../../../../vendor/libav/libav-6.10.9.0-cutframe.wasm.wasm?url';
-import { bigTiffToClassic } from './bigtiff';
 import type { RawVideoFrame, RawAudio } from './decode';
 import { rotateRgba } from './decode';
 import { parseHeif } from './heif';
@@ -194,8 +193,7 @@ export async function decodeImageLibav(blob: Blob): Promise<{ width: number; hei
   const av = await loadLibav(), bytes = new Uint8Array(await blob.arrayBuffer()), heif = parseHeif(bytes);
   const [, c, pkt, frame] = await av.ff_init_decoder(heif ? 'hevc' : 'tiff');
   try {
-    // A BigTIFF goes to FFmpeg's (classic) TIFF decoder as its classic rewrite (audit F-07); anything else, or null, as read.
-    const frames = await av.ff_decode_multi(c, pkt, frame, (heif ? heif.tiles : [bigTiffToClassic(bytes) ?? bytes]).map(data => ({ data })), { fin: true });
+    const frames = await av.ff_decode_multi(c, pkt, frame, (heif ? heif.tiles : [bytes]).map(data => ({ data })), { fin: true });
     if (!frames.length) throw new Error('no picture decoded');
     if (!heif) return await packedOrPlanarToRgba(av, frames[0], null);
     const cp = await av.avcodec_parameters_alloc();
@@ -245,28 +243,6 @@ async function packedOrPlanarToRgba(av: LibAV, f: Frame, colour: LibavVideo['col
     const v = new DataView(data.buffer, data.byteOffset, data.byteLength), stride = layout[0].stride;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = layout[0].offset + y * stride + x * (gray ? 2 : 6), o = (y * w + x) * 4; for (let k = 0; k < 3; k++) out[o + k] = v.getUint16(i + (gray ? 0 : 2 * k), little) >> 8; out[o + 3] = 255; }
     return { width: w, height: h, data: out };
-  }
-  // RGBA64 and YA8/YA16, the TIFF decoder's 16-bit RGBA and gray+alpha output (audit F-07). libav.js exposes AV_PIX_FMT_*
-  // only up to BGR555LE, so these values are counted from FFmpeg 9.0 libavutil/pixfmt.h (ffmpeg-9.0.tar.xz, the vendored
-  // build's source, SHA-256 7f607a00dd0d28a729d5a4811205812eef01cf6ef6155025febb6f36a9062d52; same file at tag n9.0:
-  // https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0/libavutil/pixfmt.h). Each descriptor is checked first, so a wrong
-  // number falls through to the unsupported-format throw. BGRA64 (106/107) has no red subject and is not handled.
-  // value → [components, depth, flags (BE 1 | RGB 32 | ALPHA 128, with PLANAR 16 and FLOAT 512 clear)]
-  const alphaFormats: Record<number, [number, number, number]> = { 104: [4, 16, 161], 105: [4, 16, 160], 56: [2, 8, 128], 109: [2, 16, 129], 110: [2, 16, 128] };
-  const expected = alphaFormats[f.format];
-  if (expected) {
-    const desc = await av.av_pix_fmt_desc_get(f.format);
-    const [planes, depth, flags] = [await av.AVPixFmtDescriptor_nb_components(desc), await av.AVPixFmtDescriptor_comp_depth(desc, 0), await av.AVPixFmtDescriptor_flags(desc)];
-    if (planes === expected[0] && depth === expected[1] && (flags & (1 | 16 | 32 | 128 | 512)) === expected[2]) {
-      const little = !(flags & 1), bytes = depth / 8, stride = layout[0].stride, v = new DataView(data.buffer, data.byteOffset, data.byteLength);
-      const at = (i: number) => bytes === 2 ? v.getUint16(i, little) >> 8 : data[i];
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const i = layout[0].offset + y * stride + x * planes * bytes, o = (y * w + x) * 4;
-        if (planes === 4) for (let k = 0; k < 4; k++) out[o + k] = at(i + k * bytes);
-        else { out[o] = out[o + 1] = out[o + 2] = at(i); out[o + 3] = at(i + bytes); }
-      }
-      return { width: w, height: h, data: out };
-    }
   }
   if (f.format === av.AV_PIX_FMT_GRAY8 || f.format === av.AV_PIX_FMT_PAL8 || f.format === av.AV_PIX_FMT_MONOWHITE || f.format === av.AV_PIX_FMT_MONOBLACK) {
     const stride = layout[0].stride, palette = f.format === av.AV_PIX_FMT_PAL8 ? data.subarray(layout[1].offset, layout[1].offset + 1024) : null;

@@ -83,12 +83,17 @@ Our own JSON files in this folder (numbers, our own field names, Tears of Steel 
 - **OT-7** caption chunk cases: 66 cases (25 wave-2 chunk responses, 10 wave-2 template applies, 31 wave-3 pairs), 2,163 words, 496 expected chunks; our own implementation of findings part 3 §44.2 reproduces all 66. Five wrong variants of the rule fail between 2 and 66 cases each, so the fixture discriminates. Not covered: the order of server-side sorting (every input was already sorted) and two readings of the same-item hold cap (both pass).
 - **OT-6** the 13.92 s wave-2 export timeline rebuilt as a project of our own schema: tos-speech-45s 0–5.977 s, a 1 s Fade (dip through black) centred on the cut at 5,977.236 ms, tos-action-30s 0–3.96 s, tos-credits-music-40s 0–3.99 s, a "Heading" text and a caption; 418 frames at 30 fps. Its two fonts are in the store (section "Fonts" below).
 - **OT-3** search relevance key: 24 queries × 3 clips, 106 graded ranges in source seconds (grade 2 = clearly matches, 1 = partly), with the written rubric; agent-judged on 22 Oct from extracted frames and transcript word times; a human spot check is optional.
+- **SUBJ** subject centre of clip 2's robot shot (tos-action-30s), 10.29–18.92 s source time:
+  - one point per 0.5 s, in source pixels: 17 samples, 12 with a point;
+  - the robot can't be identified before 13.0 s;
+  - agent-annotated from extracted frames on 15 Nov; used by RF-P02 (T23), which scores only the samples with a point.
 
 | File | Bytes | SHA-256 |
 |---|---|---|
 | `OT-7 caption chunk cases (C).json` | 255574 | `1f43c5ab832d2eefdfd0a691c9170db4f8c5ee25e76c4780436e5db4ca108217` |
 | `OT-6 export timeline 13.92s (C).json` | 16058 | `04a201a4dd72337ad9b76a8089b0a386a58718bbadba6cccbeb1230579bda694` |
 | `OT-3 search relevance key (C).json` | 29581 | `ee58720dc29165e06f7323d2d697d6f2f786d9d337d4d5d0c6b3c89a9cd3027c` |
+| `SUBJ clip 2 subject centre.json` | 3482 | `7563bad0d20bcca93af3e597399980a9edc1b00e87ae6f3aa25df58dd87b0128` |
 
 ## Fonts (added 22 Oct 17:0x; needed by OT-6 and the caption / text render tests)
 

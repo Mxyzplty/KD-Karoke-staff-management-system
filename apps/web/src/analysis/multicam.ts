@@ -41,10 +41,6 @@ export const SWAP = {
   noFootage: (from: number, to: number, offset: number) => `The source asset has no footage between ${from}s and ${to}s at the sync offset (${offset}s).`,
 };
 
-/** The sync request's deadline (Cutframe addition; Xapp has none): below the helper's 60 s TOOL_TIMEOUT, so the agent gets
- *  syncAndSwap's own TOOL_TIMEOUT, not the helper's. On expiry the request is aborted: a started sync drops the analysis
- *  worker, a queued one is skipped (lane A ruling (c)). */
-export const SYNC_DEADLINE_MS = 30_000;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6;
 const fail = (code: string, error: string, extra: RecordData = {}): Result => ({ success: false, code, error, ...extra });
@@ -79,19 +75,11 @@ export async function syncAndSwap(ctx: SwapContext, input: Record<string, unknow
   const base = await transcriptOf(ctx, targetAsset, String(targetId), 'Target');
   if (isResult(base)) return base;
   let sync: Awaited<ReturnType<AnalysisService['syncOffset']>>;
-  // A timer, not AbortSignal.timeout (fake timers drive it); raced, so a request that never settles still ends here.
-  const abort = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expired = new Promise<'expired'>(resolve => { timer = setTimeout(() => { resolve('expired'); abort.abort(); }, SYNC_DEADLINE_MS); });
-  try {
-    const settled = await Promise.race([ctx.service.syncOffset(source, base, abort.signal), expired]);
-    if (settled === 'expired') return fail('TOOL_TIMEOUT', SWAP.failed, { operationMayHaveRun: false, details: { deadlineMs: SYNC_DEADLINE_MS } });
-    sync = settled;
-  } catch (e) {
+  try { sync = await ctx.service.syncOffset(source, base); } catch (e) {
     const err = e as { code?: string; message?: string; details?: { confidence?: number } };
     if (err?.code === 'SYNC_LOW_CONFIDENCE') return fail(err.code, err.message ?? SWAP.failed, { details: { confidence: err.details?.confidence ?? 0 } });
     return fail(err?.code || 'ANALYSIS_FAILED', err?.message || SWAP.failed);
-  } finally { clearTimeout(timer); }
+  }
   const offset = sync.offset;
   let args: RecordData;
   if (ctx.xapp) args = { assetId: sourceId, trackId, timelineStart: from, trimStart: Math.max(0, from + offset), trimEnd: to + offset };

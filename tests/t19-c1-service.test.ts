@@ -146,7 +146,7 @@ describe('T19 C1 AnalysisService', () => {
     const first = await svc.available(), second = await svc.available();
     expect(first).toEqual({ analysis: true, transcription: false, embeddings: true, beats: false }); expect(second).toBe(first);
     expect(workers).toHaveLength(1); expect(workers[0].requests.filter(r => r.task === 'available')).toEqual([{ task: 'available', modelRoot: '/models/' }]);
-    expect(workers[0].inits).toEqual([{ modelRoot: '/models/', device: 'wasm' }]);
+    expect(workers[0].inits).toEqual([{ modelRoot: '/models/' }]);
   });
   it('a failed probe is not cached: the next available() asks again', async () => {
     let n = 0; const { svc, workers } = service(r => { if (r.task === 'available' && ++n === 1) throw new AnalysisError('ANALYSIS_FAILED', 'nope'); return allFalse; });

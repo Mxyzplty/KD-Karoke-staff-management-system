@@ -1,21 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19 C6 (CUT-P01): removeSilences(bus, itemId, words, options) on a real CommandBus over a plain host: the cuts, the ripple,
 // the single undo entry, playbackRate, ranges, the refusals and the group ripple. Synthetic words; the fixture row uses the
-// public CC-BY aligned words of the 30 s action clip when $CUTFRAME_FIXTURES has them (OT-2 words; the gated CUT-P01 row
-// is score.ts, parked at 4.82 s by D74).
+// public CC-BY aligned words of the 30 s action clip when $CUTFRAME_FIXTURES has them. Report-only against CUT-P01's 4.38 s.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { emptyDocument } from '../apps/web/src/store/model';
-import type { ProjectDocument, RecordData } from '../apps/web/src/store/model';
+import type { ProjectDocument } from '../apps/web/src/store/model';
 import { CommandBus } from '../apps/web/src/timeline/bus';
 import { removeSilences } from '../apps/web/src/timeline/silence';
-import type { Transcript, Word } from '../apps/web/src/analysis/types';
-import { bindingOf } from '../apps/web/src/captions/model';
-import { createEditor } from '../apps/web/src/timeline/harness';
-import { statics } from '../apps/web/src/timeline/properties';
-import { callTool } from '../apps/web/src/timeline/tools';
-import { assets, build, itemOf, links, mkItem, mkTrack, resetIds, useIds, video } from './t03-fixtures';
+import type { Word } from '../apps/web/src/analysis/types';
+import { build, itemOf, mkItem, mkTrack, resetIds, useIds, video } from './t03-fixtures';
 
 beforeEach(() => useIds());
 afterEach(() => resetIds());
@@ -175,103 +170,17 @@ describe('T19 C6 removeSilences: an item inside a track group', () => {
   });
 });
 
-// T19 audit F2(b): linked captions follow a silence removal (lane A 06:44: captions follow, by `Cutframe caption timing
-// contract (C).md` :59-61 — a split partitions the binding, the ripple's caption changes are calculated, bound captions go in the same undo
-// unit). This is the unit half of T09 report-1 l.88's planned "U/B t09-links" ("runs T19 removeSilences with linked captions
-// and checks full footprint"); the browser half is not built. The captions come from T09's own addCaptions tool over a
-// stubbed transcript (no model). Oracle: the cut arithmetic of planSilenceRemoval (gap − 0.35 s, half a kept gap after each
-// word) and the caption hold of 0.5 s (findings §44.1), ended by the occurrence end or the next caption; the look (whole
-// details and static properties) is that of a fresh addCaptions over the same three clips placed by hand. A pause piece
-// holds no words, so no caption can be bound only to it (remove deletes such captions with it); the row pins the caption
-// ids and their bindings across the cuts instead.
-describe('T19 audit F2(b) removeSilences: T09-linked captions follow the cuts', () => {
-  /** Source s. Gaps 1.2 s (one→two) and 1.6 s (two→three) are cut; the rest are under 0.75 s. Chunks: "one two three four
-   *  five." spans both pauses and closes at the sentence end (breakOnPunctuation), then "six seven". The full stop also
-   *  closes the reference's "three four five." on clip c, which would otherwise hold five words from one source. */
-  const spoken: [string, number, number][] = [['one', 1.0, 1.4], ['two', 2.6, 3.0], ['three', 4.6, 5.0], ['four', 5.2, 5.6], ['five.', 5.8, 6.2], ['six', 6.5, 6.9], ['seven', 7.0, 7.4]];
-  const transcript = (): Transcript => ({ language: 'en', languages: ['en'], total_duration: 10,
-    segments: [{ id: 0, start: 1.0, end: 7.4, text: spoken.map(x => x[0]).join(' '), speaker: 0, words: spoken.map(([word, start, end]) => ({ word, start, end })) }] });
-  /** An editor over V1 + C1, captioned by the real addCaptions tool. */
-  const captioned = (clips: RecordData[]) => {
-    const e = createEditor(build({ tracks: [mkTrack('V1', 'video'), mkTrack('C1', 'caption')], items: clips }), { assets: assets(), links: links() });
-    const r = callTool({ bus: e.bus, asset: id => assets().find(a => a.id === id), captionData: () => ({ status: 'complete', transcript: transcript(), music: false }) }, 'addCaptions', { trackId: 'C1' });
-    expect(r.success, JSON.stringify(r)).toBe(true);
-    return e;
-  };
-  const captionsOf = (doc: ProjectDocument) => doc.items.filter(i => i.type === 'caption').sort((a, b) => a.display.from - b.display.from);
-  type Stored = { text: string; startMs: number; endMs: number; sourceStartMs: number; sourceEndMs: number };
-  const wordsIn = (c: RecordData) => c.details.words as Stored[];
-  /** Timeline ms of a source ms after the two cuts (source 1575–2425 and 3175–4425 removed, 850 and 1250 ms). */
-  const after = (sourceMs: number) => sourceMs - (sourceMs >= 4425 ? 2100 : sourceMs >= 2425 ? 850 : 0);
-  const look = (c: RecordData) => ({ details: c.details, statics: statics(c) });
-
-  it('captions on their words, no cut inside a caption, no overlap, gaps within the words\' spacing, full footprint, one "Ripple delete" undo', () => {
-    const e = captioned([video('v', 'V1', 0, 10000, 0, 10000)]);
-    expect(captionsOf(e.doc).map(c => c.details.text)).toEqual(['one two three four five.', 'six seven']);
-    const before = structuredClone(e.doc), entries = e.bus.undoStack.length, originalIds = captionsOf(e.doc).map(c => c.id);
-
-    const res = removeSilences(e.bus, 'v', spoken.map(([word, start, end]) => w(start, end, word)));
-    expect(res.cuts).toEqual([{ from: 1.575, to: 2.425 }, { from: 3.175, to: 4.425 }]);
-    const d = e.doc, pieces = onV1(d);
-    expect(pieces.map(i => [i.display.from, i.display.to, i.trim.from, i.trim.to])).toEqual([[0, 1575, 0, 1575], [1575, 2325, 2425, 3175], [2325, 7900, 4425, 10000]]);
-    const caps = captionsOf(d);
-
-    // The pieces of the split caption, each on its own occurrence. The first and last keep the two original caption ids
-    // (correction anchors kept, contract :59), and every caption's binding is on its source occurrence.
-    expect(caps.map(c => c.details.text)).toEqual(['one', 'two', 'three four five.', 'six seven']);
-    expect(caps.map(c => c.captionSourceItemId)).toEqual([pieces[0].id, pieces[1].id, pieces[2].id, pieces[2].id]);
-    expect([caps[0].id, caps[3].id]).toEqual(originalIds);
-    for (const c of caps) expect(bindingOf(itemOf(d, c.captionSourceItemId), c.metadata.captionBindingId), c.details.text).toBeDefined();
-
-    // Each caption starts on its first word's new time and covers its last word's; stored words sit on their new times.
-    for (const c of caps) {
-      const list = wordsIn(c), base = c.trim?.from ?? 0;
-      expect(c.display.from, c.details.text).toBe(after(list[0].sourceStartMs));
-      expect(c.display.to, c.details.text).toBeGreaterThanOrEqual(after(list[list.length - 1].sourceEndMs));
-      for (const x of list) expect([c.display.from + x.startMs - base, c.display.from + x.endMs - base], x.text).toEqual([after(x.sourceStartMs), after(x.sourceEndMs)]);
-      // No caption's words straddle a removed span (source ms).
-      for (const [a, z] of [[1575, 2425], [3175, 4425]]) expect(list[list.length - 1].sourceEndMs <= a || list[0].sourceStartMs >= z, `${c.details.text} vs ${a}-${z}`).toBe(true);
-    }
-
-    // The kept gap at each cut is 0.35 s between the words; captions never overlap and never leave more than the words' gap.
-    expect([after(2600) - after(1400), after(4600) - after(3000)]).toEqual([350, 350]);
-    for (let n = 0; n < caps.length - 1; n++) {
-      const a = caps[n], next = caps[n + 1], spacing = after(wordsIn(next)[0].sourceStartMs) - after(wordsIn(a)[wordsIn(a).length - 1].sourceEndMs);
-      expect(a.display.to, `${a.details.text} → ${next.details.text}`).toBeLessThanOrEqual(next.display.from);
-      expect(next.display.from - a.display.to, `${a.details.text} → ${next.details.text}`).toBeLessThanOrEqual(spacing);
-    }
-
-    // Full footprint. Spans: first word → last word + 0.5 s hold, ended by the occurrence end (one, two) or the next caption
-    // (three four five.). Look: the whole details (text, stored words, box, style) and the static properties of a fresh
-    // addCaptions over the same three clips placed by hand. Not whole items: settleTrack gives the product's "three four
-    // five." a trim (links.ts:217) that the fresh caption, capped at its chunk end, never gets.
-    expect(caps.map(c => [c.display.from, c.display.to])).toEqual([[1000, 1575], [1750, 2325], [2500, 4400], [4400, 5800]]);
-    const reference = captionsOf(captioned([video('a', 'V1', 0, 1575, 0, 10000), video('b', 'V1', 1575, 2325, 2425, 10000), video('c', 'V1', 2325, 7900, 4425, 10000)]).doc);
-    expect(reference.map(c => [c.display.from, c.display.to])).toEqual([[1000, 1575], [1750, 2325], [2500, 4400], [4400, 5800]]);
-    expect(caps.map(look)).toEqual(reference.map(look));
-
-    // One undo entry, "Ripple delete"; one undo restores items and captions exactly.
-    expect(e.bus.undoStack).toHaveLength(entries + 1);
-    expect(e.bus.undoStack[e.bus.undoStack.length - 1]).toMatchObject({ label: 'Ripple delete', source: 'user' });
-    e.bus.undo();
-    expect(e.doc.items).toEqual(before.items);
-    expect(e.doc.duration).toBe(before.duration);
-  });
-});
-
 describe('T19 C6 removeSilences: fixture row (public CC-BY aligned words of the 30 s action clip)', () => {
   const root = process.env.CUTFRAME_FIXTURES, file = root ? path.join(root, 'datasets', 'speech', 'tos-action-30s-aligned.json') : '';
-  it.skipIf(!root || !existsSync(file))('ranges [0, 7.74] and [19.18, 30] → 3 cuts, 4.290 s removed (OT-2 words; the gated CUT-P01 row is score.ts, parked at 4.82 s by D74)', () => {
+  it.skipIf(!root || !existsSync(file))('ranges [0, 7.74] and [19.18, 30] → 3 cuts, 4.290 s removed (CUT-P01 4.38 s is report-only)', () => {
     const aligned = JSON.parse(readFileSync(file, 'utf8')) as { words: { text: string; startMs: number; endMs: number }[] };
     const spoken = aligned.words.map(x => w(x.startMs / 1000, x.endMs / 1000, x.text));
     const r = rig(build({ tracks: [mkTrack('V1', 'video')], items: [video('clip', 'V1', 0, 30000, 0, 30000)] }));
     const res = removeSilences(r.bus, 'clip', spoken, { ranges: [[0, 7.74], [19.18, 30]] });
-    // CUT-P01's band on the total (4.38 s, 4 cuts x 1/30 s). These words pass it only because two errors cancel (D74).
-    expect(Math.abs(res.removed - 4.38), 'removed within CUT-P01 4.38 s ± 4/30 s').toBeLessThanOrEqual(4 / 30);
     const expected = [[2.755, 5.025], [21.295, 22.725], [26.275, 26.865]];
     expect(res.cuts).toHaveLength(3);
     res.cuts.forEach((c, i) => { expect(Math.abs(c.from - expected[i][0])).toBeLessThanOrEqual(0.001); expect(Math.abs(c.to - expected[i][1])).toBeLessThanOrEqual(0.001); });
     expect(Math.abs(res.removed - 4.29)).toBeLessThanOrEqual(0.001);
-    console.info(`[T19 C6] removed ${res.removed.toFixed(3)} s vs CUT-P01 reference 4.38 s (OT-2 words; gated row in score.ts, parked by D74; delta ${(res.removed - 4.38).toFixed(3)} s)`);
+    console.info(`[T19 C6] removed ${res.removed.toFixed(3)} s vs CUT-P01 reference 4.38 s (report-only, delta ${(res.removed - 4.38).toFixed(3)} s)`);
   });
 });

@@ -187,10 +187,8 @@ function werRows(reference: any) {
       const xapp = reference.wordList.filter((w: any) => w.sourceItem === `i${i + 1}`).map((w: any) => w.text), agreement = wordAlignment(xapp, words.map(w => w.word));
       xappErrors += agreement.errors; xappWords += agreement.referenceWords;
       // D28: WER against the human reference (OT-2) decides; Xapp word agreement is reported, not gated.
-      // parked: D71 (TR-P02 tos-action-30s at T8's .175; tos-speech-45s passes; nothing waived, row stays red)
       row(`TR-P02 ${clip}`, { wer: wer.wer, errors: wer.errors, referenceWords: wer.referenceWords, xappAgreement: Math.max(0, 1 - agreement.wer), textDisputedIncluded: truth.words.filter((w: any) => w.textDisputed).length }, 'WER <= .10 including disputed words; Xapp word agreement reported, not gated (D28)', wer.wer <= 0.1);
     },
-    // parked: D71 (TR-P02 combined at T8's .1591; nothing waived, row stays red)
     combined() { row('TR-P02 combined', { wer: allErrors / allWords, xappAgreement: 1 - xappErrors / xappWords, referenceWords: allWords, xappWords }, '<=.10 WER; Xapp agreement reported, not gated (D28)', allErrors / allWords <= 0.1); },
   };
 }
@@ -243,7 +241,6 @@ async function transcriptChecks() {
     return { cuts, removed, wordShortened: cuts.some(([a, b]) => words.some(w => w.start < b && w.end > a)) };
   };
   const ours = action.status === 'complete' ? plan(wordsOf(action.transcript)) : null, aligned = plan(actionTruth.words.map((w: any) => ({ word: w.text, start: w.startMs / 1000, end: w.endMs / 1000 })));
-  // parked: D74 (4.82 s / 4 cuts vs 4.38 ± .1333; row stays red)
   row('CUT-P01 tos-action-30s', { ...ours, xappRemoved: 4.38, xappCuts: XAPP_CUTS, tolerance, alignedWordsCheck: aligned }, 'removed 4.38 s within 1 frame per Xapp cut on the total (4 x 1/30 s); no word shortened', !!ours && Math.abs(ours.removed - 4.38) <= tolerance + 1e-9 && !ours.wordShortened);
   row('TR-P06 combined', pool(speakers), 'report-only (D28): the two corpus clips alone; the gated row is "TR-P06 pooled with AMI"', null);
   await pooledWithAmi(speakers);
@@ -375,12 +372,10 @@ async function footageChecks() {
     const identity = (r: SearchResponse['results'][number]) => JSON.stringify([r.assetId, r.source, r.embeddingType, r.chunkText, r.startTime, r.endTime]);
     const l = new Set(low.results.map(identity)), m = new Set(result.results.map(identity));
     if (!result.results.every(r => l.has(identity(r))) || !high.results.every(r => m.has(identity(r)))) monotone = false;
-    // parked: D41 (FS-P03 Q09 only, at T8's .5 after F19 failed; nothing waived, that row stays red)
     row(`FS-P03 ${q.id}`, { query: q.query, recallAt5: recall, relevantAssets: relevant.length, rows: gated.length, xappRecall, xappSource: xapp.source, noMatch: !!q.noMatch }, 'first20 that should find something: per-query recall>=Xapp; mean>=.8; OT-3 asset-level clipGrade>0; tags/summary/description channels only; Q21+ and no-match report only (D24 Q11/Q12)', scorable ? recall >= xappRecall : null);
   }
   await save('searches.json', searches);
   const mean = recalls.reduce((a, b) => a + b, 0) / recalls.length;
-  // parked: D41 (FS-P03 mean at T8's .52 after F19 failed; nothing waived, row stays red)
   row('FS-P03 mean', { meanRecallAt5: mean, queriesScored: recalls.length, queriesExcluded: excluded, notWorsePerQuery: notWorse }, 'mean>=.8 and per-query>=Xapp over the scored first20 (no-match excluded, D24 Q12); no dedup before top5', mean >= 0.8 && notWorse);
   row('FS-P03 transcript-channel mean', { meanRecallAt5AllChannels: transcriptRecalls.reduce((a, b) => a + b, 0) / transcriptRecalls.length, queries: transcriptRecalls.length }, 'report only (D24 Q11): the mean the old all-channel rule would have given over the same scored queries', null);
   row('FS-P04', { noMatchQueries: key.queries.filter((q: any) => q.noMatch).map((q: any) => ({ query: q.query, count: gatedRows(searches[q.id]).length, transcriptRows: searches[q.id].results.length - gatedRows(searches[q.id]).length })) }, 'every no-match query returns0 in the tags/summary/description channels (D24 Q11)', noMatch);

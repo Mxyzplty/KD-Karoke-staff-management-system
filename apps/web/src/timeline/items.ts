@@ -239,12 +239,10 @@ export function slip(doc: ProjectDocument, id: string, delta: number): number {
 }
 
 // ---- Split (contracts splitItem; part 2 §38, §41b).
-export function split(doc: ProjectDocument, id: string, at: number, opts: { path?: 'tool' } = {}): { left: string; right: string } {
+export function split(doc: ProjectDocument, id: string, at: number): { left: string; right: string } {
   const i = item(doc, id);
   if (!i || !(i.display.from + EPS < at && at < i.display.to - EPS)) fail(i ? 'INVALID_SPLIT_POINT' : 'ITEM_NOT_FOUND', 'Split point is invalid or item was not found');
-  // Xapp parity (fix queue l.142, D115): splitItem's lock refusal surfaces through the project guard's fallback code.
-  if (opts.path === 'tool' && ancestors(doc, i.trackId).some(g => doc.groups[g]?.locked)) fail('PROJECT_UNAVAILABLE', 'Group is locked');
-  if (trackLocked(doc, i.trackId) || i.locked) fail(opts.path === 'tool' ? 'PROJECT_UNAVAILABLE' : 'TRACK_LOCKED', 'This clip or track is locked. Unlock it before splitting.');
+  if (trackLocked(doc, i.trackId) || i.locked) fail('TRACK_LOCKED', 'This clip or track is locked. Unlock it before splitting.');
   const elapsed = at - i.display.from, r = rate(i), right = structuredClone(i), cut = (i.trim?.from ?? 0) + elapsed * r, captionCut = sourceTime(i, elapsed);
   right.id = newId('item'); right.display = { from: at, to: i.display.to }; normaliseProperties(right);
   if (MEDIA_TYPES.has(i.type) && i.trim) { right.trim = { from: cut, to: i.trim.to }; i.trim.to = cut; }

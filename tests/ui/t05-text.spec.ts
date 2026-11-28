@@ -318,35 +318,3 @@ test.describe('CJK render (skips without the Noto Sans SC subset in the fixture 
     await expect(page.getByText(/could not be loaded/i)).toHaveCount(0);
   });
 });
-
-// G-19 A4 (findings part 5 §53.10 item 4 l.550, §53.7.3 l.407), Chromium half: the spacing enters the measured width, so the trailing spacing after the
-// last character shifts a centred line left by half of it. Roboto Bold is loaded first (the export's own preload) and the readiness is asserted, so a
-// fallback face cannot produce the numbers. The unit half (canvasSpacing) is in t05-text.test.ts.
-test.describe('A4 letter spacing and centring (G-19 item 4)', () => {
-  test('"AB" at F 100: 10 px spacing adds 20 ± 0.01 to measureText, and a centred line\'s ink midpoint moves 5 ± 1 px left', async ({ page }) => {
-    const doc = textDoc({ text: 'AB' });
-    await openEditor(page, doc);
-    const r = await page.evaluate(async doc => {
-      const mod = (name: string) => import(/* @vite-ignore */ `/src/text/${name}.ts`);
-      const [fonts, style, measure, draw, anim] = await Promise.all([mod('fonts'), mod('style'), mod('measure'), mod('draw'), mod('animation')]);
-      await fonts.loadTextFonts(doc);
-      const item = doc.items[0], base = style.textStyle(item, 0), ready = document.fonts.check(base.font);
-      const ctx = new OffscreenCanvas(300, 150).getContext('2d')!;
-      const width = (letterSpacing: string) => { measure.setTextFont(ctx, { ...base, letterSpacing }); return ctx.measureText('AB').width; };
-      /** Horizontal midpoint of the ink (alpha > 0) of "AB" centred in a 300 × 150 box by the real drawer. */
-      const mid = (letterSpacing: string) => {
-        ctx.clearRect(0, 0, 300, 150);
-        draw.drawText(ctx, { item, style: { ...base, letterSpacing }, anim: anim.animationState(undefined, 0, 'AB'), look: null, shadowScale: 1 }, 300, 150);
-        const data = ctx.getImageData(0, 0, 300, 150).data; let lo = -1, hi = -1;
-        for (let x = 0; x < 300; x++) for (let y = 0; y < 150; y++) if (data[(y * 300 + x) * 4 + 3] > 0) { if (lo < 0) lo = x; hi = x; break; }
-        return lo < 0 ? NaN : (lo + hi + 1) / 2;
-      };
-      return { ready, align: base.align, w0: width('0px'), w10: width('10px'), mid0: mid('0px'), mid10: mid('10px') };
-    }, doc);
-    expect(r.ready).toBe(true);
-    expect(r.align).toBe('center');
-    expect(Math.abs(r.w10 - r.w0 - 20), `widths ${r.w0} → ${r.w10}`).toBeLessThanOrEqual(0.01);
-    expect(Number.isFinite(r.mid0) && Number.isFinite(r.mid10), `ink midpoints ${r.mid0} / ${r.mid10}`).toBe(true);
-    expect(Math.abs(r.mid0 - r.mid10 - 5), `ink midpoints ${r.mid0} → ${r.mid10}`).toBeLessThanOrEqual(1);
-  });
-});

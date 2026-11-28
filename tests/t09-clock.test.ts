@@ -190,8 +190,7 @@ describe('T09 CT-08: source edits refuse atomically across the dependency set', 
         if (group) doc.groups = { g1: { id: 'g1', name: 'Locked', children: [{ type: 'track', id: target }], hidden: false, locked: true } };
         else doc.tracks.find(t => t.id === target)!.locked = true;
       });
-      // Xapp parity (fix queue l.142, D115): splitItem's lock refusal is PROJECT_UNAVAILABLE on the tool path (t03-items).
-      refuse(r, name, args, name === 'splitItem' && target === 'V1' ? 'PROJECT_UNAVAILABLE' : code);
+      refuse(r, name, args, code);
       if (group && target === 'V1') refuse(r, 'moveItem', { groupId: 'g1', by: 1 }, 'TRACK_LOCKED');
     });
   }

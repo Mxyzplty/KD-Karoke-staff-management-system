@@ -116,13 +116,9 @@ export class ProjectStore {
     });
   }
   async deleteProject(id: string): Promise<void> {
-    await this.transaction(['projects', 'documents', 'links', 'cleanup', 'settings'], 'readwrite', async tx => {
+    await this.transaction(['projects', 'documents', 'links', 'cleanup'], 'readwrite', async tx => {
       await request(tx.objectStore('projects').delete(id));
       await request(tx.objectStore('documents').delete(id));
-      // Checkpoints, undo history and journal rows hold full documents (versions/checkpoints.ts, timeline/runtime.ts keys).
-      const settings = tx.objectStore('settings');
-      await request(settings.delete(`checkpoints:${id}`)); await request(settings.delete(`history:${id}`));
-      await request(settings.delete(IDBKeyRange.bound(`journal:${id}:`, `journal:${id}:\uFFFF`)));
       for (const link of await request<AssetLink[]>(tx.objectStore('links').getAll())) if (link.projectId === id) await request(tx.objectStore('links').delete(link.id));
       await request(tx.objectStore('cleanup').put({ id: `project:${id}`, kind: 'project', targetId: id }));
     });

@@ -17,7 +17,6 @@ import { openVersions } from './versions/editor';
 import type { Checkpoints } from './versions/checkpoints';
 import { watchTitle } from './analysis/title';
 import { repairDefaults } from './templates/binding';
-import { prepareSave } from './export/prep';
 // The editor routes every document change through this session (T03's command bus installs its intent handler on top).
 export let activeSession: AutosaveSession | undefined;
 export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (path: string) => void; demo?: ReactNode }) {
@@ -26,29 +25,21 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
   // T17 restore: the job runs after this editor is torn down and before the project is opened again (once, under StrictMode too).
   const restart = useRef<{ job: () => Promise<void>; done?: Promise<void> } | undefined>(undefined);
   useEffect(() => {
-    let alive = true, unbind: (() => void) | undefined, unsubscribe: (() => void) | undefined, uninstall: (() => void) | undefined, local: AutosaveSession | undefined, detach: ((final?: Promise<unknown>) => void) | undefined, untitle: (() => void) | undefined, unmask: (() => void) | undefined, leftFrom: string | undefined;
+    let alive = true, unbind: (() => void) | undefined, unsubscribe: (() => void) | undefined, uninstall: (() => void) | undefined, local: AutosaveSession | undefined, detach: ((final?: Promise<unknown>) => void) | undefined, untitle: (() => void) | undefined, unmask: (() => void) | undefined;
     setLoad('loading'); resetView();
     const pending = restart.current, open = () => { if (restart.current === pending) restart.current = undefined; return Promise.all([projectStore.openProject(id), readMode(projectStore)]); };
     void (pending ? (pending.done ??= pending.job()).then(open) : open()).then(([result, mode]) => {
       if (!alive) return;
       if (!result) { setLoad('missing'); return; }
       const versions = openVersions(projectStore, id, mode, job => { restart.current = { job }; setRetry(n => n + 1); });
-      local = new AutosaveSession(versions.store, id, result.document, { beforeLargeDeletion: versions.beforeLargeDeletion, prepareSave }); activeSession = local;
+      local = new AutosaveSession(versions.store, id, result.document, { beforeLargeDeletion: versions.beforeLargeDeletion }); activeSession = local;
       detach = versions.attach(local); setCheckpoints(versions.checkpoints);
       let lastErrorToast = -Infinity;
       unsubscribe = local.subscribe(() => {
         if (local?.state === 'error' && Date.now() - lastErrorToast >= 30000) {
           const error = local.error!;
-          // A timing refusal (prepareSave) only says the latest change may not be saved; its issues stay in the log and on
-          // error.issues (findings part 3 l.293; error codes §12). The retry sentence belongs to failed saves.
-          notify('issues' in error ? error.message : `${'code' in error ? `${error.code}: ` : ''}${error.message} The latest change may not be saved. Saving will retry after the next change.`);
+          notify(`${'code' in error ? `${error.code}: ` : ''}${error.message} The latest change may not be saved. Saving will retry after the next change.`);
           lastErrorToast = Date.now();
-        }
-        // T01 audit F3b (lane A ruling): the final flush of an in-app leave meets CONFLICT after teardown. The open editor's
-        // conflict UI is its notice, so nothing shows there, nor when the leave started from a shown conflict.
-        if (!alive && local?.state === 'conflict' && leftFrom !== 'conflict') {
-          notify('CONFLICT: Another tab changed this project. The latest change may not be saved.');
-          leftFrom = 'conflict';
         }
         render(n => n + 1);
       }); unbind = local.bindLifecycle();
@@ -65,10 +56,7 @@ export function EditorRoute({ id, navigate, demo }: { id: string; navigate: (pat
       // T19 auto title while the project is still "Untitled Project" (parity: once per editor open).
       untitle = watchTitle(projectStore, id, { parity: mode === 'parity', onTitle: title => setRecord(r => r && { ...r, title, title_source: 'generated' }) });
     }).catch(e => { if (alive) { setLoad('error'); reportError(e); } });
-    return () => { alive = false; leftFrom = local?.state; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.();
-      // An in-app leave keeps the error notice until the last flush settles (T01 audit F3).
-      if (final) void final.finally(() => unsubscribe?.()); else unsubscribe?.();
-      if (activeSession === local) activeSession = undefined; };
+    return () => { alive = false; untitle?.(); unmask?.(); uninstall?.(); const final = local?.flush(); detach?.(final); unbind?.(); unsubscribe?.(); if (activeSession === local) activeSession = undefined; };
   }, [id, retry]);
   if (load === 'loading') return <main><p>Opening project…</p></main>;
   if (load === 'missing' || load === 'error') return <main className="load-failure"><h1>Failed to load project</h1><p>{load === 'missing' ? 'Project not found.' : 'Couldn’t open this project. Browser storage could not be read.'}</p><button onClick={() => navigate('/')}>‹ Back to home</button>{load === 'error' && <button onClick={() => setRetry(n => n + 1)}>Retry</button>}</main>;

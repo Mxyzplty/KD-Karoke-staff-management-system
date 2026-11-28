@@ -107,7 +107,7 @@ test('clock: a boosted sound (volume 1.5) mounting mid-play moves the clock to t
   // Under option G that start offset is in elementMaxDriftMs; maxDriftMs (the worst drawn-frame offset) covers it with pool draws until the handoff.
   expect(s.sounds, 'the boosted clip mounted a sound').toBeGreaterThanOrEqual(1);
   expect(s.reanchors, 'the clock switched to the context once the boosted sound mounted').toBeGreaterThanOrEqual(1);
-  expect(s.skipped, `frame indices never painted: skippedAt ${JSON.stringify(s.skippedAt)}, maxRafGapMs ${s.maxRafGapMs} at clock ${s.maxRafGapAtMs} ms`).toBe(0);
+  expect(s.skipped, 'frame indices never painted').toBe(0);
   expect(s.resyncs, 'element resyncs').toBe(0);
   expect(s.failed, 'draws that showed the grey failed picture').toBe(0);
 });

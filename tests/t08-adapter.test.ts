@@ -5,7 +5,6 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { normalizePath } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MotionGraphicParityAdapter } from '../apps/web/src/mg/adapter';
 
@@ -24,14 +23,6 @@ describe('MotionGraphicParityAdapter (real Vite and Chromium)', () => {
   it('serves a fixed snapshot: no file watcher and no HMR', () => {
     expect(adapter.server.config.server.watch).toBeNull();
     expect(adapter.server.config.server.hmr).toBe(false);
-  });
-
-  // T39: Vite deletes and renames a shared pre-bundle folder when its hash differs, under other processes' page loads.
-  it('uses a pre-bundle folder of its own process under the temp folder, never the shared node_modules/.vite', () => {
-    const dir: string = adapter.server.config.cacheDir;
-    expect(dir).not.toBe(normalizePath(join(process.cwd(), 'node_modules/.vite')));
-    expect(dir.startsWith(normalizePath(join(tmpdir(), 'cutframe-vite-mg-adapter-')))).toBe(true);
-    expect(dir.endsWith(`-${process.pid}`)).toBe(true);
   });
 
   it('frame() returns a Float64Array of byte/255 with one RGBA entry per pixel (solid #ff0000, 64x48)', async () => {

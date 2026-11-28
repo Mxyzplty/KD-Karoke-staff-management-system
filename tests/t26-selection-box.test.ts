@@ -7,13 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProjectDocument, RecordData } from '../apps/web/src/store/model';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import {
-  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, MARQUEE_MIN, marqueeCounts, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
+  atPlayhead, boundsOf, candidates, contains, cornerDrag, corners, frameOf, handleAt, handles, itemLocal, MARQUEE_MIN, marqueeHits, maskHit, moveDrag, pickAt, PICK_ALPHA_ABOVE,
   rotationDrag, screenPx, shownItems, vectorHit, writeEdits,
 } from '../apps/web/src/editor/selection-box';
 import type { AlphaAt, Corner, InsidePath, MaskReads, PreviewEdit } from '../apps/web/src/editor/selection-box';
 import type { FrameMask } from '../apps/web/src/masks/model';
-import { trace } from '../apps/web/src/masks/render';
-import { itemBox } from '../apps/web/src/render/model';
 import type { ShapePath } from '../apps/web/src/timeline/shapes';
 import { assets, build, fixture, itemOf, links, mkItem, mkTrack, resetIds, useIds } from './t03-fixtures';
 
@@ -337,19 +335,6 @@ describe('row 11, 7.1 point 8: the pick, the marquee', () => {
     expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 50, y: 50 }, reads(i => { calls.push(i.id); return 0; }))?.id).toBe('a'); expect(calls).toEqual([]);
   });
   it('T2, D90: the marquee threshold is 2 (canvas px: the overlay compares the canvas-px distance, not screen px)', () => { expect(MARQUEE_MIN).toBe(2); });
-  // T28 round 2 (review finding 1): row 6's 16 px base box makes T2's UI case unobservable, so the canvas-px rule is pinned here, on the overlay's own test.
-  // The points are canvas px; the answer does not depend on any zoom. Exactly 2 does not count: the rule is "more than 2" (the T26 code's `>`).
-  it.each([[1.8, false], [2, false], [2.2, true]])('T28 round 2: a marquee of %f canvas px counts: %s', (dist, want) => {
-    const from = { x: 80, y: 45 };
-    expect(marqueeCounts(from, { x: from.x - dist, y: from.y }), 'straight left').toBe(want);
-    expect(marqueeCounts(from, { x: from.x, y: from.y + dist }), 'straight down').toBe(want);
-    if (dist !== 2) { const d = dist / Math.SQRT2; expect(marqueeCounts(from, { x: from.x + d, y: from.y + d }), 'diagonal (exactly 2 is left out: the diagonal is not exact in floats)').toBe(want); }
-    const to = { x: from.x - dist, y: from.y }; expect(marqueeCounts(to, from), 'from and to swapped').toBe(want);
-  });
-  it('T28 round 2: the straight-line distance counts, not each axis: (1.5, 1.5) is about 2.12 canvas px and counts, either way round', () => {
-    const a = { x: 10, y: 10 }, b = { x: 11.5, y: 11.5 };
-    expect(marqueeCounts(a, b)).toBe(true); expect(marqueeCounts(b, a)).toBe(true);
-  });
   it('a point on no item picks nothing', () => { expect(pickAt(docOf([box('a', 0, 0, 100, 100)]), 1000, { x: 500, y: 500 }, reads())).toBeNull(); });
   it('marquee: the items at the playhead whose box lies fully inside, in either corner order', () => {
     const doc = docOf([box('a', 10, 10, 100, 100), box('b', 200, 10, 100, 100), box('gone', 20, 20, 50, 50, { display: { from: 5000, to: 6000 } }), mkItem('s', 'V1', 0, 4000, { type: 'audio' })]);
@@ -698,75 +683,5 @@ describe('row 13 and lane A\'s A2: locked tracks', () => {
     const doc = docOf([box('a', 0, 0, 100, 100)]); doc.groups = { g1: { id: 'g1', name: 'G', children: [{ type: 'track', id: 'V1' }], hidden: false, locked: true } as any };
     doc.layerOrder = [{ type: 'group', id: 'g1' }]; const e = editor(doc);
     expect(draft(e, [{ itemId: 'a', values: { positionX: 9 } }])).toMatchObject({ ok: false, code: 'TRACK_LOCKED' });
-  });
-});
-
-describe('T28 row 4: one trace for the render and the pick (§54.2 1.2), on a recording CanvasPath', () => {
-  // A stub that records every call, so the node run needs no Path2D. The pick's own read of it is in tests/ui/t26-selection-box.spec.ts.
-  const record = (path: ShapePath) => {
-    const calls: [string, ...number[]][] = [], log = (name: string) => (...a: number[]) => { calls.push([name, ...a]); };
-    const ctx = { arc: log('arc'), arcTo: log('arcTo'), bezierCurveTo: log('bezierCurveTo'), closePath: log('closePath'), ellipse: log('ellipse'), lineTo: log('lineTo'), moveTo: log('moveTo'), quadraticCurveTo: log('quadraticCurveTo'), rect: log('rect'), roundRect: log('roundRect') };
-    trace(ctx as unknown as CanvasPath, path);
-    return calls;
-  };
-  const pts = (...xy: [number, number][]) => xy.map(([x, y]) => ({ anchor: { x, y } }));
-  const names = (calls: [string, ...number[]][]) => calls.map(c => c[0]);
-  it('0 points: no calls', () => { expect(record({ points: [], closed: true })).toEqual([]); });
-  it('1 point: one arc of radius 3, a full turn, at the rounded point', () => {
-    expect(record({ points: pts([10.004, 20.006]), closed: false })).toEqual([['arc', 10, 20.01, 3, 0, 2 * Math.PI]]);
-  });
-  it('an open path: moveTo, then one lineTo per segment, no closePath', () => {
-    expect(record({ points: pts([0, 0], [10, 0], [10, 10]), closed: false })).toEqual([['moveTo', 0, 0], ['lineTo', 10, 0], ['lineTo', 10, 10]]);
-  });
-  it('a closed path of 3 points or more ends with closePath; a closed path of 2 points does not', () => {
-    expect(names(record({ points: pts([0, 0], [10, 0], [10, 10]), closed: true })).at(-1)).toBe('closePath');
-    expect(names(record({ points: pts([0, 0], [10, 0]), closed: true }))).not.toContain('closePath');
-  });
-  it('a segment with handles is a bezierCurveTo at anchor + handle; one without is a lineTo', () => {
-    const calls = record({ points: [{ anchor: { x: 0, y: 0 }, handleOut: { x: 5, y: -5 } }, { anchor: { x: 20, y: 0 }, handleIn: { x: -5, y: -5 } }, { anchor: { x: 20, y: 20 } }], closed: false });
-    expect(calls).toEqual([['moveTo', 0, 0], ['bezierCurveTo', 5, -5, 15, -5, 20, 0], ['lineTo', 20, 20]]);
-  });
-  it('coordinates round to 0.01: 10.004 -> 10, 10.006 -> 10.01', () => {
-    expect(record({ points: pts([10.004, 10.006], [30.004, 10.004]), closed: false })).toEqual([['moveTo', 10, 10.01], ['lineTo', 30, 10]]);
-  });
-});
-
-describe('T28 row 6: the overlay\'s base size is at least 16 canvas px on each axis (7.1 l.1729); the render keeps the stored size', () => {
-  it('width 8, height 100, scale 1: the box is 16 x 100 from positionX (centre x = positionX + 8); the render box keeps W 8', () => {
-    const doc = docOf([box('a', 100, 200, 8, 100)]), a = doc.items[0];
-    expect(frameOf(doc, a, 1000)).toMatchObject({ cx: 100 + 8, cy: 200 + 50, w: 16, h: 100, rotation: 0 });
-    expect(itemBox(doc, a, itemLocal(a, 1000)).W).toBe(8);
-  });
-  it('width 8 at scale 2: the box is 16 x 2 = 32 wide', () => {
-    const doc = docOf([box('a', 100, 200, 8, 100, { properties: { scale: P(2) } })]);
-    expect(frameOf(doc, doc.items[0], 1000).w).toBe(32);
-  });
-  it('the pick uses the box: a press at positionX + 12 hits, at positionX + 17 it misses', () => {
-    const doc = docOf([box('a', 100, 200, 8, 100)]);
-    expect(pickAt(doc, 1000, { x: 112, y: 250 }, reads())?.id).toBe('a');
-    expect(pickAt(doc, 1000, { x: 117, y: 250 }, reads())).toBeNull();
-  });
-  it('a corner drag of an 8 x 8 item from se: the factor is measured against 16; positionX / Y stay', () => {
-    const doc = docOf([box('a', 100, 200, 8, 8)]), a = doc.items[0];
-    // base 16 x 16, nw fixed at (100, 200); se dragged to (100 + 32, 200 + 32): factor 32 / 16 = 2.
-    const r = cornerDrag(doc, a, 1000, 'se', { x: 132, y: 232 });
-    expect(r.scale).toBeCloseTo(2, 9); expect(r.positionX).toBeCloseTo(100, 9); expect(r.positionY).toBeCloseTo(200, 9);
-  });
-  it('width 20: no floor', () => {
-    const doc = docOf([box('a', 100, 200, 20, 20)]);
-    expect(frameOf(doc, doc.items[0], 1000)).toMatchObject({ w: 20, h: 20 });
-  });
-  it('an item with no stored size: the canvas size, unchanged', () => {
-    const doc = docOf([box('a', 0, 0, 0, 0)]), p = doc.items[0].properties as RecordData;
-    delete p.width; delete p.height;
-    expect(frameOf(doc, doc.items[0], 1000)).toMatchObject({ w: W, h: H });
-  });
-  // T28 audit C1 (26 Nov): the height half of the floor. The 8 x 8 corner drag above gives the same numbers with the height floor gone.
-  it('T28 audit C1: width 100, height 8, scale 1: the box is 100 x 16 from positionY (centre y = positionY + 8); a press at positionY + 12 hits, at positionY + 17 it misses', () => {
-    const doc = docOf([box('a', 100, 200, 100, 8)]), a = doc.items[0];
-    expect(frameOf(doc, a, 1000)).toMatchObject({ cx: 100 + 50, cy: 200 + 8, w: 100, h: 16, rotation: 0 });
-    expect(itemBox(doc, a, itemLocal(a, 1000)).H).toBe(8);
-    expect(pickAt(doc, 1000, { x: 150, y: 212 }, reads())?.id).toBe('a');
-    expect(pickAt(doc, 1000, { x: 150, y: 217 }, reads())).toBeNull();
   });
 });

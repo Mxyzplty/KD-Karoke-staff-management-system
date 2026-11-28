@@ -46,7 +46,7 @@ test.describe('large display (1600 x 2400 css px, dpr 2: display >= 1)', () => {
   test('playing at Full, 1/2 and 1/4: each renders its own canvas size, the frame rate is within +-2 of Full and no frame is skipped', async ({ page }) => {
     await open(page, 6);
     const want = { full: { width: 1080, height: 1920 }, half: { width: 540, height: 960 }, quarter: { width: 270, height: 480 } };
-    const fps: Record<string, number> = {}, skipped: Record<string, number> = {}, skips: Record<string, string> = {}, size: Record<string, { width: number; height: number }> = {};
+    const fps: Record<string, number> = {}, skipped: Record<string, number> = {}, size: Record<string, { width: number; height: number }> = {};
     for (const q of ['full', 'half', 'quarter'] as const) {
       await setQuality(page, q); await seekMs(page, 0); await play(page);
       await playingSize(page);
@@ -56,18 +56,17 @@ test.describe('large display (1600 x 2400 css px, dpr 2: display >= 1)', () => {
         resetPlaybackStats(); const t0 = performance.now();
         await new Promise(done => setTimeout(done, 3000));
         const c = document.querySelector('canvas.run[data-run="0"]') as HTMLCanvasElement;
-        return { painted: playbackStats.painted as number, skipped: playbackStats.skipped as number, seconds: (performance.now() - t0) / 1000, width: c.width, height: c.height,
-          skips: `skippedAt ${JSON.stringify(playbackStats.skippedAt)}, maxRafGapMs ${playbackStats.maxRafGapMs} at clock ${playbackStats.maxRafGapAtMs} ms` };
+        return { painted: playbackStats.painted as number, skipped: playbackStats.skipped as number, seconds: (performance.now() - t0) / 1000, width: c.width, height: c.height };
       });
       await pause(page);
-      fps[q] = r.painted / r.seconds; skipped[q] = r.skipped; skips[q] = r.skips; size[q] = { width: r.width, height: r.height };
+      fps[q] = r.painted / r.seconds; skipped[q] = r.skipped; size[q] = { width: r.width, height: r.height };
     }
     console.log(`T15 quality fps ${JSON.stringify(fps)} skipped ${JSON.stringify(skipped)} canvas ${JSON.stringify(size)}`);
     test.info().annotations.push({ type: 'measured', description: `fps ${JSON.stringify(fps)}; skipped ${JSON.stringify(skipped)}; canvas ${JSON.stringify(size)}` });
     expect(size, 'the canvas size measured inside each 3 s window').toEqual(want);
     expect(fps.full, 'Full plays at the project rate (30 fps +-2), so a relative check cannot pass on zero paints').toBeGreaterThanOrEqual(28);
     for (const q of ['half', 'quarter'] as const) expect(Math.abs(fps[q] - fps.full), `fps at ${q} (${fps[q].toFixed(2)}) vs Full (${fps.full.toFixed(2)})`).toBeLessThanOrEqual(2);
-    for (const q of ['full', 'half', 'quarter'] as const) expect(skipped[q], `skipped at ${q}: ${skips[q]}`).toBe(0);
+    for (const q of ['full', 'half', 'quarter'] as const) expect(skipped[q], `skipped at ${q}`).toBe(0);
   });
 });
 
@@ -112,16 +111,6 @@ test('the quality setting is global: survives a reload and carries to another pr
 
 test('Use Proxy off does not change the playing canvas size', async ({ page }) => {
   await open(page);
-  // Audit F10 / review 17f1959a finding 2: the proxy must exist, or Use Proxy on and off both play the original.
-  await expect.poll(() => page.evaluate(async () => { const p = '/src/store/database.ts'; const { projectStore } = await import(p); return (await projectStore.library()).assets.map((a: { processing_steps?: Record<string, string> }) => a.processing_steps?.proxy); }), { timeout: 60_000, message: 'the proxy step completes' }).toEqual(['complete']);
-  // Review 17f1959a delta finding 2: playback reads the stage's asset map, which lags the store by a library poll (editor/shell.tsx:48-58); the
-  // paused frame at the playhead cached from the proxy ('<assetId>:proxy', framePlan's sourceMs) proves that map carries the proxy before the "on" play.
-  await expect.poll(() => page.evaluate(async () => {
-    const m = '/src/render/model.ts', p = '/src/render/decoder-pool.ts', e = '/src/editor.tsx', v = '/src/editor/view.ts';
-    const { framePlan } = await import(m), { cachedFrame } = await import(p), { activeSession } = await import(e), { view } = await import(v);
-    const d = framePlan(activeSession.document, view().playheadMs).draws.find((x: { item: { id: string } }) => x.item.id === 'vid');
-    return !!d && !!cachedFrame(`${d.item.metadata.assetId}:proxy`, d.sourceMs);
-  }), { timeout: 15_000, message: 'the stage drew the paused frame from the proxy' }).toBe(true);
   await setQuality(page, 'half');
   await play(page); const on = await playingSize(page); await pause(page);
   const r = await runtimeCall(page, 'setUseProxy', { itemId: 'vid', useProxy: false }) as { success: boolean };

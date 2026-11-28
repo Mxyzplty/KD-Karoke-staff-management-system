@@ -16,7 +16,6 @@ import { AppearanceBody, BasicBody, ShadowBody, SpeedBody, TransformBody, Volume
 import { FillBody, ShapePathBody, ShapesPanel, ShapeTransformBody, StrokeBody } from './shape-ui';
 import { CellsBody, LayoutsPanel, LayoutStyleBody, LayoutTransformBody } from './layout-ui';
 import { maskHeader, MaskBody, RemoveBackground } from './mask-ui';
-import { useSelectionDraft } from './selection-overlay';
 import { cellsOf, layoutLabel } from '../timeline/layouts';
 import { openGraph, setView, TOOLS, useView } from './view';
 import type { Tool } from './view';
@@ -113,9 +112,8 @@ function ItemHeader({ item }: { item: RecordData }) {
 function SectionShell({ doc, item, section, open }: { doc: ProjectDocument; item: RecordData; section: Section; open?: boolean }) {
   return <details className="inspector-section" open={open}><summary onClick={() => section.onHeader?.(doc, item)}>{section.heading?.(item) ?? section.title}</summary>{section.body?.(doc, item)}{!section.done && <Unavailable what={`The ${section.title} section`} owner={section.owner} />}</details>;
 }
-export function Inspector({ doc: stored }: { doc: ProjectDocument }) {
-  // T28 row 3: during a preview drag the sheet shows the drag's draft (Author, 14 Nov); the document is written on release only.
-  const doc = useSelectionDraft(s => s.doc) ?? stored, v = useView(), item = doc.items.find(i => i.id === v.selection[0]), savePreset = savePresetAction(doc, v.selection);
+export function Inspector({ doc }: { doc: ProjectDocument }) {
+  const v = useView(), item = doc.items.find(i => i.id === v.selection[0]), savePreset = savePresetAction(doc, v.selection);
   if (!item) return <section className="inspector" aria-label="Inspector"><p>Select an item on the timeline, or choose a tool.</p></section>;
   return <section className="inspector" aria-label="Inspector">
     <div role="tablist" aria-label="Inspector">
@@ -140,9 +138,7 @@ export function compactTabs(item: RecordData | undefined): CompactTab[] {
 const NOTHING_SELECTED: Record<string, [string, string]> = { motion: ['Motion graphics', 'T08'], shapes: ['Shapes', 'T06'] };
 const VIDEO_SECTIONS: Record<string, string> = { basic: 'Basic', speed: 'Speed & Time Remap', transform: 'Transform', appearance: 'Appearance', mask: 'Mask', shadow: 'Shadow' };
 /** The drawer's content for one compact tab: Uploads = the Footage tab; a video tab = a sheet with only that section expanded. */
-export function CompactSheet({ tab, item: given, projectId, doc: stored }: { tab: string; item: RecordData | undefined; projectId: string; doc: ProjectDocument }) {
-  // T28 row 3: the drawer's sheet follows the preview drag's draft too, as the inspector does.
-  const draft = useSelectionDraft(s => s.doc), doc = draft ?? stored, item = (draft && given && draft.items.find(i => i.id === given.id)) || given;
+export function CompactSheet({ tab, item, projectId, doc }: { tab: string; item: RecordData | undefined; projectId: string; doc: ProjectDocument }) {
   if (!item) {
     if (tab === 'uploads') return <FootageTabs projectId={projectId} />;
     if (tab === 'effects') return <ToolPanel tool="effects" projectId={projectId} />;
