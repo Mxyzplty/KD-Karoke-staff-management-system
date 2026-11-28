@@ -7,9 +7,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadSkill } from '../apps/web/src/agent/guides/load';
-import { MEMORY_TAGS, NO_PROJECT_TEMPLATE, PART_SEPARATOR, PROJECT_FORBIDDEN, TAG_SEPARATOR, TEMPLATE_TAGS, getAgentOverview } from '../apps/web/src/agent/guides/overview';
+import { MEMORY_AFTER, MEMORY_BEFORE, MEMORY_CLOSE, MEMORY_OPEN, NO_PROJECT_TEMPLATE, PROJECT_FORBIDDEN, getAgentOverview, memoryBlock } from '../apps/web/src/agent/guides/overview';
 import { overviewText, templateState } from '../apps/web/src/agent/workspace/template';
-import { EDITOR_SKILLS, SKILLS } from '../apps/web/src/agent/guides/registry';
+import { EDITOR_SKILLS, ORIENTATION, SKILLS } from '../apps/web/src/agent/guides/registry';
 import { guideTool } from '../apps/web/src/agent/guides/tools';
 import type { GuideContext } from '../apps/web/src/agent/guides/tools';
 import { writeMemory } from '../apps/web/src/agent/workspace/memory';
@@ -221,82 +221,80 @@ describe('T23 loadSkill: project and template', () => {
   });
 });
 
-describe('T23 getAgentOverview: one text block (lane A, 22 Oct; I1 packing)', () => {
-  const O = bodyOf(read('orientation.markdown')).trimEnd();
-  const M = (m: string) => [MEMORY_TAGS[0], m.trim(), MEMORY_TAGS[1]].join(TAG_SEPARATOR);
-  const T = (text: string) => [TEMPLATE_TAGS[0], text, TEMPLATE_TAGS[1]].join(TAG_SEPARATOR);
-  const text = async (store: ProjectStore, id: string, input: Rec = {}) => {
-    const r = await getAgentOverview(input, ctx(store, id)) as Rec;
-    expect(Object.keys(r).sort()).toEqual(['content', 'success']); expect(r.success).toBe(true);
-    expect(r.content).toHaveLength(1); expect(r.content[0].type).toBe('text');
-    return r.content[0].text as string;
-  };
+describe('T23 getAgentOverview: separate text blocks (G-07)', () => {
+  const B = (...texts: string[]) => ({ success: true, content: texts.map(text => ({ type: 'text', text })) });
+  const O = ORIENTATION;
+  const M = (m: string) => memoryBlock(m);
+  const GONE = 'This project\'s template (gone-template) is no longer in the library: loadSkill gives Cutframe\'s creative defaults.';
+  const call = async (store: ProjectStore, id: string, input: Rec = {}) => await getAgentOverview(input, ctx(store, id)) as Rec;
   const stateText = async (store: ProjectStore, id: string) => overviewText((await templateState(store, id))!);
+  it('0: memoryBlock is open, newline, the trimmed-end memory, a blank line, close', () => {
+    expect([MEMORY_OPEN, MEMORY_BEFORE, MEMORY_AFTER, MEMORY_CLOSE]).toEqual(['<memory_overview>', '\n', '\n\n', '</memory_overview>']);
+    for (const m of ['note', '# Memory\n\n- x\n', '  lead\n\n'])
+      expect(M(m), JSON.stringify(m)).toBe('<memory_overview>' + '\n' + m.trimEnd() + '\n\n' + '</memory_overview>');
+  });
   it('1: with no project, PROJECT_FORBIDDEN on both channels', async () => {
     for (const channel of ['chat', 'mcp'] as const)
-      expect(await getAgentOverview({}, ctx(setup(), null, channel))).toEqual({ success: false, code: 'PROJECT_FORBIDDEN', error: PROJECT_FORBIDDEN });
+      expect(await getAgentOverview({}, ctx(setup(), null, channel))).toEqual({ success: false, code: 'PROJECT_FORBIDDEN', error: 'Open a project owned by your signed-in account.' });
     expect(PROJECT_FORBIDDEN).toBe('Open a project owned by your signed-in account.');
   });
-  it('2: own project, no template, memory saved: orientation then the memory section (and the literal bytes)', async () => {
+  it('2: own project, no template, memory saved: orientation, then the memory block (literal bytes)', async () => {
     const store = setup(), p = await project(store);
     await writeMemory('overview.md', '# Memory\n\n- Prefers lower-case captions.\n', store);
-    expect(await text(store, p.id)).toBe(O + PART_SEPARATOR + M('# Memory\n\n- Prefers lower-case captions.\n'));
-    await writeMemory('overview.md', 'note', store);
-    expect(await text(store, p.id)).toBe(O + '\n\n<memory_overview>\nnote\n</memory_overview>');
+    expect(await call(store, p.id)).toEqual(B(O, '<memory_overview>\n# Memory\n\n- Prefers lower-case captions.\n\n</memory_overview>'));
   });
-  it('3: own project, no template, empty memory (missing, empty, whitespace): orientation alone', async () => {
+  it('2b: own project, no template, empty memory (missing, empty, whitespace): orientation alone', async () => {
     const store = setup(), p = await project(store);
-    expect(await text(store, p.id)).toBe(O);
-    for (const m of ['', '   \n']) { await writeMemory('overview.md', m, store); expect(await text(store, p.id), JSON.stringify(m)).toBe(O); }
+    expect(await call(store, p.id)).toEqual(B(O));
+    for (const m of ['', '   \n']) { await writeMemory('overview.md', m, store); expect(await call(store, p.id), JSON.stringify(m)).toEqual(B(O)); }
   });
-  it('9: only memory/overview.md counts', async () => {
-    const store = setup(), p = await project(store);
-    await writeMemory('overview.md', 'note', store);
-    const before = await text(store, p.id);
-    await writeMemory('notes.md', 'Not the index.', store);
-    expect(await text(store, p.id, { refresh: true })).toBe(before);
-  });
-  it('4: a template: orientation, memory, then the template section; without memory, orientation then the template', async () => {
+  it('3: a template: orientation, memory, then the template block; without memory, orientation then the template', async () => {
     const store = setup(), p = await project(store, 'Beach day'), made = await saveProjectTemplate(store, p.id, p.doc, NOW);
     await updateTemplate(store, made.id, t => ({ ...t, guidance: 'Warm and calm.', preferences: 'No emoji.', captionTemplateId: 'cap-1', files: [skillFile('skills/vlog.md', 'x'), skillFile('examples/intro.txt', 'y')] }), NOW);
-    expect(await text(store, p.id)).toBe(O + PART_SEPARATOR + T(await stateText(store, p.id)));
+    expect(await call(store, p.id)).toEqual(B(O, await stateText(store, p.id)));
     await writeMemory('overview.md', 'note', store);
-    const block = await text(store, p.id);
-    expect(block).toBe([O, M('note'), T(await stateText(store, p.id))].join(PART_SEPARATOR));
-    const t = (await store.row<{ templates: Template[] }>('settings', 'templates'))!.templates[0];
+    const r = await call(store, p.id);
+    expect(r).toEqual(B(O, M('note'), await stateText(store, p.id)));
+    const last = r.content.at(-1).text as string, t = (await store.row<{ templates: Template[] }>('settings', 'templates'))!.templates[0];
     for (const part of [`# Template: Beach day template`, `${t.family} template by ${t.author}.`, '## Guidance', 'Warm and calm.', '## Defaults',
       `- Titles font: ${t.defaults.titlesFont}`, `- Captions font: ${t.defaults.captionsFont}`, `- Accent font: ${t.defaults.accentFont}`, '- Caption template: cap-1',
       '## Learned preferences', 'No emoji.', '## Learn', 'On: ', '## Creative skills', '`vlog` (template/skills/vlog.md)', 'template/examples/intro.txt'])
-      expect(block, part).toContain(part);
+      expect(last, part).toContain(part);
     await setProjectLearning(store, p.id, false);
-    expect(await text(store, p.id)).toContain('Off: template/ is read-only.');
+    expect((await call(store, p.id)).content.at(-1).text).toContain('Off: template/ is read-only.');
   });
-  it('5: a bound template that is gone: its notice in the template section', async () => {
-    const store = setup(), p = await project(store), gone = T('This project\'s template (gone-template) is no longer in the library: loadSkill gives Cutframe\'s creative defaults.');
+  it('4: a bound template that is gone: its notice as the last block', async () => {
+    const store = setup(), p = await project(store);
     await store.swapRow<ProjectRecord>('projects', p.id, r => ({ ...r!, template_id: 'gone-template' }));
-    expect(await text(store, p.id)).toBe(O + PART_SEPARATOR + gone);
+    expect(await call(store, p.id)).toEqual(B(O, GONE));
     await writeMemory('overview.md', 'note', store);
-    expect(await text(store, p.id)).toBe([O, M('note'), gone].join(PART_SEPARATOR));
+    expect(await call(store, p.id)).toEqual(B(O, M('note'), GONE));
   });
-  it('8: reads fresh on every call; refresh changes nothing', async () => {
-    const store = setup(), p = await project(store), before = await text(store, p.id);
-    await saveProjectTemplate(store, p.id, p.doc, NOW);
-    const after = await text(store, p.id);
-    expect(after).not.toBe(before);
-    expect(await text(store, p.id, { refresh: true })).toBe(after);
-  });
-  it('6: a demo project: orientation, memory when saved, then the stored notice', async () => {
+  it('5: a demo project: orientation and memory when saved, no template block', async () => {
     const store = setup(), p = await project(store);
     await store.swapRow<ProjectRecord>('projects', p.id, r => ({ ...r!, is_demo: true }));
-    expect(await text(store, p.id)).toBe(O + PART_SEPARATOR + NO_PROJECT_TEMPLATE);
+    expect(await call(store, p.id)).toEqual(B(O));
     await writeMemory('overview.md', 'Private note.', store);
-    expect(await text(store, p.id)).toBe([O, M('Private note.'), NO_PROJECT_TEMPLATE].join(PART_SEPARATOR));
+    expect(await call(store, p.id)).toEqual(B(O, '<memory_overview>\nPrivate note.\n\n</memory_overview>'));
   });
-  it('7: a project id with no row: the same as a demo', async () => {
+  it('6: a project id with no row: orientation, memory when saved, then the stored notice', async () => {
     const store = setup();
-    expect(await text(store, 'gone-project')).toBe(O + PART_SEPARATOR + NO_PROJECT_TEMPLATE);
-    await writeMemory('overview.md', 'Private note.', store);
-    expect(await text(store, 'gone-project')).toBe([O, M('Private note.'), NO_PROJECT_TEMPLATE].join(PART_SEPARATOR));
+    expect(NO_PROJECT_TEMPLATE).toBe('Open and connect a project to load its template.');
+    expect(await call(store, 'no-such-project')).toEqual(B(O, 'Open and connect a project to load its template.'));
+    await writeMemory('overview.md', 'note', store);
+    expect(await call(store, 'no-such-project')).toEqual(B(O, M('note'), 'Open and connect a project to load its template.'));
+  });
+  it('7: reads fresh on every call; refresh changes nothing; only memory/overview.md counts', async () => {
+    const store = setup(), p = await project(store);
+    expect((await call(store, p.id)).content).toHaveLength(1);
+    await writeMemory('overview.md', 'note', store);
+    expect((await call(store, p.id)).content).toHaveLength(2);
+    await saveProjectTemplate(store, p.id, p.doc, NOW);
+    const after = await call(store, p.id);
+    expect(after.content).toHaveLength(3);
+    expect(await call(store, p.id, { refresh: true })).toEqual(after);
+    await writeMemory('notes.md', 'Not the index.', store);
+    expect(await call(store, p.id, { refresh: true })).toEqual(after);
   });
 });
 
