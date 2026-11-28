@@ -2,6 +2,7 @@
 // Source probing (findings §2): Mediabunny Input over a Blob → the asset's media record. Image headers and EXIF are read
 // here too. Sources Mediabunny cannot open fall back to the WASM probe (libav.ts) in the browser.
 import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input } from 'mediabunny';
+import { bigTiffToClassic } from './bigtiff';
 import { mediaError } from './codes';
 import { mimeFor } from './files';
 import { isHeif, parseHeif } from './heif';
@@ -129,34 +130,41 @@ async function probeImage(blob: Blob, name: string): Promise<MediaInfo> {
   const head = new Uint8Array(await blob.slice(0, 256 << 10).arrayBuffer());
   const mimeType = mimeFor(name, blob.type);
   let size: { width: number; height: number } | null = null, decoder: MediaInfo['decoder'] = 'native-image', container = mimeType.split('/')[1] ?? 'image', orientation: number | null = null;
+  let oriented = false;
   if (isHeif(head)) {
     const heif = parseHeif(new Uint8Array(await blob.arrayBuffer()));
     if (!heif) throw mediaError('UNSUPPORTED_INPUT', 'This HEIF image uses a layout Cutframe cannot read.');
     const quarter = heif.rotation % 180 !== 0;
     size = { width: quarter ? heif.height : heif.width, height: quarter ? heif.width : heif.height }; decoder = 'wasm'; container = 'heic'; orientation = 1;
-  } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) { size = await tiffSize(blob); decoder = 'wasm'; container = 'tiff'; }
+  } else if ((head[0] === 0x49 && head[1] === 0x49) || (head[0] === 0x4d && head[1] === 0x4d)) {
+    // BigTIFF (magic 43) under 4 GiB: tiffSize and readExif read its classic rewrite, IFD0 only (audit F-07); else tiffSize refuses.
+    if (new DataView(head.buffer).getUint16(2, head[0] === 0x49) === 43 && blob.size <= 0xffffffff) blob = new Blob([bigTiffToClassic(new Uint8Array(await blob.arrayBuffer())) ?? blob]);
+    // Orientation from tiffSize's IFD0 read, wherever IFD0 lies (readExif sees only the first 16 MiB; audit F-05/F-07).
+    const tiff = await tiffSize(blob); size = tiff; orientation = tiff?.orientation ?? null; decoder = 'wasm'; container = 'tiff';
+  }
   else if (/<svg[\s>]/i.test(new TextDecoder().decode(head.subarray(0, 4096)))) { size = typeof Image === 'function' ? await svgIntrinsicSize(blob) : svgSize(await blob.text()); container = 'svg+xml'; }
-  else size = imageSize(head) ?? await browserImageSize(blob);
+  else if (!(size = imageSize(head))) { size = await browserImageSize(blob); oriented = true; }
   if (!size) throw mediaError('UNSUPPORTED_INPUT', 'This image could not be read.');
   const exif = await readExif(blob);
   orientation ??= exif.orientation;
-  const quarter = orientation >= 5 && orientation <= 8;
+  // Header sizes (imageSize, tiffSize) are stored sizes; createImageBitmap applies EXIF orientation itself (audit F-05).
+  const quarter = !oriented && orientation >= 5 && orientation <= 8;
   return { container, mimeType, durationMs: null, video: null, audio: null,
     image: { width: quarter ? size.height : size.width, height: quarter ? size.width : size.height, orientation },
     capturedAt: exif.capturedAt, latitude: exif.latitude, longitude: exif.longitude, decoder };
 }
-/** TIFF IFD0 ImageWidth (256) / ImageLength (257); the IFD can sit anywhere in the file. */
-async function tiffSize(blob: Blob): Promise<{ width: number; height: number } | null> {
+/** TIFF IFD0 ImageWidth (256) / ImageLength (257) / Orientation (274, 1 when absent); the IFD can sit anywhere in the file. */
+async function tiffSize(blob: Blob): Promise<{ width: number; height: number; orientation: number } | null> {
   const read = async (at: number, n: number) => new DataView(await blob.slice(at, at + n).arrayBuffer());
   const h = await read(0, 8), little = h.getUint8(0) === 0x49;
   if (h.getUint16(2, little) !== 42) return null;
   const ifd = h.getUint32(4, little), count = (await read(ifd, 2)).getUint16(0, little), entries = await read(ifd + 2, count * 12);
-  let width = 0, height = 0;
+  let width = 0, height = 0, orientation = 1;
   for (let i = 0; i < count; i++) {
     const tag = entries.getUint16(i * 12, little), type = entries.getUint16(i * 12 + 2, little), value = type === 3 ? entries.getUint16(i * 12 + 8, little) : entries.getUint32(i * 12 + 8, little);
-    if (tag === 256) width = value; if (tag === 257) height = value;
+    if (tag === 256) width = value; if (tag === 257) height = value; if (tag === 274) orientation = value || 1;
   }
-  return width && height ? { width, height } : null;
+  return width && height ? { width, height, orientation } : null;
 }
 export function svgSize(text: string): { width: number; height: number } {
   const tag = text.match(/<svg\b[^>]*>/i)?.[0] ?? '';

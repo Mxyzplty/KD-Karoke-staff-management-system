@@ -101,7 +101,10 @@ export function MaskOverlay({ doc }: { doc: ProjectDocument }) {
   useEffect(() => {
     const el = svg.current; if (!el) return;
     const measure = () => { const r = el.getBoundingClientRect(); if (r.width > 0) setPx(size.width / r.width); };
-    measure(); const o = new ResizeObserver(measure); o.observe(el); return () => o.disconnect();
+    measure(); const o = new ResizeObserver(measure); o.observe(el);
+    // T28: the wheel zoom changes the stage's transform without a resize, so its data-scale is watched too.
+    const st = el.closest('.stage'), s = new MutationObserver(measure); if (st) s.observe(st, { attributes: true, attributeFilter: ['data-scale'] });
+    return () => { o.disconnect(); s.disconnect(); };
   }, [size.width, !!item]);
   // Another selection, or the item going away, ends the editor; another tool or mask drops what is unfinished.
   useEffect(() => { if (ui.itemId && (v.selection[0] !== ui.itemId || !item)) leaveMaskEdit(); }, [ui.itemId, v.selection, !!item]);

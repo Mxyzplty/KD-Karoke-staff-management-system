@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
-import { test, expect, type Page } from '@playwright/test';
+import { chromium, test, expect, type Page } from '@playwright/test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { startHelper, type Helper } from '../../apps/helper/src/helper';
@@ -31,8 +31,10 @@ const STRIPPED = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDECODE', 'CL
 const MINUTES = { smoke: { prep: 0, cli: 10 }, A: { prep: 40, cli: 60 }, rfp02: { prep: 0, cli: 45 } } as Record<string, { prep: number; cli: number }>;
 
 test.skip(!MODES.includes(MODE) || !hasStore, `stand-in user runs only: CUTFRAME_T23_RUN=${MODES.join('|')} and the fixture store`);
-test.use({ baseURL: BASE, channel: 'chromium', viewport: { width: 1400, height: 900 }, launchOptions: { args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist'] } });
-test.beforeEach(({ page }) => skipTour(page));
+/** The browser: a persistent profile on a new temp folder, launched in the test, not the `page` fixture (lane A 28 Nov 02:46,
+ * P1, a harness-setup change, not C8). The fixture's non-persistent context drops stored originals after 10 min idle (T37
+ * bug 1, OBJECT_MISSING); T37's H1/H2 ran this way. The profile folder is left in place (summary.profile). */
+const BROWSER = { baseURL: BASE, channel: 'chromium', viewport: { width: 1400, height: 900 }, args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist'] };
 
 type Json = Record<string, any>;
 type Call = { id: string; name: string; input: unknown; isError: boolean; success?: boolean; code?: string; error?: string; blockTypes: string[]; images: { mimeType?: string; base64Chars: number; bytes: number }[] };
@@ -316,11 +318,14 @@ const PROMPTS: Record<string, string> = {
     + 'Do not export. When you are done, say what you changed.',
 };
 
-test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
+test(`T23 stand-in user run: ${MODE}`, async () => {
   const budget = MINUTES[MODE] ?? { prep: 0, cli: 0 };
   test.setTimeout((budget.prep + budget.cli + 10) * 60_000);
   const run = path.join(ROOT, 'test-results', 't23-runs', `${MODE}-${stamp()}`); mkdirSync(run, { recursive: true });
-  const summary: Json = { mode: MODE, started: new Date().toISOString(), run, base: BASE, model: MODEL };
+  const profile = mkdtempSync(join(tmpdir(), 't23-profile-')), context = await chromium.launchPersistentContext(profile, BROWSER);
+  const page = context.pages()[0] ?? await context.newPage();
+  await skipTour(page);
+  const summary: Json = { mode: MODE, started: new Date().toISOString(), run, base: BASE, model: MODEL, profile };
   const save = () => writeFileSync(join(run, 'summary.json'), JSON.stringify(summary, null, 2));
   const cleanups: (() => unknown)[] = [];
   // Browser evidence for every mode: page and worker console, uncaught page errors, and each .wasm the page or a worker loads.
@@ -463,6 +468,7 @@ test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
   } finally {
     summary.ended = new Date().toISOString(); save();
     while (cleanups.length) { try { await cleanups.pop()!(); } catch { /* best effort */ } }
+    await context.close().catch(() => { /* best effort */ });
     restoreBin();
     if (!existsSync(join(run, 'summary.json'))) save();
     // A copy outside the repo (lane F's CUTFRAME_T23_KEEP): a later full UI run empties test-results/.

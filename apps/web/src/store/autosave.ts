@@ -61,10 +61,12 @@ export class AutosaveSession {
       while (this.forced || this.saveRequested) {
         this.forced = false; this.saveRequested = false;
         if (fingerprint(this.document) === fingerprint(this.saved)) { this.markSaved(); continue; }
-        const candidate = structuredClone(this.document), before = this.saved.items.length, after = candidate.items.length;
+        const candidate = structuredClone(this.document), before = this.saved.items.length;
         const candidateFingerprint = fingerprint(candidate);
         this.state = 'saving'; this.emit();
         try {
+          // Preparation (repair, check, refuse) comes before any side effect of the guard below.
+          const prepared = this.options.prepareSave?.(candidate) ?? candidate, after = prepared.items.length;
           // Even a never-loaded empty state must read storage before it can overwrite content.
           if ((before > after && (after === 0 || before - after >= 5 || after <= before / 2)) || (this.options.fullyLoaded === false && after === 0)) {
             const stored = await this.store.read(this.projectId);
@@ -75,7 +77,6 @@ export class AutosaveSession {
             if (stored.document.rev !== this.saved.rev) throw new StoreError('CONFLICT', 'Another tab changed this project.');
             await this.options.beforeLargeDeletion?.(stored.document);
           }
-          const prepared = this.options.prepareSave?.(candidate) ?? candidate;
           const saved = await this.store.save(this.projectId, prepared, this.saved.rev);
           this.saved = structuredClone(saved);
           // Compare with the original edit, even when preparation repairs candidate in place.

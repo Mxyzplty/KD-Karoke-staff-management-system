@@ -145,8 +145,12 @@ test.describe('the served tools against a Chromium tab (row 10)', () => {
     expect(edited.data).toEqual({ itemIds: ['clipA'], changedFields: { clipA: ['properties.opacity'] } });
     expect(edited.timelineChanges.items.updated[0]).toMatchObject({ itemId: 'clipA', changedFields: ['properties.opacity'] });
     const written = await ok('writeKeyframes', { itemId: 'clipA', payload: { scale: { replace: [{ time: 0, value: 1 }, { time: 2, value: 1.5 }] } } });
-    expect(written.message).toBe("Keyframes written on 'clipA': scale (2).");
-    expect(written.data).toMatchObject({ itemId: 'clipA', keyframes: { scale: { keyframeCount: 2 } } });
+    expect(written.message).toBe('writeKeyframes: scale updated (1 op)');
+    // A plain-property write returns Xapp's flat envelope: ops and resolvedKeyframes at the top level, no data (lane R raw
+    // read, 26 Nov (D127)).
+    expect(written).not.toHaveProperty('data');
+    expect(written.ops).toEqual([{ property: 'scale', op: 'replace' }]);
+    expect(written.resolvedKeyframes).toEqual({ scale: [{ time: 0, value: 1, source: 'value' }, { time: 2, value: 1.5, source: 'value' }] });
     expect(written.timelineChanges.items.updated[0]).toMatchObject({ itemId: 'clipA', changedFields: ['properties.scale'] });
     const remapped = await ok('setTimeRemap', { itemId: 'clipA', keyframes: [{ time: 0, value: 0 }, { time: 3, value: 3000 }] });
     expect(remapped.message).toBe("Set 2 time remap keyframes on 'clipA' (replaced). Speed range: 1.000x – 1.000x.");

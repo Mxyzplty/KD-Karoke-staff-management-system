@@ -18,4 +18,9 @@ export type AnalysisRequest =
   | { task: 'sync'; source: Transcript; target: Transcript }
   | { task: 'snap'; cuts: number[]; rhythm: Rhythm; tolerance: number; divisionsPerBeat?: 2 | 3 | 4 }
   | { task: 'silence'; words: Word[]; ranges: Pair[]; pause?: number; keptGap?: number };
+/** Main → worker. `cancel`: skip that request if it has not started (audit F1 (c)); nothing is posted for the cancel itself.
+ *  `started` (T37): post `AnalysisStarted` when the request leaves the queue. */
+export type AnalysisMessage = { id: number; request: AnalysisRequest; started?: true } | { cancel: number };
 export type AnalysisReply = { id: number; ok: true; value: unknown; elapsedMs: number; backends: Record<string, string> } | { id: number; ok: false; error: { code: string; message: string; confidence?: number } };
+/** Worker → main (T37): a request that asked for it has left the queue and started. */
+export type AnalysisStarted = { id: number; started: true };

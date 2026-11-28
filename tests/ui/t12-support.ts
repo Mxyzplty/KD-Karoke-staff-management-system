@@ -8,6 +8,11 @@ import { STORE } from './t15-support';
 import { ff } from './t16a-support';
 
 export const CLIP2 = path.join(STORE, 'corpus/tos-action-30s.mp4');
+/** Clip 2's full preparation with the real models, as openAndIngest's bound (ms). preparationBudgetMs(30 000) = 300 000, the 5-min floor (media/prepare.ts:40):
+ *  probe → proxy share one 300 000 attempt budget (:110, re-armed :149, cleared :192); analysis, transcription and embeddings each get their own 300 000
+ *  deadline (:202), in sequence: 1 200 000. Plus 60 000 for the waits raceAbort does not cut off (:126, :144, :147), the writes after each step (:213, :221)
+ *  and the final write (:225), and the poll interval. */
+export const CLIP2_INGEST_MS = 1_260_000;
 export const W = 1080, H = 1920, CLIP_H = Math.round(W * 534 / 1280), CLIP_Y = Math.round((H - CLIP_H) / 2), SRC_W = 1280, SRC_H = 534;
 const SET = path.join(STORE, 'datasets/t12');
 export const prop = (v: unknown) => ({ defaultValue: v, keyframes: [] });
@@ -19,6 +24,26 @@ export const setLayers = (page: Page, id: string, patch: Record<string, unknown>
   for (const m of document.items[0].masks) Object.assign(m, patch);
   await projectStore.save(id, document, document.rev);
 }, { id, patch });
+
+// ---- A raster (.dmk) mask for UI cases (T28 row 5), built as t12-render.spec.ts's M7 fixture: one RasterWriter frame, a plain 8-bit alpha plane.
+/** The stored raster ref: one frame of w × h laid over the item box ('item' space), counting from `sourceStartUs` to `sourceEndUs` (source µs). */
+export const rasterRef = (file: string, w: number, h: number, extra: Record<string, unknown> = {}) => ({ file, sourceStartUs: 0, sourceEndUs: 2_000_000, frameCount: 1, width: w, height: h, space: { kind: 'item', width: w, height: h }, version: 1, ...extra });
+/** A stored smart mask holding `ref` (the defaults of a fresh mask; `extra` overrides any field, e.g. `enabled: false`). */
+export const rasterMask = (ref: ReturnType<typeof rasterRef>, extra: Record<string, unknown> = {}) => ({ id: 'rm', name: 'Smart', enabled: true, points: [], closed: true, mode: 'add', order: 0, colorIndex: 0, feather: 0, expansion: 0, opacity: 100, inverted: false, source: 'smart', raster: ref, ...extra });
+/** Writes the raster file of `ref` into project `projectId`'s mask folder (store/media.ts writeMask, as the app's own jobs do): one frame at
+ *  `ref.sourceStartUs`, every pixel `fill`, then each [x0, y0, x1, y1, alpha] rectangle (raster px, x1 and y1 exclusive) painted over it in order.
+ *  Call it before the editor opens the project: the preview reads the file on its first frame. */
+export const writeRaster = (page: Page, projectId: string, ref: ReturnType<typeof rasterRef>, fill: number, rects: number[][] = []) => page.evaluate(async ({ projectId, ref, fill, rects }) => {
+  const r = '/src/masks/raster.ts', d = '/src/store/database.ts', { RasterWriter } = await import(r), { projectStore } = await import(d);
+  const { width: W, height: H } = ref, plane = new Uint8Array(W * H).fill(fill), w = new RasterWriter(W, H);
+  for (const [x0, y0, x1, y1, a] of rects) for (let y = y0; y < y1; y++) plane.fill(a, y * W + x0, y * W + x1);
+  await w.add(ref.sourceStartUs, plane);
+  await projectStore.media.writeMask(projectId, ref.file, w.blob());
+}, { projectId, ref, fill, rects });
+/** Waits until the open editor has decoded the raster's frame at `timeUs` (the pick reads it from the same cache the preview fills). */
+export const rasterReady = (page: Page, ref: ReturnType<typeof rasterRef>, timeUs: number) => page.evaluate(async ({ ref, timeUs }) => {
+  const r = '/src/masks/raster.ts'; await (await import(r)).readyRaster(ref, timeUs);
+}, { ref, timeUs });
 
 /** The check page, with the store's files under /t12-media/ (a name with '-' or '.' relative to datasets/t12/composites, clip 2 as c2.mp4). */
 export async function bench(page: Page) {

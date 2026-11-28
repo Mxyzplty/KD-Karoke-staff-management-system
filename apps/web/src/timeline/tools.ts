@@ -207,7 +207,7 @@ const slipItem: Handler = (ctx, args) => run(ctx, 'Slip item', doc => {
 });
 const splitItem: Handler = (ctx, args) => run(ctx, 'Split item', doc => {
   if (!num(args.timestampS)) fail('INVALID_SPLIT_POINT', 'Split point is invalid or item was not found');
-  const r = split(doc, args.itemId, toMs(args.timestampS));
+  const r = split(doc, args.itemId, toMs(args.timestampS), { path: 'tool' });
   return { success: true, data: { leftItemId: r.left, rightItemId: r.right } };
 });
 const trimItem: Handler = (ctx, args) => run(ctx, 'Edit items', (doc, tx) => {

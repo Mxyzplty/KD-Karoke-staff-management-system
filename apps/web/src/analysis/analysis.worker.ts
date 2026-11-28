@@ -2,14 +2,22 @@
 import { AnalysisEngine, AnalysisError, syncOffset, snapCuts, planSilenceRemoval } from './engine';
 import { MODEL_IDS } from './models';
 import { modelAvailability } from './availability';
-import type { AnalysisRequest, AnalysisReply } from './protocol';
+import type { AnalysisMessage, AnalysisReply, AnalysisStarted } from './protocol';
 let engine: AnalysisEngine | undefined;
 let queue = Promise.resolve();
-const scope = globalThis as unknown as { onmessage: ((event: MessageEvent<{ id: number; request: AnalysisRequest }>) => void) | null; postMessage(value: AnalysisReply): void };
+/** Ids received and not started. A `{ cancel: id }` removes one, so it is skipped when it reaches the head (audit F1 (c)). */
+const waiting = new Set<number>();
+const scope = globalThis as unknown as { onmessage: ((event: MessageEvent<AnalysisMessage>) => void) | null; postMessage(value: AnalysisReply | AnalysisStarted): void };
 scope.onmessage = event => {
+  const data = event.data;
+  // Recorded at once, outside the queue (not behind the running task); an id already started or never sent changes nothing.
+  if ('cancel' in data) { waiting.delete(data.cancel); return; }
+  waiting.add(data.id);
   // Inference and index publication are serialized, including rejection paths.
   queue = queue.then(async () => {
-    const { id, request } = event.data, start = performance.now();
+    const { id, request } = data, start = performance.now();
+    if (!waiting.delete(id)) { scope.postMessage({ id, ok: false, error: { code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } }); return; }
+    if (data.started) scope.postMessage({ id, started: true }); // T37: the request asked to be told when it starts
     try {
       let value: unknown;
       switch (request.task) {

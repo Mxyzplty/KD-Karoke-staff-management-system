@@ -44,6 +44,18 @@ export function timingIssues(doc: ProjectDocument): TimingIssue[] {
   return out;
 }
 
+/** Editor saves (error codes §12; findings part 3 §45.2 l.293): the same repair and check on the save candidate, in place.
+ *  Any issue left refuses the save, logged as an unrepairable timing issue; the error carries the issue records, and its
+ *  message (shown in the status line and toast) carries no issue text. */
+export function prepareSave(doc: ProjectDocument): ProjectDocument {
+  if (!Array.isArray(doc?.items)) return doc;
+  repairTiming(doc);
+  const issues = timingIssues(doc);
+  if (!issues.length) return doc;
+  console.warn('Unrepairable media timing issues; the save was refused.', issues);
+  throw Object.assign(new Error('The latest change may not be saved.'), { issues });
+}
+
 export type Range = { startS: number; endS: number };
 export type Prepared = { doc: ProjectDocument; plan: Plan; repaired: string[] };
 /** Copy → repair → check → validate → plan. The input document is never changed. */

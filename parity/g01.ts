@@ -30,18 +30,29 @@ const ref = (b: string) => b.trim().match(REF);
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // ---- Stored-reference loader (§5 "Reading the stored files").
-/** Every `results/*.json` record, keyed by file name without `.json` ("S12", "S12.ctx", "S12.vid"), with `@@SAME` block
- *  references and same-as files resolved recursively. The block base is detected from the folder or given. */
+/** Every `results/*.json` and `results/calls/*.json` record (G-09's layout), keyed by file name without `.json` ("S12",
+ *  "S12.ctx", "S12.vid"), with `@@SAME` block references and same-as files resolved recursively. An id stored in both
+ *  layouts is refused. The block base is detected from the folder or given. */
 export async function loadStored(dir: string, blockBase?: 0 | 1) {
   const base = await realpath(dir), folder = await realpath(path.join(base, 'results')).catch(() => { throw Error(`No results/ folder in ${dir}`); });
   if (!inside(base, folder)) throw Error('results/ escapes the reference directory');
-  const raw = new Map<string, Rec>();
-  for (const name of (await readdir(folder)).filter(n => n.endsWith('.json')).sort()) {
-    const file = await realpath(path.join(folder, name));
-    if (!inside(folder, file)) throw Error(`Stored file escapes results/: ${name}`);
-    const value = JSON.parse(await readFile(file, 'utf8'));
-    if (!isObj(value)) throw Error(`Stored file is not a JSON object: ${name}`);
-    raw.set(name.slice(0, -5), value);
+  const raw = new Map<string, Rec>(), from = new Map<string, string>();
+  const read = async (at: string, sub: string) => {
+    for (const name of (await readdir(at)).filter(n => n.endsWith('.json')).sort()) {
+      const file = await realpath(path.join(at, name));
+      if (!inside(at, file)) throw Error(`Stored file escapes results/${sub}: ${name}`);
+      const value = JSON.parse(await readFile(file, 'utf8'));
+      if (!isObj(value)) throw Error(`Stored file is not a JSON object: ${sub}${name}`);
+      const k = name.slice(0, -5);
+      if (from.has(k)) throw Error(`${k} is stored twice: results/${from.get(k)} and results/${sub}${name}`);
+      raw.set(k, value); from.set(k, `${sub}${name}`);
+    }
+  };
+  await read(folder, '');
+  const calls = await realpath(path.join(folder, 'calls')).catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return null; throw e; });
+  if (calls) {
+    if (!inside(folder, calls)) throw Error('results/calls/ escapes results/');
+    await read(calls, 'calls/');
   }
   const key = (id: string, from: string) => { const k = id.replace(/\.json$/, ''); if (!raw.has(k)) throw Error(`${from}: @@SAME reference to unknown file ${id}`); return k; };
   const listed = (list: Json[]) => list.map(b => typeof b === 'string' ? b : isObj(b) && typeof b.text === 'string' ? b.text : JSON.stringify(b));

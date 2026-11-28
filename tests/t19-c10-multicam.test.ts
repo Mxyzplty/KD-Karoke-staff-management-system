@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T19 C10 (MC-P01): syncAndSwap (analysis/multicam.ts) over a fake service and a fake place; the executor route (real T03 runtime,
 // injected store/service); and the real sync.ts syncOffset on the public aligned words of the 30 s action clip when
-// $CUTFRAME_FIXTURES has them. Synthetic words otherwise; no fitting.
+// $CUTFRAME_FIXTURES has them. Synthetic words otherwise; no fitting. Audit F1 (landed-audit-t19 l.37-46): the real syncOffset
+// on a seeded 3,000-word pair, each call in a worker killed at a hard cap; measurement only (time printed, offset asserted).
+// F1 fix, red-first (lane A 03:56): the 2 s bar, identity goldens of whole results, and the 30 s syncAndSwap deadline.
+// F1 review fixes, red-first (lane A 04:51): the fallback golden (F3), speech-like text measured (F2), a queued sync at the deadline (F1 (c)).
+// Lane A (after 04:52): a task cancelled while queued is skipped by analysis.worker.ts ({ cancel: id }, posted by the client).
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { Worker } from 'node:worker_threads';
+import { build as bundle } from 'esbuild';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Executor } from '../apps/web/src/agent/executor';
 import type { Call } from '../apps/web/src/agent/executor';
 import { UNAVAILABLE } from '../apps/web/src/analysis/availability';
 import { SWAP, syncAndSwap } from '../apps/web/src/analysis/multicam';
 import type { SwapContext } from '../apps/web/src/analysis/multicam';
+import type { AnalysisReply, AnalysisRequest } from '../apps/web/src/analysis/protocol';
+import { AnalysisService } from '../apps/web/src/analysis/service';
+import { AnalysisWorker } from '../apps/web/src/analysis/worker-client';
 import { syncOffset } from '../apps/web/src/analysis/sync';
+import type { SyncResult } from '../apps/web/src/analysis/sync';
 import { AnalysisError } from '../apps/web/src/analysis/types';
-import type { Transcript } from '../apps/web/src/analysis/types';
+import type { Pcm, Transcript } from '../apps/web/src/analysis/types';
 import { createEditor } from '../apps/web/src/timeline/harness';
 import type { Asset } from '../apps/web/src/store/model';
 import { assets as fixtureAssets, build, fixture, links, mkItem, mkTrack } from './t03-fixtures';
@@ -345,5 +356,379 @@ describe('T19 C10 engine syncOffset (public OT-2 words, no models)', () => {
     let error: unknown; try { syncOffset(transcript(original), transcript(reversed)); } catch (e) { error = e; }
     expect(error).toBeInstanceOf(AnalysisError); expect(error).toMatchObject({ code: 'SYNC_LOW_CONFIDENCE' });
     expect((error as AnalysisError).message).toMatch(/^Low sync confidence \(\d+%\)\. Transcripts may not overlap enough\.$/);
+  });
+});
+
+// ---- Audit F1: real sync.ts on 3,000 synthetic words. syncOffset is synchronous and testTimeout cannot stop it, so every call
+// runs in a worker (sync.ts bundled by esbuild) that is terminated at a hard cap. Ladder 125 → 2,000 words (stop after the first
+// call > 10 s or killed at 20 s), growth exponent from the last two finished calls, then 3,000 words killed at 120 s.
+describe('T19 audit F1 engine syncOffset at 3,000 words (measurement; time printed, not asserted)', () => {
+  const SHIFT = 1.234, FRAME = 1 / 24; // MC-P01 ±1 frame = 1/24 s (T19a notes l.183, l.1478; this file l.341)
+  type Run = { n: number; ms: number; killed: boolean; offset?: number; confidence?: number; matches?: number; error?: string };
+  /** Seeded (mulberry32) words from a 200-word vocabulary, one per 0.4 s; the source is the same words SHIFT s later → offset +SHIFT. */
+  const pair = (n: number) => {
+    let s = 0x7e19f1;
+    const rand = () => { s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const words = Array.from({ length: n }, (_, k) => ({ word: `w${Math.floor(rand() * 200)}`, start: k * 0.4, end: k * 0.4 + 0.3 }));
+    const doc = (ws: typeof words): Transcript => ({ language: 'en', languages: ['en'], total_duration: ws.at(-1)!.end, segments: [{ id: 0, start: ws[0].start, end: ws.at(-1)!.end, text: ws.map(w => w.word).join(' '), speaker: 0, words: ws }] });
+    return { source: doc(words.map(w => ({ ...w, start: w.start + SHIFT, end: w.end + SHIFT }))), target: doc(words) };
+  };
+  const WORKER = `import { parentPort, workerData } from 'node:worker_threads'; import { syncOffset } from './sync';
+const t0 = performance.now();
+try { const r = syncOffset(workerData.source, workerData.target); parentPort.postMessage({ ms: performance.now() - t0, offset: r.offset, confidence: r.confidence, matches: r.matches.length }); }
+catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: String(e?.code ?? e) }); }`;
+  /** ms is measured inside the worker around syncOffset only; the cap runs from the spawn. */
+  const timed = (code: string, n: number, capMs: number) => new Promise<Run>((resolve, reject) => {
+    const worker = new Worker(code, { eval: true, workerData: pair(n) });
+    const kill = setTimeout(() => { void worker.terminate(); resolve({ n, ms: capMs, killed: true }); }, capMs);
+    worker.once('message', m => { clearTimeout(kill); void worker.terminate(); resolve({ n, killed: false, ...m }); });
+    worker.once('error', e => { clearTimeout(kill); reject(e); });
+  });
+  const line = (r: Run, capMs: number) => console.log(`[T19 F1] n=${r.n} words: ${r.killed ? `> ${capMs} ms (killed)` : `${r.ms.toFixed(1)} ms`}; offset ${r.offset?.toFixed(6) ?? '-'} (expected ${SHIFT}), confidence ${r.confidence?.toFixed(3) ?? '-'}, matches ${r.matches ?? '-'}${r.error ? `, error ${r.error}` : ''}`);
+  const check = (r: Run) => { if (r.killed) return; expect(r.error).toBeUndefined(); expect(Math.abs(r.offset! - SHIFT)).toBeLessThanOrEqual(FRAME); expect(r.confidence).toBeGreaterThanOrEqual(0.5); };
+  it('3,000 words, 200-word vocabulary, source = target + 1.234 s → offset +1.234 ± 1/24 s on every call that finishes; a killed call prints "> cap" and passes', async () => {
+    const code = (await bundle({ stdin: { contents: WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false })).outputFiles[0].text;
+    const done: Run[] = [];
+    for (const n of [125, 250, 500, 1000, 2000]) {
+      const r = await timed(code, n, 20_000); line(r, 20_000); check(r);
+      if (r.killed) break; done.push(r); if (r.ms > 10_000) break;
+    }
+    if (done.length >= 2) { const [p, q] = done.slice(-2), k = Math.log(q.ms / p.ms) / Math.log(q.n / p.n); console.log(`[T19 F1] growth exponent ${k.toFixed(2)} (n ${p.n} → ${q.n}); extrapolated n=3000: ${Math.round(q.ms * (3000 / q.n) ** k / 1000)} s`); }
+    const full = await timed(code, 3000, 120_000); line(full, 120_000); check(full);
+  }, 240_000);
+});
+
+// ---- Audit F1 review F2 (lane A 04:51): the same measurement on speech-like text. seededPair keeps the distinct anchor offsets
+// A tiny (uniform vocabulary, exact shift); speech has Zipfian trigrams and per-word timing jitter, so A grows with N. Zipf
+// s = 1 over 3,000 types, one word per 0.16–0.48 s on the 0.02 s grid (types.ts:29); the source is the target 1.234 s later
+// on its own grid, ±0–2 steps of jitter per word, 3% of words dropped and 2% substituted. Every call in a worker killed at a
+// hard cap. Printed: time, A, K (anchor pairs, before the dedupe), offset, confidence. Lane A's bar: 3,000 words within 2 s;
+// 9,000 is information. No time asserted.
+describe('T19 audit F1 engine syncOffset on speech-like text (measurement; time printed, not asserted)', () => {
+  const SHIFT = 1.234, FRAME = 1 / 24, GRID = 0.02, TYPES = 3000;
+  type Run = { n: number; ms: number; killed: boolean; A?: number; K?: number; offset?: number; confidence?: number; matches?: number; error?: string };
+  /** Seeded (mulberry32, its own seed) speech-like pair; the source keeps its own word list (drops, substitutions). */
+  const speech = (n: number) => {
+    let s = 0x5bee7f2;
+    const rand = () => { s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const cdf: number[] = []; let sum = 0;
+    for (let r = 1; r <= TYPES; r++) cdf.push(sum += 1 / r);
+    const zipf = () => { const u = rand() * sum; let lo = 0, hi = TYPES - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] >= u) hi = mid; else lo = mid + 1; } return `v${lo + 1}`; };
+    let steps = 0;
+    const target = Array.from({ length: n }, () => { const start = steps * GRID; steps += 8 + Math.floor(rand() * 17); return { word: zipf(), start, end: start + 0.1 }; });
+    const source = target.flatMap(w => {
+      if (rand() < 0.03) return [];
+      const start = Math.round((w.start + SHIFT) / GRID + Math.floor(rand() * 5) - 2) * GRID;
+      return [{ word: rand() < 0.02 ? zipf() : w.word, start, end: start + 0.1 }];
+    });
+    const doc = (ws: typeof target): Transcript => ({ language: 'en', languages: ['en'], total_duration: ws.at(-1)!.end, segments: [{ id: 0, start: ws[0].start, end: ws.at(-1)!.end, text: ws.map(w => w.word).join(' '), speaker: 0, words: ws }] });
+    return { source: doc(source), target: doc(target) };
+  };
+  // A and K are counted before the timed call (the a404e27 anchor rule: three equal normal words, offset = their median).
+  const WORKER = `import { parentPort, workerData } from 'node:worker_threads'; import { normalWord, syncOffset } from './sync'; import { median } from './audio';
+const words = (t: any) => t.segments.flatMap((s: any) => s.words).filter((w: any) => normalWord(w.word));
+const a = words(workerData.source), b = words(workerData.target), key = (ws: any[], k: number) => ws.slice(k, k + 3).map(w => normalWord(w.word)).join(' ');
+const at = new Map<string, number[]>(); for (let j = 0; j + 2 < b.length; j++) { const k = key(b, j), list = at.get(k); if (list) list.push(j); else at.set(k, [j]); }
+let K = 0; const offsets = new Set<number>();
+for (let i = 0; i + 2 < a.length; i++) for (const j of at.get(key(a, i)) ?? []) { K++; offsets.add(median([0, 1, 2].map(k => a[i + k].start - b[j + k].start))); }
+parentPort.postMessage({ A: offsets.size, K });
+const t0 = performance.now();
+try { const r = syncOffset(workerData.source, workerData.target); parentPort.postMessage({ ms: performance.now() - t0, offset: r.offset, confidence: r.confidence, matches: r.matches.length }); }
+catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: String(e?.code ?? e) }); }`;
+  /** ms is measured inside the worker around syncOffset only; the cap runs from the spawn. */
+  const timed = (code: string, n: number, capMs: number) => new Promise<Run>((resolve, reject) => {
+    const worker = new Worker(code, { eval: true, workerData: speech(n) });
+    let counts: Pick<Run, 'A' | 'K'> = {};
+    const kill = setTimeout(() => { void worker.terminate(); resolve({ n, ms: capMs, killed: true, ...counts }); }, capMs);
+    worker.on('message', m => { if (!('ms' in m)) { counts = m; return; } clearTimeout(kill); void worker.terminate(); resolve({ n, killed: false, ...counts, ...m }); });
+    worker.once('error', e => { clearTimeout(kill); reject(e); });
+  });
+  const line = (r: Run, capMs: number) => console.log(`[T19 F1 speech] n=${r.n} words: ${r.killed ? `> ${capMs} ms (killed)` : `${r.ms.toFixed(1)} ms`}${r.n === 3000 ? ` (lane A bar 2000 ms: ${!r.killed && r.ms <= 2000 ? 'met' : 'NOT met'})` : ''}; A ${r.A ?? '-'}, K ${r.K ?? '-'}; offset ${r.offset?.toFixed(6) ?? '-'} (expected ${SHIFT}), confidence ${r.confidence?.toFixed(3) ?? '-'}, matches ${r.matches ?? '-'}${r.error ? `, error ${r.error}` : ''}`);
+  const check = (r: Run) => { if (r.killed) return; expect(r.error).toBeUndefined(); expect(Math.abs(r.offset! - SHIFT)).toBeLessThanOrEqual(FRAME); expect(r.confidence).toBeGreaterThanOrEqual(0.5); };
+  it('3,000 and 9,000 speech-like words (Zipf s = 1, 3,000 types, grid jitter, drops, substitutions) → offset +1.234 ± 1/24 s on every call that finishes; a killed call prints "> cap" and passes', async () => {
+    const code = (await bundle({ stdin: { contents: WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false })).outputFiles[0].text;
+    for (const [n, capMs] of [[3000, 20_000], [9000, 60_000]] as const) { const r = await timed(code, n, capMs); line(r, capMs); check(r); }
+  }, 120_000);
+});
+
+// ---- Audit F1 fix, red-first (landed-audit-t19 l.37-46, l.126; lane A ruling 19 Nov 03:56). BAR: 3,000 words → 1.234 ± 1/24 s
+// within 2 s, timed inside the worker (red on a404e27: killed at 10 s). IDENTITY: the bound changes no result: sha256 of the
+// whole result (plus offset, confidence, matches in clear) against goldens captured on a404e27 from the `[T19 F1 golden]`
+// lines (placeholders until then, so red). DEADLINE: syncAndSwap's sync gets 30 s (Cutframe addition, below the helper's
+// 60 s TOOL_TIMEOUT). The measurement describe above stays as run; seededPair and SYNC_WORKER repeat its pair and worker,
+// posting the whole result and its sha.
+const F1_SHIFT = 1.234, F1_FRAME = 1 / 24; // MC-P01 ±1 frame (T19a notes l.183)
+type Golden = { sha: string; offset: number; confidence: number; matches: number };
+/** Not captured yet: fails every comparison until the a404e27 value is filled in. */
+const UNCAPTURED: Golden = { sha: 'capture on a404e27', offset: NaN, confidence: NaN, matches: -1 };
+const GOLDEN: Record<'pair-125' | 'pair-250' | 'pair-500' | 'fixture-shifted' | 'tie-1-equal-distance' | 'tie-2-next-target' | 'tie-3-boundary' | 'tie-4-candidate-order' | 'tie-5-duplicate-anchors', Golden> = {
+  'pair-125': { sha: 'd0bc8ec3c05318fc42c836b30068121aafa8896a6c9ceccbc2f7a5cc498d19ee', offset: 1.2340000000000018, confidence: 1, matches: 125 },
+  'pair-250': { sha: '45fb93e59c8d4500e07b2cd4585022298ee816e0d5a9f6e0fbf3aef6ba586827', offset: 1.234, confidence: 0.9999999999999911, matches: 250 },
+  'pair-500': { sha: '07661a0de3ea8c297ad6f3fc14e0994635d012372bbf496796c8b40d97e2c0ed', offset: 1.2340000000000018, confidence: 0.9999999999999645, matches: 500 },
+  'fixture-shifted': { sha: '7bf1eb9075d2878f318aba319842402a350ca8a4ba9a09ebf5eda958bd10b3a6', offset: -1.234, confidence: 0.9999999999999911, matches: 32 },
+  'tie-1-equal-distance': { sha: '2a308c33b6ce6547c28773e96f4b39a5b4eb632466935941e17944c40cac7bfb', offset: 0, confidence: 1, matches: 4 },
+  'tie-2-next-target': { sha: '78066d8c150de13b8cbb00e9996ad88299a54de3d3c289dca87f3b166fc7a79b', offset: 0, confidence: 1, matches: 5 },
+  'tie-3-boundary': { sha: 'bdf5a25def90e555bcd0f51e5ed78e5c5ee7f3379a4547ec333eaa6b06904a4b', offset: 0, confidence: 0.7142857142857143, matches: 5 },
+  'tie-4-candidate-order': { sha: '2eb39cc0661d42cdb7929d61a39ef6503afde20efc4a16241e9a3c1473b4a048', offset: 0.5, confidence: 0.5, matches: 3 },
+  'tie-5-duplicate-anchors': { sha: 'e3524484473e6406415fbf1ce6c52ed5baf8867bc5e828c2c84bad9ae9229f15', offset: 0.5, confidence: 1, matches: 6 },
+};
+const REVERSED_GOLDEN = { sha: '1c5b6b7b307b1a90a61121aed9ea5158b1ba95e2850969543ce09ca2c2ffb6ed', code: 'SYNC_LOW_CONFIDENCE', message: 'Low sync confidence (0%). Transcripts may not overlap enough.', confidence: 0 };
+const FALLBACK_GOLDEN: Golden = { sha: '3711eac6f60f3fa25689e8acb81386bce42a641b562e7ca46363b11f670e6813', offset: 0, confidence: 1, matches: 4 }; // review F3: captured on a404e27's sync.ts
+const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const golden = (name: string, result: SyncResult, sha = sha256(result), extra = ''): Golden => {
+  console.log(`[T19 F1 golden] ${name} ${sha} ${result.offset} ${result.confidence} ${result.matches.length}${extra && ` ${extra}`}`);
+  return { sha, offset: result.offset, confidence: result.confidence, matches: result.matches.length };
+};
+/** The measurement's pair(n): seeded (mulberry32) words from a 200-word vocabulary, one per 0.4 s; source = target + 1.234 s. */
+function seededPair(n: number) {
+  let s = 0x7e19f1;
+  const rand = () => { s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const words = Array.from({ length: n }, (_, k) => ({ word: `w${Math.floor(rand() * 200)}`, start: k * 0.4, end: k * 0.4 + 0.3 }));
+  const doc = (ws: typeof words): Transcript => ({ language: 'en', languages: ['en'], total_duration: ws.at(-1)!.end, segments: [{ id: 0, start: ws[0].start, end: ws.at(-1)!.end, text: ws.map(w => w.word).join(' '), speaker: 0, words: ws }] });
+  return { source: doc(words.map(w => ({ ...w, start: w.start + F1_SHIFT, end: w.end + F1_SHIFT }))), target: doc(words) };
+}
+const SYNC_WORKER = `import { createHash } from 'node:crypto'; import { parentPort, workerData } from 'node:worker_threads'; import { syncOffset } from './sync';
+const t0 = performance.now();
+try { const result = syncOffset(workerData.source, workerData.target), ms = performance.now() - t0; parentPort.postMessage({ ms, result, sha: createHash('sha256').update(JSON.stringify(result)).digest('hex') }); }
+catch (e: any) { parentPort.postMessage({ ms: performance.now() - t0, error: String(e?.code ?? e) }); }`;
+let syncWorkerCode: Promise<string> | undefined;
+type Synced = { ms: number; killed: boolean; result?: SyncResult; sha?: string; error?: string };
+/** syncOffset on seededPair(n) in a worker terminated at capMs (from the spawn); ms is timed inside the worker around syncOffset. */
+async function synced(n: number, capMs: number): Promise<Synced> {
+  const code = await (syncWorkerCode ??= bundle({ stdin: { contents: SYNC_WORKER, resolveDir: path.resolve('apps/web/src/analysis'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false }).then(b => b.outputFiles[0].text));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(code, { eval: true, workerData: seededPair(n) });
+    const kill = setTimeout(() => { void worker.terminate(); resolve({ ms: capMs, killed: true }); }, capMs);
+    worker.once('message', (m: Omit<Synced, 'killed'>) => { clearTimeout(kill); void worker.terminate(); resolve({ ...m, killed: false }); });
+    worker.once('error', e => { clearTimeout(kill); reject(e); });
+  });
+}
+
+describe('T19 audit F1 fix: the bar (3,000 words within 2 s, in a worker killed at 10 s)', () => {
+  it('3,000 words, 200-word vocabulary, source = target + 1.234 s → offset 1.234 ± 1/24 s, confidence ≥ 0.5, syncOffset ≤ 2,000 ms', async () => {
+    const r = await synced(3000, 10_000);
+    console.log(`[T19 F1 bar] n=3000 words: ${r.killed ? '> 10000 ms (killed)' : `${r.ms.toFixed(1)} ms`}; offset ${r.result?.offset.toFixed(6) ?? '-'}, confidence ${r.result?.confidence.toFixed(3) ?? '-'}${r.error ? `, error ${r.error}` : ''}`);
+    expect(r.killed, 'syncOffset did not return within the 10 s cap').toBe(false);
+    expect(r.error).toBeUndefined(); expect(r.ms).toBeLessThanOrEqual(2000);
+    expect(Math.abs(r.result!.offset - F1_SHIFT)).toBeLessThanOrEqual(F1_FRAME); expect(r.result!.confidence).toBeGreaterThanOrEqual(0.5);
+  }, 30_000);
+});
+
+describe('T19 audit F1 fix: identity (whole results unchanged from a404e27)', () => {
+  for (const n of [125, 250, 500] as const) it(`seededPair(${n}) in the worker (killed at 30 s) → the a404e27 result, every field`, async () => {
+    const r = await synced(n, 30_000);
+    expect(r.killed, `n=${n} did not return within the 30 s cap`).toBe(false); expect(r.error).toBeUndefined();
+    expect(golden(`pair-${n}`, r.result!, r.sha)).toEqual(GOLDEN[`pair-${n}`]);
+  }, 45_000);
+  const root = process.env.CUTFRAME_FIXTURES, file = root ? path.join(root, 'datasets', 'speech', 'tos-action-30s-aligned.json') : '';
+  const transcript = (words: { word: string; start: number; end: number }[]): Transcript =>
+    ({ language: 'en', languages: ['en'], total_duration: words.at(-1)?.end ?? 0, segments: [{ id: 0, start: words[0].start, end: words.at(-1)!.end, text: words.map(w => w.word).join(' '), speaker: 0, words }] });
+  const load = () => (JSON.parse(readFileSync(file, 'utf8')).words as { text: string; startMs: number; endMs: number }[]).map(w => ({ word: w.text, start: w.startMs / 1000, end: w.endMs / 1000 }));
+  it.skipIf(!root || !existsSync(file))('public OT-2 words shifted +1.234 s, every 7th dropped (the engine case above) → the a404e27 result, every field', () => {
+    const original = load(), shifted = original.filter((_, i) => (i + 1) % 7 !== 0).map(w => ({ ...w, start: w.start + 1.234, end: w.end + 1.234 }));
+    expect(golden('fixture-shifted', syncOffset(transcript(original), transcript(shifted)))).toEqual(GOLDEN['fixture-shifted']);
+  });
+  it.skipIf(!root || !existsSync(file))('reversed word order (the engine case above) → the a404e27 error: code, exact message and details', () => {
+    const original = load(), texts = original.map(w => w.word).reverse(), reversed = original.map((w, i) => ({ ...w, word: texts[i] }));
+    let error: unknown; try { syncOffset(transcript(original), transcript(reversed)); } catch (e) { error = e; }
+    expect(error).toBeInstanceOf(AnalysisError);
+    const { code, message, details } = error as AnalysisError, sha = sha256({ code, message, details });
+    console.log(`[T19 F1 golden] fixture-reversed ${sha} - ${details?.confidence} - ${message}`);
+    expect({ sha, code, message, confidence: details?.confidence }).toEqual(REVERSED_GOLDEN);
+  });
+
+  // -- Tie and boundary rules (coordinator 04:0x, from lane A 03:56): strict < on distance (the first j wins), j ≥ nextTarget,
+  // best by confidence then matches. seededPair never reaches them (0.4 s apart: one j per 0.2 s window). Hand-built, main
+  // thread; times are binary fractions unless the case is about decimals. Picks that follow from sync.ts are asserted too.
+  const tx = (words: [string, number][]): Transcript => ({ language: 'en', languages: ['en'], total_duration: words.at(-1)![1] + 0.3,
+    segments: [{ id: 0, start: words[0][1], end: words.at(-1)![1] + 0.3, text: words.map(w => w[0]).join(' '), speaker: 0, words: words.map(([word, start]) => ({ word, start, end: start + 0.3 })) }] });
+  it('1. equal distance: the target has x at 2.875 and 3.125 around the source x at 3 (offset 0) → the first j (2.875) wins', () => {
+    const result = syncOffset(tx([['p', 0], ['q', 1], ['r', 2], ['x', 3]]), tx([['p', 0], ['q', 1], ['r', 2], ['x', 2.875], ['x', 3.125]]));
+    expect(result.matches[3]).toEqual({ sourceIndex: 3, targetIndex: 3, sourceTime: 3, targetTime: 2.875 });
+    expect(golden('tie-1-equal-distance', result)).toEqual(GOLDEN['tie-1-equal-distance']);
+  });
+  it('2. nextTarget: source y at 3 takes target y 3.125; source y at 3.25 skips that closer one (passed) for y 3.4375 (d .1875)', () => {
+    const result = syncOffset(tx([['p', 0], ['q', 1], ['r', 2], ['y', 3], ['y', 3.25]]), tx([['p', 0], ['q', 1], ['r', 2], ['y', 3.125], ['y', 3.4375]]));
+    expect(result.matches.map(m => m.targetIndex)).toEqual([0, 1, 2, 3, 4]); expect(result.matches[4]).toMatchObject({ sourceTime: 3.25, targetTime: 3.4375 });
+    expect(golden('tie-2-next-target', result)).toEqual(GOLDEN['tie-2-next-target']);
+  });
+  it('3. the 0.2 s window in floating point (offset 0): z 0.2 − 0 = 0.2 exactly (excluded); v 2.3 − 2.1 and u 3.2 − 3.0 land on the side d < 0.2 says', () => {
+    const A: [string, number][] = [['z', 0.2], ['p', 1], ['q', 1.5], ['v', 2.3], ['r', 2.5], ['s', 2.75], ['u', 3.2]];
+    const B: [string, number][] = [['z', 0], ['p', 1], ['q', 1.5], ['v', 2.1], ['r', 2.5], ['s', 2.75], ['u', 3.0]];
+    const result = syncOffset(tx(A), tx(B)), d = (i: number) => Math.abs(A[i][1] - B[i][1] - 0); // sync.ts:22 with the candidate offset 0
+    expect(d(0)).toBe(0.2);
+    for (const i of [0, 3, 6]) expect(result.matches.some(m => m.sourceIndex === i), `${A[i][0]}: d ${d(i)}`).toBe(d(i) < 0.2);
+    expect(result.matches.map(m => m.sourceIndex).filter(i => ![0, 3, 6].includes(i))).toEqual([1, 2, 4, 5]);
+    expect(golden('tie-3-boundary', result, undefined, `d z=${d(0)} v=${d(3)} u=${d(6)}`)).toEqual(GOLDEN['tie-3-boundary']);
+  });
+  it('4. candidate order: anchors p q r (offset +0.5) and k l m (offset −0.5) both give 3 matches, confidence 0.5 → the first found (+0.5) stays best', () => {
+    const result = syncOffset(tx([['p', 10], ['q', 11], ['r', 12], ['k', 13], ['l', 14], ['m', 15]]), tx([['p', 9.5], ['q', 10.5], ['r', 11.5], ['k', 13.5], ['l', 14.5], ['m', 15.5]]));
+    expect(result.offset).toBe(0.5); expect(result.confidence).toBe(0.5); expect(result.matches.map(m => m.sourceIndex)).toEqual([0, 1, 2]);
+    expect(golden('tie-4-candidate-order', result)).toEqual(GOLDEN['tie-4-candidate-order']);
+  });
+  it('5. duplicate anchors: p q r twice → four candidates share offset 0.5 exactly (others −2.5, 3.5: 3 matches each) → all 6 words at 0.5', () => {
+    const result = syncOffset(tx([['p', 1], ['q', 2], ['r', 3], ['p', 4], ['q', 5], ['r', 6]]), tx([['p', 0.5], ['q', 1.5], ['r', 2.5], ['p', 3.5], ['q', 4.5], ['r', 5.5]]));
+    expect(result.offset).toBe(0.5); expect(result.confidence).toBe(1); expect(result.matches.map(m => [m.sourceIndex, m.targetIndex])).toEqual([0, 1, 2, 3, 4, 5].map(i => [i, i]));
+    expect(golden('tie-5-duplicate-anchors', result)).toEqual(GOLDEN['tie-5-duplicate-anchors']);
+  });
+  // -- Review F3 (lane A 04:51): target times out of order, so sync.ts:46's window guard is false and :45's whole same-word
+  // list from nextTarget is scanned. Only candidate offset 0 (p q r; q r x gives median 0 too). x's target positions 3–6 at
+  // 0.5, 3, 0.5, 5 → d 2.5, 0, 2.5, 2 → j 4. A binary search over those times would stop at j 6 and match no x.
+  it('6. fallback: the target has x at 0.5, 3, 0.5, 5 after r at 2 (out of order) → the whole same-word list is scanned: source x at 3 takes j 4', () => {
+    const B: [string, number][] = [['p', 0], ['q', 1], ['r', 2], ['x', 0.5], ['x', 3], ['x', 0.5], ['x', 5]];
+    expect(B.some((w, k) => k > 0 && w[1] < B[k - 1][1])).toBe(true);
+    const result = syncOffset(tx([['p', 0], ['q', 1], ['r', 2], ['x', 3]]), tx(B));
+    expect(result.offset).toBe(0); expect(result.confidence).toBe(1); expect(result.matches.map(m => m.targetIndex)).toEqual([0, 1, 2, 4]);
+    expect(result.matches[3]).toEqual({ sourceIndex: 3, targetIndex: 4, sourceTime: 3, targetTime: 3 });
+    expect(golden('fallback-unsorted', result)).toEqual(FALLBACK_GOLDEN);
+  });
+});
+
+describe('T19 audit F1 fix: syncAndSwap sync deadline 30 s (Cutframe addition; lane A 03:56)', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it('a sync that never settles: pending at 29,999 ms; at 30,000 ms TOOL_TIMEOUT "Sync failed.", operationMayHaveRun false, details.deadlineMs; its signal aborted; nothing placed', async () => {
+    vi.useFakeTimers();
+    const r = rig(); r.sync.mockImplementation(() => new Promise<never>(() => {}));
+    let out: Rec | undefined; void run(r).then(v => { out = v; });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(r.sync).toHaveBeenCalledTimes(1); expect(out).toBeUndefined(); expect(r.place).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
+    expect(r.place).not.toHaveBeenCalled();
+    const signal = r.sync.mock.calls[0][2]; // the 3rd syncOffset argument is the fix's (a404e27 passes two)
+    expect(signal).toBeInstanceOf(AbortSignal); expect((signal as AbortSignal).aborted).toBe(true);
+  });
+  it('a sync that settles first clears its timer: no pending timer after the result', async () => {
+    vi.useFakeTimers();
+    const r = rig(); expect(await run(r)).toMatchObject({ success: true, syncOffset: 1.234 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  // A search or ingest request pending on the dropped worker is re-run once: t19-r-service.test.ts R1d (not repeated here).
+  it('AnalysisService.syncOffset(source, target, signal): abort closes the worker with ANALYSIS_CANCELLED, rejects with signal.reason; the next request spawns a fresh worker', async () => {
+    type Fake = { requests: AnalysisRequest[]; closes: unknown[] };
+    const workers: Fake[] = [];
+    const spawn = () => {
+      const pending = new Set<(e: unknown) => void>(), w: Fake = { requests: [], closes: [] };
+      workers.push(w);
+      return { ...w, init: () => Promise.resolve({ value: undefined }), run: (request: AnalysisRequest) => { w.requests.push(request); return new Promise((_, reject) => { pending.add(reject); }); },
+        close: (e: unknown) => { w.closes.push(e); for (const reject of pending) reject(e); pending.clear(); } };
+    };
+    // The signal parameter is the fix's; a404e27's syncOffset takes two (one cast).
+    const svc = new AnalysisService('/models/', spawn as never) as unknown as { syncOffset(s: Transcript, t: Transcript, signal?: AbortSignal): Promise<SyncResult> };
+    const words = SRC_WORDS.map(w => ({ ...w })), doc: Transcript = { language: 'en', languages: ['en'], total_duration: 3.3, segments: [{ id: 0, start: 1, end: 3.3, text: 'sa sb sc', speaker: 0, words }] };
+    const c = new AbortController(), first = svc.syncOffset(doc, doc, c.signal), settled = first.then(() => 'resolved', (e: unknown) => e);
+    await vi.waitFor(() => expect(workers[0]?.requests.map(q => q.task)).toEqual(['sync']));
+    c.abort();
+    expect(workers[0].closes).toHaveLength(1); expect(workers[0].closes[0]).toMatchObject({ code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' });
+    expect(await settled).toBe(c.signal.reason);
+    void svc.syncOffset(doc, doc).catch(() => {});
+    expect(workers).toHaveLength(2);
+    await vi.waitFor(() => expect(workers[1].requests.map(q => q.task)).toEqual(['sync']));
+  });
+});
+
+// ---- Audit F1 review F1, lane A ruling (c) (04:51): the deadline may end the worker only for a sync that has started. A sync
+// still queued behind another task (analysis.worker.ts:11 runs one task at a time, in arrival order) gets TOOL_TIMEOUT and is
+// never applied; the task ahead of it keeps its worker. The real AnalysisService and AnalysisWorker over a stubbed global
+// Worker that speaks today's wire protocol and replies in arrival order. Observed: terminate calls, replies, placements.
+// The client's { cancel: id } towards the worker is recorded (`other`) and not acted on, so the queued sync still "runs" when
+// it reaches the head and the client must ignore that stray reply; the skip itself is pinned on the worker side below.
+describe('T19 audit F1 review: a sync queued behind another task at the 30 s deadline (lane A ruling (c))', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  type Posted = { id: number; request: AnalysisRequest };
+  const TRANSCRIPT: Transcript = { language: 'en', languages: ['en'], total_duration: 1, segments: [] };
+  const SYNCED: SyncResult = { offset: 1.234, confidence: 1, matches: [0, 1, 2].map(k => ({ sourceIndex: k, targetIndex: k, sourceTime: k + 1.234, targetTime: k })) };
+  /** analysis.worker.ts's queue: one task at a time in arrival order; 'transcribe' holds the head until `finishTranscribe`. */
+  class QueueWorker {
+    onmessage?: (event: MessageEvent<AnalysisReply>) => void;
+    posted: Posted[] = []; other: unknown[] = []; terminate = vi.fn();
+    private queue: Posted[] = []; private transcribed = false;
+    postMessage(message: unknown) {
+      const m = message as Partial<Posted>;
+      if (typeof m?.id !== 'number' || !m.request) { this.other.push(message); return; }
+      this.posted.push(m as Posted); this.queue.push(m as Posted); this.next();
+    }
+    finishTranscribe() { this.transcribed = true; this.next(); }
+    private next() {
+      const head = this.queue[0];
+      if (!head || (head.request.task === 'transcribe' && !this.transcribed)) return;
+      this.queue.shift();
+      const value = head.request.task === 'transcribe' ? TRANSCRIPT : head.request.task === 'sync' ? SYNCED : true;
+      queueMicrotask(() => { this.onmessage?.({ data: { id: head.id, ok: true, value, elapsedMs: 0, backends: {} } } as MessageEvent<AnalysisReply>); this.next(); });
+    }
+  }
+  it('a sync queued behind an unfinished transcribe: TOOL_TIMEOUT at 30,000 ms; the worker is not terminated, the transcribe completes with its result, the sync is never applied, nothing placed', async () => {
+    vi.useFakeTimers();
+    const natives: QueueWorker[] = [];
+    vi.stubGlobal('location', { href: 'http://localhost/' }); // AnalysisWorker.init resolves the wasm URLs against it
+    vi.stubGlobal('Worker', class { constructor() { const w = new QueueWorker(); natives.push(w); return w; } });
+    const svc = new AnalysisService('/models/'), r = rig(), ctx = { ...r.ctx, service: svc } as SwapContext;
+    const pcm = { sampleRate: 16000, channels: 1, data: [new Float32Array(16)] } as unknown as Pcm;
+    const transcribed = svc.request<Transcript>({ task: 'transcribe', pcm }).then(value => ({ value }), (error: unknown) => ({ error }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(natives.map(w => w.posted.map(m => m.request.task))).toEqual([['init', 'transcribe']]);
+    let out: Rec | undefined; void syncAndSwap(ctx, INPUT).then(v => { out = v as Rec; });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(natives[0].posted.map(m => m.request.task)).toEqual(['init', 'transcribe', 'sync']); expect(out).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
+    expect(natives[0].terminate).not.toHaveBeenCalled(); expect(natives).toHaveLength(1);
+    expect(natives[0].other).toEqual([{ cancel: 3 }]); // the client asks the worker to skip the queued sync (ids: init 1, transcribe 2, sync 3)
+    natives[0].finishTranscribe();
+    expect(await transcribed).toEqual({ value: TRANSCRIPT });
+    await vi.advanceTimersByTimeAsync(0); // the queued sync reaches the head: skipped or run, its result is not used
+    expect(r.place).not.toHaveBeenCalled(); expect(natives[0].terminate).not.toHaveBeenCalled(); expect(natives).toHaveLength(1);
+    expect(out).toEqual({ success: false, code: 'TOOL_TIMEOUT', error: 'Sync failed.', operationMayHaveRun: false, details: { deadlineMs: 30000 } });
+  });
+});
+
+// ---- Lane A (after 04:52): a queued sync cancelled at the deadline is SKIPPED when it reaches the head, not run with its
+// result ignored (a degenerate one would run unbounded later, with nobody left to drop the worker). Protocol pinned here:
+//   main -> worker  { cancel: id } (no `request`). AnalysisWorker posts it when a request it sent is aborted before it
+//                   started (the queued row above reads it from QueueWorker.other).
+//   worker          records the id synchronously in onmessage, outside `queue` (it must not wait behind the running task);
+//                   posts nothing for the cancel itself; a cancel for an id already run or never sent changes nothing.
+//   worker          a cancelled id reaching the head is not run and replies { id, ok: false, error: { code:
+//                   'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } } (the AnalysisReply error shape).
+//   main            a reply for an id the client no longer holds is ignored without throwing (worker-client.ts:16).
+// analysis.worker.ts is loaded fresh (vi.resetModules) with engine and models mocked (no model code) over a stubbed scope.
+describe('T19 audit F1 review: analysis.worker.ts skips a task cancelled while queued (lane A; { cancel: id })', () => {
+  const ENGINE = '../apps/web/src/analysis/engine', MODELS = '../apps/web/src/analysis/models';
+  afterEach(() => { vi.unstubAllGlobals(); vi.doUnmock(ENGINE); vi.doUnmock(MODELS); vi.resetModules(); });
+  it('a sync cancelled while a transcribe runs ahead of it is never run; the transcribe and the sync after it run and reply in order; the skipped one replies ANALYSIS_CANCELLED; a cancel posts nothing', async () => {
+    let finish!: (t: Transcript) => void;
+    const transcribing = new Promise<Transcript>(resolve => { finish = resolve; });
+    const sync = vi.fn((_source: Transcript, _target: Transcript): SyncResult => ({ offset: 0, confidence: 1, matches: [] }));
+    vi.doMock(ENGINE, () => ({ AnalysisError, syncOffset: sync, snapCuts: vi.fn(), planSilenceRemoval: vi.fn(),
+      AnalysisEngine: class { models = { backends: {} }; transcribe() { return transcribing; } } }));
+    vi.doMock(MODELS, () => ({ MODEL_IDS: { embedding: 'test-embedder' } }));
+    const posted: Rec[] = [];
+    vi.stubGlobal('postMessage', (m: Rec) => { posted.push(m); });
+    vi.stubGlobal('onmessage', null);
+    vi.resetModules(); await import('../apps/web/src/analysis/analysis.worker');
+    const send = (data: unknown) => (globalThis as unknown as { onmessage(e: { data: unknown }): void }).onmessage({ data });
+    const doc = (tag: string) => ({ language: 'en', languages: ['en'], total_duration: 0, segments: [], tag }) as unknown as Transcript;
+    const S3 = doc('sync 3'), S4 = doc('sync 4'), WORDS = doc('transcribed');
+    send({ id: 1, request: { task: 'init', options: {} } });
+    send({ id: 2, request: { task: 'transcribe', pcm: {} } });
+    send({ id: 3, request: { task: 'sync', source: S3, target: S3 } });
+    send({ id: 4, request: { task: 'sync', source: S4, target: S4 } });
+    send({ cancel: 3 }); send({ cancel: 99 }); // 3 while transcribe 2 still runs; 99 was never sent
+    await vi.waitFor(() => expect(posted.map(m => m.id)).toEqual([1]));
+    finish(WORDS);
+    await vi.waitFor(() => expect(posted.some(m => m.id === 4)).toBe(true));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(sync.mock.calls.map(c => c[0])).toEqual([S4]);
+    expect(posted).toEqual([expect.objectContaining({ id: 1, ok: true }), expect.objectContaining({ id: 2, ok: true, value: WORDS }),
+      { id: 3, ok: false, error: { code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } },
+      expect.objectContaining({ id: 4, ok: true, value: { offset: 0, confidence: 1, matches: [] } })]);
+  });
+  it('the client ignores a reply for an id it no longer holds (a skipped or dropped request) without throwing, and still settles the others', async () => {
+    const native = { onmessage: undefined as ((event: MessageEvent<AnalysisReply>) => void) | undefined, postMessage: vi.fn(), terminate: vi.fn() };
+    vi.stubGlobal('Worker', class { constructor() { return native; } });
+    const client = new AnalysisWorker(), pending = client.run({ task: 'remove', assetId: 'a' });
+    expect(() => native.onmessage!({ data: { id: 7, ok: false, error: { code: 'ANALYSIS_CANCELLED', message: 'Analysis was cancelled.' } } } as MessageEvent<AnalysisReply>)).not.toThrow();
+    native.onmessage!({ data: { id: 1, ok: true, value: true, elapsedMs: 0, backends: {} } } as MessageEvent<AnalysisReply>);
+    await expect(pending).resolves.toMatchObject({ id: 1, ok: true, value: true });
   });
 });

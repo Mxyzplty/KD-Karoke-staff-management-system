@@ -4,8 +4,11 @@
 // stored refusal text, speed ranges, merge), findings part 2 §38 / §41, error codes §6, requirements A0.3 (timelineChanges). Not tested here:
 // INVALID_TOOL_INPUT and every handler code that Xapp's schema answers first (EMPTY_OPS, CONFLICTING_KEYFRAME_VALUE_MODES, INVALID_EASING,
 // INVALID_KEYFRAMES, INVALID_KEYFRAME_TIME/VALUE): those are T18's.
-// Provisional (undocumented, named `provisional` in the test): where `warnings` / `resolvedKeyframes` sit in the success envelope (both
-// `data.*` and top level are accepted); the `[<path>]` prefix of writeKeyframes messages (not asserted); USE_SET_TIME_REMAP for `add` on
+// A plain-property writeKeyframes success is Xapp's flat envelope (success, message, ops, resolvedKeyframes, warnings when
+// nonempty; no `data`), replace entry refusals read "[replace]" and setTimeRemap's own refusals carry no bracket prefix (lane R raw
+// read, 26 Nov (D127); the T04 F5b rows pin them). The `warnings` / `resolvedKeyframes` helpers below accept either position.
+// Provisional (undocumented, named `provisional` in the test): writeKeyframes add / update refusals assert Xapp's "[add/update]" (RC 9.2 l.2727–2728; update
+// is inferred), while remove and effect / mask entries keep the entry path `[<path>]`, still Cutframe's own; USE_SET_TIME_REMAP for `add` on
 // `timeRemap`; ITEM_NOT_FOUND for writeKeyframes; undo labels of setTimeRemap and playbackRate edits; the playbackRate growth message wording;
 // playbackRate on a non-media item; the codes of `properties is required` / `Provide itemId …`.
 // Expected to be RED until the P2 handlers land (a missing tool answers UNKNOWN_TOOL).
@@ -352,20 +355,20 @@ describe('writeKeyframes: stored order (findings part 2 §41 l.569–571: replac
     const r = wk(e, { borderWidth: { replace: [{ time: 2, value: 5 }], add: [{ time: 4, value: 6 }], update: [{ time: 2.05, value: 7 }], remove: [4] } });
     expect(r.success).toBe(true); expect(stored(e, 'borderWidth').map(k => [k.time, k.value])).toEqual([[2000, 5], [2050, 7]]);
   });
-  it('provisional: the resolved echo is keyed by property with source value / delta / factor / hold', () => {
+  it('the resolved echo sits at the top level, keyed by property; source value / delta / factor, and "current" for an entry with none (lane R raw read, 26 Nov (D127))', () => {
     const e = editor(bw(kf(0, 2), kf(10000, 12)));
     const r = wk(e, { borderWidth: { add: [{ time: 1, value: 4 }, { time: 2, delta: 1 }, { time: 3, factor: 2 }, { time: 5 }] } });
-    expect(r.data.resolvedKeyframes.borderWidth.map((x: any) => [x.time, x.source])).toEqual([[1, 'value'], [2, 'delta'], [3, 'factor'], [5, 'hold']]);
+    expect(r.resolvedKeyframes.borderWidth.map((x: any) => [x.time, x.source])).toEqual([[1, 'value'], [2, 'delta'], [3, 'factor'], [5, 'current']]);
   });
-  it('provisional: success wording "Keyframes written on \'vid\': borderWidth (2)." with data.keyframes as the keyframes block entry (stored order, timeline seconds)', () => {
+  it('success wording "writeKeyframes: borderWidth updated (1 op)" (RC 9.2 l.2726, 10.8 l.3053); no `data`: no itemId and no keyframes block in the result (D127)', () => {
     const e = editor(), r = wk(e, { borderWidth: { replace: [{ time: 2, value: 4 }, { time: 1, value: 2 }] } });
-    expect(r.message).toBe("Keyframes written on 'vid': borderWidth (2).");
-    expect(r.data).toMatchObject({ itemId: 'vid', keyframes: { borderWidth: { defaultValue: 0, keyframeCount: 2, keyframes: [{ timelineSeconds: 1, value: 2 }, { timelineSeconds: 2, value: 4 }] } } });
+    expect(r.message).toBe('writeKeyframes: borderWidth updated (1 op)');
+    expect(r).not.toHaveProperty('data'); expect(r).not.toHaveProperty('itemId'); expect(r).not.toHaveProperty('keyframes');
   });
-  it('provisional: a property left empty reports { defaultValue, keyframeCount: 0, keyframes: [] }; {timeRemap:{replace:[]}} clears the curve to null', () => {
+  it('an empty replace on a property and {timeRemap:{replace:[]}} give one "clear" op each, in payload order, and no `data`; the remap curve is cleared to null (D127)', () => {
     const doc = bw(kf(1000, 1)); Object.assign(itemOf(doc, 'vid'), { timeRemap: { defaultValue: 0, keyframes: [kf(0, 0), kf(5000, 5000)] } });
     const e = editor(doc), r = wk(e, { borderWidth: { replace: [] }, timeRemap: { replace: [] } });
-    expect(r.success).toBe(true); expect(r.data.keyframes.borderWidth).toEqual({ defaultValue: 0, keyframeCount: 0, keyframes: [] }); expect(r.data.keyframes.timeRemap).toEqual({ defaultValue: 0, keyframeCount: 0, keyframes: [] });
+    expect(r.success).toBe(true); expect(r.ops).toEqual([{ property: 'borderWidth', op: 'clear' }, { property: 'timeRemap', op: 'clear' }]); expect(r).not.toHaveProperty('data');
     expect(itemOf(e.doc, 'vid').timeRemap ?? null).toBeNull();
   });
 });
@@ -405,20 +408,20 @@ describe('writeKeyframes: remaining refusals (error codes §6; provisional where
     refused(e, before, wk(e, { opacity: { add: [{ time: t, value: 0.5 }] } }), 'INVALID_KEYFRAME_TIME');
     refused(e, before, wk(e, { opacity: { remove: [t] } }), 'INVALID_KEYFRAME_TIME');
   });
-  it('INVALID_EASING lists the options; INVALID_BEZIER_HANDLE names the entry path (error codes §6)', () => {
+  it('INVALID_EASING lists the options (entry path); INVALID_BEZIER_HANDLE on an update entry reads "[add/update]" (INFERRED for update, X01 stores add only; RC 9.2 l.2727)', () => {
     const { e, before } = fresh(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5, easing: 'wobble' }] } });
     refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^\[opacity\.add\[0\]\] easing 'wobble' not valid\. Options: /);
     const h = wk(e, { opacity: { update: [{ time: 1, value: 0.5, outHandle: [2, 0] }] } });
-    refused(e, before, h, 'INVALID_BEZIER_HANDLE'); expect(h.message).toBe('[opacity.update[0]] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
+    refused(e, before, h, 'INVALID_BEZIER_HANDLE'); expect(h.message, 'update entry: [add/update] is inferred for update (lane R via lane A 12:16)').toBe('[add/update] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
   });
   it('INVALID_RESOLVED_KEYFRAME_VALUE: a factor that overflows to a non-finite value (message names the entry path)', () => {
     const e = editor(withVid({ properties: { positionY: prop([], 1e300) } })), before = json(e.doc);
     const r = wk(e, { positionY: { add: [{ time: 1, factor: 1e10 }] } });
     refused(e, before, r, 'INVALID_RESOLVED_KEYFRAME_VALUE'); expect(r.message).toBe('[positionY.add[0]] positionY resolved to a non-finite value.');
   });
-  it('TIME_OUT_OF_BOUNDS exact message: "[<path>] keyframe at <t>s outside item bounds (<a>s - <b>s)." with the item bounds in timeline seconds', () => {
+  it('TIME_OUT_OF_BOUNDS exact message: "[add/update] keyframe at <t>s outside item bounds (<a>s - <b>s)." with the item bounds in timeline seconds', () => {
     const { e, before } = fresh(), r = wk(e, { opacity: { add: [{ time: 11, value: 0.5 }] } });
-    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[opacity.add[0]] keyframe at 11s outside item bounds (0s - 10s).');
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[add/update] keyframe at 11s outside item bounds (0s - 10s).');
   });
   it('provisional: payload missing, empty or not an object → MISSING_PARAM "payload is required"', () => {
     for (const payload of [undefined, {}, [], 'x']) { const { e, before } = fresh(), r = call(e, 'writeKeyframes', { itemId: 'vid', payload }); refused(e, before, r, 'MISSING_PARAM'); expect(r.error).toBe('payload is required'); }
@@ -453,24 +456,29 @@ describe('setTimeRemap: remaining codes and storage (provisional where the wordi
   it('INVALID_KEYFRAME_TIME for a negative or non-number time', () => {
     for (const time of [-1, 'x']) { const e = editor(), before = json(e.doc); refused(e, before, remap(e, [{ time, value: 0 }]), 'INVALID_KEYFRAME_TIME'); }
   });
-  it('INVALID_KEYFRAME_VALUE for a negative or non-number value; provisional message "[keyframes[0]] value must be a non-negative number of source milliseconds, got: -5"', () => {
+  it('INVALID_KEYFRAME_VALUE for a negative or non-number value; message "value must be a non-negative number of source milliseconds, got: -5" with no bracket prefix (lane R raw read, 26 Nov (D127))', () => {
     const e = editor(), before = json(e.doc), r = remap(e, [{ time: 1, value: -5 }]);
-    refused(e, before, r, 'INVALID_KEYFRAME_VALUE'); expect(r.message).toBe('[keyframes[0]] value must be a non-negative number of source milliseconds, got: -5');
+    refused(e, before, r, 'INVALID_KEYFRAME_VALUE'); expect(r.message).toBe('value must be a non-negative number of source milliseconds, got: -5');
     refused(e, before, remap(e, [{ time: 1, value: 'x' }]), 'INVALID_KEYFRAME_VALUE');
   });
-  it('INVALID_EASING and INVALID_BEZIER_HANDLE use the entry path keyframes[n]', () => {
+  it('INVALID_EASING and INVALID_BEZIER_HANDLE carry no bracket prefix (D127)', () => {
     const e = editor(), before = json(e.doc), r = remap(e, [{ time: 1, value: 0, easing: 'wobble' }]);
-    refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^\[keyframes\[0\]\] easing 'wobble' not valid\. Options: /);
-    refused(e, before, remap(e, [{ time: 0, value: 0 }, { time: 1, value: 0, inHandle: [0, 101] }]), 'INVALID_BEZIER_HANDLE');
+    refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^easing 'wobble' not valid\. Options: /);
+    const h = remap(e, [{ time: 0, value: 0 }, { time: 1, value: 0, inHandle: [0, 101] }]);
+    refused(e, before, h, 'INVALID_BEZIER_HANDLE'); expect(h.message).toBe('inHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
+  });
+  it('T04 F5b D5: INVALID_KEYFRAME_TIME reads "time must be a positive number, got: -1" with no bracket prefix (D127)', () => {
+    const e = editor(), before = json(e.doc), r = remap(e, [{ time: -1, value: 0 }]);
+    refused(e, before, r, 'INVALID_KEYFRAME_TIME'); expect(r.message).toBe('time must be a positive number, got: -1');
   });
   it('10 ms tolerance: a time 10 ms past the end is accepted and clamps to the clip length; a time 10 ms before the start clamps to 0', () => {
     const doc = build({ tracks: [mkTrack('V1', 'video')], items: [video('late', 'V1', 2000, 12000, 0, 10000)] }), e = editor(doc);
     const r = call(e, 'setTimeRemap', { itemId: 'late', keyframes: [{ time: 1.99, value: 0 }, { time: 12.01, value: 9000 }] });
     expect(r.success).toBe(true); expect(itemOf(e.doc, 'late').timeRemap.keyframes.map((k: any) => k.time)).toEqual([0, 10000]);
   });
-  it('provisional: the TIME_OUT_OF_BOUNDS message names the entry path: "[keyframes[1]] keyframe at 15s outside clip bounds (0.000s – 10.000s)."', () => {
+  it('the TIME_OUT_OF_BOUNDS message: "Keyframe at 15s is outside clip bounds (0.000s – 10.000s)." (RC 9.2 l.2729)', () => {
     const e = editor(), before = json(e.doc), r = remap(e, [{ time: 0, value: 0 }, { time: 15, value: 100 }]);
-    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[keyframes[1]] keyframe at 15s outside clip bounds (0.000s – 10.000s).');
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('Keyframe at 15s is outside clip bounds (0.000s – 10.000s).');
   });
   it('merge keeps the id of the keyframe it updates; stored keyframe ids match kf_<epoch ms>_<9 chars>', () => {
     const e = editor(); remap(e, [{ time: 0, value: 0 }, { time: 5, value: 5000 }]);
@@ -489,6 +497,121 @@ describe('setTimeRemap: remaining codes and storage (provisional where the wordi
   it('TRACK_LOCKED: a locked track refuses setTimeRemap', () => {
     const doc = base(); doc.tracks.find((t: any) => t.id === 'V1')!.locked = true;
     const e = editor(doc), before = json(e.doc); refused(e, before, remap(e, [{ time: 0, value: 0 }]), 'TRACK_LOCKED');
+  });
+});
+
+describe('T04 F5 (D115): result messages in Xapp\'s form (RC 9.2 l.2726–2729, 10.8 l.3045–3054)', () => {
+  const remap = (e: Editor, keyframes: unknown, extra: Record<string, unknown> = {}) => call(e, 'setTimeRemap', { itemId: 'vid', keyframes, ...extra });
+  it('writeKeyframes success follows Xapp: "writeKeyframes: <p> updated (1 op)", one op per property (RC 9.2 l.2726, 10.8 l.3045–3053; E01: one add of 5)', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [1, 2, 3, 4, 5].map(time => ({ time, value: time / 10 })) } });
+    expect(r.success).toBe(true); expect(r.message).toBe('writeKeyframes: opacity updated (1 op)');
+  });
+  it('add plus update on one property is one op: "writeKeyframes: borderWidth updated (1 op)" (RC 10.8 l.3051, U05)', () => {
+    const e = editor(bw(kf(2000, 3))), r = wk(e, { borderWidth: { add: [{ time: 1, value: 2 }], update: [{ time: 2, value: 4 }] } });
+    expect(r.success).toBe(true); expect(r.message).toBe('writeKeyframes: borderWidth updated (1 op)');
+  });
+  it('INFERRED from code only, no stored case: several properties read "writeKeyframes: <k> properties updated (<k> ops)" (RC 10.8 l.3054, [C])', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] }, scale: { add: [{ time: 1, value: 1.5 }] } });
+    expect(r.success).toBe(true); expect(r.message, 'INFERRED from code only (RC 10.8 l.3054, [C]); no stored case shows it').toBe('writeKeyframes: 2 properties updated (2 ops)');
+  });
+  it('INFERRED, no stored case: clearing the remap curve {timeRemap: {replace: []}} reads "writeKeyframes: timeRemap updated (1 op)" (op kind "clear", RC 10.8 l.3048; one property, l.3045 / l.3053)', () => {
+    const doc = base(); Object.assign(itemOf(doc, 'vid'), { timeRemap: { defaultValue: 0, keyframes: [kf(0, 0), kf(5000, 5000)] } });
+    const e = editor(doc), r = wk(e, { timeRemap: { replace: [] } });
+    expect(r.success).toBe(true); expect(r.message, 'INFERRED, no stored case: an empty replace is the op kind "clear" (RC 10.8 l.3048); one property reads "(1 op)" (l.3045, l.3053)').toBe('writeKeyframes: timeRemap updated (1 op)');
+  });
+  it('open; Cutframe\'s own (lane A 12:37): an effect add entry out of bounds keeps the entry path "[amount.add[0]] keyframe at 11s outside item bounds (0s - 10s)."', () => {
+    const e = editor(); call(e, 'writeEffects', { itemId: 'vid', add: [{ effectId: 'grayscale' }] });
+    const before = json(e.doc), n = e.bus.undoStack.length, j = e.journal.length;
+    const r = wk(e, { amount: { add: [{ time: 11, value: 50 }] } }, { effectId: 'grayscale_1' });
+    expect(r).toMatchObject({ success: false, code: 'TIME_OUT_OF_BOUNDS' }); expect(r.message).toBe('[amount.add[0]] keyframe at 11s outside item bounds (0s - 10s).');
+    expect(json(e.doc)).toBe(before); expect(e.bus.undoStack).toHaveLength(n); expect(e.journal).toHaveLength(j);
+  });
+  it('open; Cutframe\'s own (lane A 12:37): an effect write succeeds with "Keyframes written on \'vid\' effect \'grayscale_1\': amount (2)."', () => {
+    const e = editor(); call(e, 'writeEffects', { itemId: 'vid', add: [{ effectId: 'grayscale' }] });
+    const r = wk(e, { amount: { replace: [{ time: 0, value: 0 }, { time: 2, value: 100 }] } }, { effectId: 'grayscale_1' });
+    expect(r.success).toBe(true); expect(r.message).toBe("Keyframes written on 'vid' effect 'grayscale_1': amount (2).");
+  });
+  it('X01 / X02: an add refusal is prefixed "[add/update]", not the entry path (RC 9.2 l.2727–2728)', () => {
+    const e = editor(), before = json(e.doc);
+    const x1 = wk(e, { rotation: { add: [{ time: 2, value: 5, outHandle: [1.5, 0] }] } });
+    refused(e, before, x1, 'INVALID_BEZIER_HANDLE'); expect(x1.message).toBe('[add/update] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
+    const x2 = wk(e, { rotation: { add: [{ time: 12, value: 5 }] } });
+    refused(e, before, x2, 'TIME_OUT_OF_BOUNDS'); expect(x2.message).toBe('[add/update] keyframe at 12s outside item bounds (0s - 10s).');
+  });
+  it('T03: setTimeRemap out of bounds reads "Keyframe at <t>s is outside clip bounds (<a>s – <b>s)." with no prefix (RC 9.2 l.2729)', () => {
+    const e = editor(), before = json(e.doc), r = remap(e, [{ time: 0, value: 0 }, { time: 15, value: 100 }]);
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('Keyframe at 15s is outside clip bounds (0.000s – 10.000s).');
+  });
+});
+
+// RC 10.8 l.3045: every success "returns `ops`", one { property, op } per property; ops sit at the top level (lane R raw read, 26 Nov (D127)).
+describe('T04 F5b: writeKeyframes ops at the top level, one { property, op } per property (RC 10.8 l.3045–3052; D127)', () => {
+  it('replace of 3 is one "replace" op (RC 10.8 l.3048, l.3051: A00 / U00 / R00)', () => {
+    const e = editor(), r = wk(e, { borderWidth: { replace: [{ time: 0, value: 1 }, { time: 1, value: 2 }, { time: 2, value: 3 }] } });
+    expect(r.success).toBe(true); expect(r.ops).toEqual([{ property: 'borderWidth', op: 'replace' }]);
+  });
+  it('add plus update on one property is one "upsert" op (RC 10.8 l.3050–3051, U05; lane R (g) via lane A 12:16)', () => {
+    const e = editor(bw(kf(2000, 3))), r = wk(e, { borderWidth: { add: [{ time: 1, value: 2 }], update: [{ time: 2, value: 4 }] } });
+    expect(r.success).toBe(true); expect(r.ops).toEqual([{ property: 'borderWidth', op: 'upsert' }]);
+  });
+  it('INFERRED, no stored ops: add only is one "upsert" op (RC 10.8 l.3050 [C]; E01 stores the message, not ops)', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [1, 2, 3, 4, 5].map(time => ({ time, value: time / 10 })) } });
+    expect(r.success).toBe(true); expect(r.ops, 'INFERRED: add only → "upsert" (RC 10.8 l.3050 [C])').toEqual([{ property: 'opacity', op: 'upsert' }]);
+  });
+  it('INFERRED, no stored case: an empty replace is one "clear" op (RC 10.8 l.3048 [C])', () => {
+    const e = editor(bw(kf(1000, 1))), r = wk(e, { borderWidth: { replace: [] } });
+    expect(r.success).toBe(true); expect(r.ops, 'INFERRED: empty replace → "clear" (RC 10.8 l.3048 [C])').toEqual([{ property: 'borderWidth', op: 'clear' }]);
+  });
+  it('INFERRED, no stored case: remove only is one "remove" op (RC 10.8 l.3050 [C])', () => {
+    const e = editor(bw(kf(1000, 1))), r = wk(e, { borderWidth: { remove: [1] } });
+    expect(r.success).toBe(true); expect(r.ops, 'INFERRED: remove only → "remove" (RC 10.8 l.3050 [C])').toEqual([{ property: 'borderWidth', op: 'remove' }]);
+  });
+  it('INFERRED, no stored case: add plus remove is one "upsert+remove" op (RC 10.8 l.3049 [C])', () => {
+    const e = editor(bw(kf(1000, 1), kf(3000, 2))), r = wk(e, { borderWidth: { add: [{ time: 5, value: 4 }], remove: [1] } });
+    expect(r.success).toBe(true); expect(r.ops, 'INFERRED: add + remove → "upsert+remove" (RC 10.8 l.3049 [C])').toEqual([{ property: 'borderWidth', op: 'upsert+remove' }]);
+  });
+  it('INFERRED, no stored case: replace with other arrays is still one "replace" op; the others are not counted (RC 10.8 l.3048 [C])', () => {
+    const e = editor(bw(kf(1000, 1), kf(3000, 2))), r = wk(e, { borderWidth: { replace: [{ time: 2, value: 5 }], add: [{ time: 4, value: 6 }] } });
+    expect(r.success).toBe(true); expect(r.ops, 'INFERRED: replace wins, other arrays not counted (RC 10.8 l.3048 [C])').toEqual([{ property: 'borderWidth', op: 'replace' }]);
+  });
+  it('INFERRED, no stored case: two properties give two entries, one per property; entry order not recorded (RC 10.8 l.3045, l.3054 [C])', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] }, scale: { add: [{ time: 1, value: 1.5 }] } });
+    expect(r.success).toBe(true); expect(r.ops, 'INFERRED: one entry per property (RC 10.8 l.3045, l.3054 [C]); order open').toHaveLength(2);
+    expect(r.ops).toEqual(expect.arrayContaining([{ property: 'opacity', op: 'upsert' }, { property: 'scale', op: 'upsert' }]));
+  });
+});
+
+// Lane R raw read, 26 Nov (D127): the plain-property envelope, the replace prefix and the overwrite warning text. Effect and mask
+// writes keep their own envelope, entry-path prefixes, warning prefix and "hold" source (out of scope, unchanged).
+describe('T04 F5b: writeKeyframes envelope and refusal prefixes in Xapp\'s form (lane R raw read, 26 Nov (D127))', () => {
+  it('D1: the success keys are exactly success, message, ops, resolvedKeyframes (+ timelineChanges, which callTool adds, tools.ts); no data, itemId, effectId or keyframes', () => {
+    const e = editor(), r = wk(e, { opacity: { add: [{ time: 1, value: 0.5 }] } });
+    expect(Object.keys(r).sort()).toEqual(['message', 'ops', 'resolvedKeyframes', 'success', 'timelineChanges']);
+    expect(r.resolvedKeyframes).toEqual({ opacity: [{ time: 1, value: 0.5, source: 'value' }] });
+  });
+  it('D1 + D3: an overwrite adds a top-level warnings key with the warning text and no property prefix: "add at 1.003s replaced the keyframe already at that instant."', () => {
+    const e = editor(bw(kf(1000, 1), kf(3000, 2))), r = wk(e, { borderWidth: { add: [{ time: 1.003, value: 9 }] } });
+    expect(Object.keys(r).sort()).toEqual(['message', 'ops', 'resolvedKeyframes', 'success', 'timelineChanges', 'warnings']);
+    expect(r.warnings).toEqual(['add at 1.003s replaced the keyframe already at that instant.']);
+  });
+  it('D2: a replace entry\'s handle refusal reads "[replace] outHandle must be …"', () => {
+    const e = editor(), before = json(e.doc), r = wk(e, { opacity: { replace: [{ time: 1, value: 0.5, outHandle: [1.5, 0] }] } });
+    refused(e, before, r, 'INVALID_BEZIER_HANDLE'); expect(r.message).toBe('[replace] outHandle must be [x, y] with x from 0 to 1 and y from -100 to 100.');
+  });
+  it('D2: a replace entry out of bounds reads "[replace] keyframe at 11s outside item bounds (0s - 10s)."', () => {
+    const e = editor(), before = json(e.doc), r = wk(e, { opacity: { replace: [{ time: 11, value: 0.5 }] } });
+    refused(e, before, r, 'TIME_OUT_OF_BOUNDS'); expect(r.message).toBe('[replace] keyframe at 11s outside item bounds (0s - 10s).');
+  });
+  it('guard (D2 scope) (provisional): a replace entry\'s easing refusal keeps the entry path "[opacity.replace[0]]"', () => {
+    const e = editor(), before = json(e.doc), r = wk(e, { opacity: { replace: [{ time: 1, value: 0.5, easing: 'wobble' }] } });
+    refused(e, before, r, 'INVALID_EASING'); expect(r.message).toMatch(/^\[opacity\.replace\[0\]\] easing 'wobble' not valid\. Options: /);
+  });
+  it('guard: an effect write keeps its data envelope (itemId, effectId, keyframes, resolvedKeyframes; no ops) and the "hold" source', () => {
+    const e = editor(); call(e, 'writeEffects', { itemId: 'vid', add: [{ effectId: 'grayscale' }] });
+    const r = wk(e, { amount: { add: [{ time: 1 }] } }, { effectId: 'grayscale_1' });
+    expect(Object.keys(r).sort()).toEqual(['data', 'message', 'success', 'timelineChanges']);
+    expect(Object.keys(r.data).sort()).toEqual(['effectId', 'itemId', 'keyframes', 'resolvedKeyframes']);
+    expect(r.data.resolvedKeyframes.amount[0].source).toBe('hold');
   });
 });
 

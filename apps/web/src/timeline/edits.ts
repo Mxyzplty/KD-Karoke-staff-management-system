@@ -9,7 +9,7 @@ import { MIN_ITEM_MS, rippleAt } from './items';
 import { CommandError, EPS, fail, fmt, groupOf, isCaption, item, itemsOn, span, toMs, trackLocked } from './model';
 import type { Keyframe, KeyframePatch, KeyframeRef } from './properties';
 import {
-  EASINGS, ensureProp, evaluate, KEYFRAME_PROPERTIES, keyframeId, keyframeList, keyframesBlock, prop, rateOf, RATE, REGISTRY, REMAP_TYPES, remapKeyframes,
+  EASINGS, ensureProp, evaluate, KEYFRAME_PROPERTIES, keyframeId, keyframeList, prop, rateOf, RATE, REGISTRY, REMAP_TYPES, remapKeyframes,
   setStatic, sorted, specOf, speedRange, staticValue, toTimelineMs, validEasing,
 } from './properties';
 import { agentIdOf, animatableParam, effectStack, ensureParam, paramProp, resolveAgentId } from './effects';
@@ -29,14 +29,18 @@ const refuse = (code: string, error: string, message: string): never => fail(cod
 const handleOk = (h: unknown) => Array.isArray(h) && h.length === 2 && isNum(h[0]) && isNum(h[1]) && h[0] >= 0 && h[0] <= 1 && h[1] >= -100 && h[1] <= 100;
 const lockCheck = (doc: ProjectDocument, i: RecordData) => { if (trackLocked(doc, i.trackId)) fail('TRACK_LOCKED', `Track ${i.trackId} is locked`); };
 
+/** The refusal prefix `[<path>] `; an empty path gives none (setTimeRemap's own refusals, lane R raw read, 26 Nov (D127)). */
+const at = (path: string) => path ? `[${path}] ` : '';
 /** Checks shared by both keyframe tools: time, easing, handles (error codes §6). */
 function checkTime(path: string, t: unknown) {
-  if (!isNum(t) || t < 0) refuse('INVALID_KEYFRAME_TIME', 'Invalid keyframe time', `[${path}] time must be a positive number, got: ${show(t)}`);
+  if (!isNum(t) || t < 0) refuse('INVALID_KEYFRAME_TIME', 'Invalid keyframe time', `${at(path)}time must be a positive number, got: ${show(t)}`);
 }
-export function checkShape(path: string, e: RecordData) {
-  if (e.easing !== undefined && !validEasing(e.easing)) refuse('INVALID_EASING', 'Invalid easing', `[${path}] easing '${show(e.easing)}' not valid. Options: ${EASINGS.join(', ')}`);
+/** `handleAt`: the handle refusal's prefix (writeKeyframes add / update entries pass 'add/update', RC 9.2 l.2727–2728;
+ *  replace entries 'replace', D127). */
+export function checkShape(path: string, e: RecordData, handleAt = path) {
+  if (e.easing !== undefined && !validEasing(e.easing)) refuse('INVALID_EASING', 'Invalid easing', `${at(path)}easing '${show(e.easing)}' not valid. Options: ${EASINGS.join(', ')}`);
   for (const h of ['inHandle', 'outHandle']) if (e[h] !== undefined && !handleOk(e[h]))
-    refuse('INVALID_BEZIER_HANDLE', 'Invalid bezier handle', `[${path}] ${h} must be [x, y] with x from 0 to 1 and y from -100 to 100.`);
+    refuse('INVALID_BEZIER_HANDLE', 'Invalid bezier handle', `${at(handleAt)}${h} must be [x, y] with x from 0 to 1 and y from -100 to 100.`);
 }
 /** A stored keyframe from an input entry; an overwrite keeps the old id and time (§41). */
 const keyframe = (e: RecordData, time: number, value: unknown, id = keyframeId()): Keyframe =>
@@ -86,16 +90,18 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     for (const o of OPS) if (ops[o] !== undefined && !Array.isArray(ops[o]))
       fail('INVALID_TOOL_INPUT', 'Invalid input for writeKeyframes', { message: `$.payload.${p}.${o}: must be array`, data: { details: { errors: [{ path: `$.payload.${p}.${o}`, code: 'TYPE', message: 'must be array' }] } } });
     for (const o of ['replace', 'add', 'update'] as const) (ops[o] ?? []).forEach((e: RecordData, n: number) => {
-      const path = `${p}.${o}[${n}]`, entry = e ?? {};
+      // Xapp prefixes add and update refusals "[add/update]" (RC 9.2 l.2727–2728) and replace refusals "[replace]" (lane R raw
+      // read, 26 Nov (D127)); effect and mask entries keep the entry path, their prefix is not recorded (open; lane A 12:37).
+      const path = `${p}.${o}[${n}]`, entry = e ?? {}, tag = fx || mask ? path : o === 'replace' ? 'replace' : 'add/update';
       checkTime(path, entry.time);
       if (['value', 'delta', 'factor'].filter(m => entry[m] !== undefined).length > 1)
         refuse('CONFLICTING_KEYFRAME_VALUE_MODES', 'Conflicting value modes', `[${path}] provide at most one of value, delta, or factor. Omit all three to capture the current interpolated value.`);
       for (const m of ['value', 'delta', 'factor']) if (entry[m] !== undefined && !isNum(entry[m]))
         refuse(`INVALID_KEYFRAME_${m.toUpperCase()}`, `Invalid keyframe ${m}`, `[${path}] ${m} must be a finite number if provided, got: ${show(entry[m])}`);
-      checkShape(path, entry);
+      checkShape(path, entry, tag);
       const t = toMs(entry.time);
       if (t < i.display.from - EPS || t > i.display.to + EPS)
-        refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `[${path}] keyframe at ${entry.time}s outside item bounds (${fmt(i.display.from)}s - ${fmt(i.display.to)}s).`);
+        refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `[${tag}] keyframe at ${entry.time}s outside item bounds (${fmt(i.display.from)}s - ${fmt(i.display.to)}s).`);
     });
     (ops.remove ?? []).forEach((t: unknown, n: number) => checkTime(`${p}.remove[${n}]`, t));
   }
@@ -107,7 +113,8 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     const spec: { min?: number; max?: number } = fx ? animatableParam(fx, args.effectId, p) : mask ? MASK_RANGE[p as MaskKey] : specOf(i.type, p)!, pr = fx ? ensureParam(fx, p) : mask ? maskProp(mask, p as MaskKey) : ensureProp(i, p), pre = new Set(pr.keyframes.map(k => k.id)), echo: RecordData[] = (resolved[p] = []);
     const resolve = (path: string, e: RecordData, t: number, list: Keyframe[]) => {
       const cur = Number(evaluate(list, pr.defaultValue, t));
-      const [v, source] = e.value !== undefined ? [e.value, 'value'] : e.delta !== undefined ? [cur + e.delta, 'delta'] : e.factor !== undefined ? [cur * e.factor, 'factor'] : [cur, 'hold'];
+      // An entry with no value, delta or factor is `current` on a plain property (D127); effect and mask writes keep 'hold' (open).
+      const [v, source] = e.value !== undefined ? [e.value, 'value'] : e.delta !== undefined ? [cur + e.delta, 'delta'] : e.factor !== undefined ? [cur * e.factor, 'factor'] : [cur, fx || mask ? 'hold' : 'current'];
       if (!Number.isFinite(v)) refuse('INVALID_RESOLVED_KEYFRAME_VALUE', 'Invalid resolved keyframe value', `[${path}] ${p} resolved to a non-finite value.`);
       if (spec.min !== undefined && v < spec.min) refuse('KEYFRAME_VALUE_OUT_OF_RANGE', 'Keyframe value out of range', `[${path}] ${p} must be at least ${spec.min}, resolved to ${v}.`);
       if (spec.max !== undefined && v > spec.max) refuse('KEYFRAME_VALUE_OUT_OF_RANGE', 'Keyframe value out of range', `[${path}] ${p} must be at most ${spec.max}, resolved to ${v}.`);
@@ -120,7 +127,7 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     }
     (ops.add ?? []).forEach((e: RecordData, n: number) => {
       const t = at(e.time), v = resolve(`${p}.add[${n}]`, e, t, pr.keyframes), hit = nearest(pr.keyframes, t, 4);
-      if (hit) { replaceAt(pr.keyframes, hit, e, v); warnings.push(`${p}: add at ${e.time}s replaced the keyframe already at that instant.`); }
+      if (hit) { replaceAt(pr.keyframes, hit, e, v); warnings.push(`${fx || mask ? `${p}: ` : ''}add at ${e.time}s replaced the keyframe already at that instant.`); }
       else pr.keyframes.push(keyframe(e, t, v));
     });
     (ops.update ?? []).forEach((e: RecordData, n: number) => {
@@ -136,15 +143,27 @@ export function writeKeyframes(doc: ProjectDocument, args: RecordData): RecordDa
     // Storage order per findings part 2 §41: replace stores sorted, add / update append, overwrites keep their place;
     // readers sort (evaluator, UI, graph). Confirmed or refuted by the Author-run G-02 replay.
   }
-  const block = keyframesBlock(i).keyframes ?? {};
-  for (const p of Object.keys(payload)) {
-    const ep = fx ? paramProp(fx, p) : mask ? maskProp(mask, p as MaskKey) : undefined;
-    tracks[p] = ep ? { defaultValue: ep.defaultValue, keyframeCount: ep.keyframes.length, keyframes: keyframeList(ep.keyframes, t => toTimelineMs(i, t)) }
-      : block[p] ?? { defaultValue: p === 'timeRemap' ? 0 : prop(i, p)?.defaultValue, keyframeCount: 0, keyframes: [] };
+  const names = Object.keys(payload), tail = warnings.length ? ` Warnings: ${warnings.join(' ')}` : '';
+  if (fx || mask) {
+    // Effect and mask writes keep Cutframe's own wording and `data` envelope, with no ops (open).
+    for (const p of names) {
+      const ep = fx ? paramProp(fx, p)! : maskProp(mask!, p as MaskKey);
+      tracks[p] = { defaultValue: ep.defaultValue, keyframeCount: ep.keyframes.length, keyframes: keyframeList(ep.keyframes, t => toTimelineMs(i, t)) };
+    }
+    const counts = names.map(p => `${p} (${tracks[p].keyframeCount})`).join(', ');
+    return { success: true, message: `Keyframes written on '${i.id}'${fx ? ` effect '${args.effectId}'` : ''}: ${counts}.${tail}`,
+      data: { itemId: i.id, ...(fx ? { effectId: args.effectId } : {}), keyframes: tracks, resolvedKeyframes: resolved, ...(warnings.length ? { warnings } : {}) } };
   }
-  const counts = Object.keys(payload).map(p => `${p} (${tracks[p].keyframeCount})`).join(', ');
-  return { success: true, message: `Keyframes written on '${i.id}'${fx ? ` effect '${args.effectId}'` : ''}: ${counts}.${warnings.length ? ` Warnings: ${warnings.join(' ')}` : ''}`,
-    data: { itemId: i.id, ...(fx ? { effectId: args.effectId } : {}), keyframes: tracks, resolvedKeyframes: resolved, ...(warnings.length ? { warnings } : {}) } };
+  // A plain property write reads as Xapp's, one op per property (RC 9.2 l.2726, 10.8 l.3045–3054; the k-property form is
+  // inferred from code only), and returns Xapp's ops, one { property, op } per property in payload order (RC 10.8
+  // l.3045–3052): replace wins ("clear" when empty), else add / update → "upsert", plus remove → "upsert+remove".
+  // The envelope is Xapp's flat one, with no `data`: ops, resolvedKeyframes and nonempty warnings at the top level (lane R
+  // raw read, 26 Nov (D127)).
+  const said = names.length === 1 ? `writeKeyframes: ${names[0]} updated (1 op)` : `writeKeyframes: ${names.length} properties updated (${names.length} ops)`;
+  const opOf = (ops: RecordData) => ops.replace ? (ops.replace.length ? 'replace' : 'clear')
+    : (ops.add?.length || ops.update?.length) ? (ops.remove?.length ? 'upsert+remove' : 'upsert') : 'remove';
+  return { success: true, message: `${said}${tail}`, ops: Object.entries<RecordData>(payload).map(([property, ops]) => ({ property, op: opOf(ops) })),
+    resolvedKeyframes: resolved, ...(warnings.length ? { warnings } : {}) };
 }
 
 // ---- setTimeRemap.
@@ -156,14 +175,15 @@ export function setTimeRemap(doc: ProjectDocument, args: RecordData): RecordData
   if (!Array.isArray(ks) || !ks.length) refuse('INVALID_KEYFRAMES', 'Invalid keyframes', 'Keyframes must be a non-empty array. Each keyframe needs { time (seconds), value (source ms) }.');
   lockCheck(doc, i);
   const from = i.display.from, to = i.display.to;
-  ks.forEach((e: RecordData, n: number) => {
-    const path = `keyframes[${n}]`, entry = e ?? {};
-    checkTime(path, entry.time);
-    if (!isNum(entry.value) || entry.value < 0) refuse('INVALID_KEYFRAME_VALUE', 'Invalid keyframe value', `[${path}] value must be a non-negative number of source milliseconds, got: ${show(entry.value)}`);
-    checkShape(path, entry);
+  // setTimeRemap's own refusals carry no bracket prefix (lane R raw read, 26 Nov (D127)).
+  (ks as RecordData[]).forEach(e => {
+    const entry = e ?? {};
+    checkTime('', entry.time);
+    if (!isNum(entry.value) || entry.value < 0) refuse('INVALID_KEYFRAME_VALUE', 'Invalid keyframe value', `value must be a non-negative number of source milliseconds, got: ${show(entry.value)}`);
+    checkShape('', entry);
     const t = toMs(entry.time);
     if (t < from - 10 - EPS || t > to + 10 + EPS)
-      refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `[${path}] keyframe at ${entry.time}s outside clip bounds (${(from / 1000).toFixed(3)}s – ${(to / 1000).toFixed(3)}s).`);
+      refuse('TIME_OUT_OF_BOUNDS', 'Keyframe time out of bounds', `Keyframe at ${entry.time}s is outside clip bounds (${(from / 1000).toFixed(3)}s – ${(to / 1000).toFixed(3)}s).`); // RC 9.2 l.2729
   });
   const replace = args.replace !== false, local = (s: number) => Math.min(Math.max(toMs(s) - from, 0), span(i));
   let list: Keyframe[] = replace ? [] : [...remapKeyframes(i)];

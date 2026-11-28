@@ -4,14 +4,18 @@
 import type { ProjectStore } from '../store/database';
 import type { Asset, RecordData } from '../store/model';
 import { mediaError } from './codes';
+import { isStackedAlpha } from '../render/model';
 
 export type ResolvedSource = { kind: 'proxy' | 'original'; assetId: string; blob: Blob; width: number | null; height: number | null };
 export const usesProxy = (item: RecordData) => item?.details?.useProxy !== false;
-export async function resolveSource(store: ProjectStore, item: RecordData, purpose: 'preview' | 'export' = 'preview'): Promise<ResolvedSource> {
+/** Whether the preview shows the proxy: Use Proxy on and a proxy exists, never for a stacked-alpha item (P26: the lossy proxy cannot keep the alpha half exact). */
+export const previewProxy = (item: RecordData, asset: Asset | undefined): asset is Asset & { proxy: NonNullable<Asset['proxy']> } => usesProxy(item) && !isStackedAlpha(item) && !!asset?.proxy;
+/** `row`: the item's asset row the caller already read from the store (render/sources.ts keys its cache on it); otherwise read here. */
+export async function resolveSource(store: ProjectStore, item: RecordData, purpose: 'preview' | 'export' = 'preview', row?: Asset): Promise<ResolvedSource> {
   const assetId = item?.metadata?.assetId as string | undefined;
-  const asset = assetId ? await store.row<Asset>('assets', assetId) : undefined;
+  const asset = row ?? (assetId ? await store.row<Asset>('assets', assetId) : undefined);
   if (!asset || !assetId) throw mediaError('WORKSPACE_FILE_MISSING', 'This item has no stored source.');
-  if (purpose === 'preview' && usesProxy(item) && asset.proxy && store.media.readProxy) {
+  if (purpose === 'preview' && previewProxy(item, asset) && store.media.readProxy) {
     try { return { kind: 'proxy', assetId, blob: await store.media.readProxy(asset.proxy.objectKey ?? assetId), width: asset.proxy.width, height: asset.proxy.height }; }
     catch { /* a missing proxy falls back to the original */ }
   }

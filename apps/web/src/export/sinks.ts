@@ -14,7 +14,10 @@ export type SinkKind = 'handle' | 'opfs' | 'memory';
 /** Anything with createWritable (a FileSystemFileHandle from the picker, or a test double). */
 export type WritableHandle = { name?: string; createWritable(): Promise<WritableStream<StreamTargetChunk>>; getFile?(): Promise<File> };
 export type SinkResult = { kind: SinkKind; blob: Blob; name?: string };
-export type Sink = { kind: SinkKind; target: Target; fastStart: false | 'in-memory'; message: string; finish(): Promise<SinkResult>; abort(): Promise<void> };
+/** `finish` commits the file (only after the output finalized; a close from mediabunny never commits, audit F1 R2) and returns
+ *  it. `abort` discards the partial file (never committed); with `remove` the OPFS sink also deletes its entry (a stopped export,
+ *  audit F1). The handle sink never removes the user's file and the memory sink has nothing to release. */
+export type Sink = { kind: SinkKind; target: Target; fastStart: false | 'in-memory'; message: string; finish(): Promise<SinkResult>; abort(remove?: boolean): Promise<void> };
 export type SinkOptions = { handle?: WritableHandle | null; estimate: number; now?: number; storage?: () => Promise<{ quota?: number; usage?: number }> };
 
 async function exportsDir() {
@@ -39,20 +42,27 @@ function writeFailure(e: unknown) {
   return name === 'QuotaExceededError' || /quota/i.test(text) ? new ExportError('STORAGE_QUOTA', `The disk is full: ${text}`)
     : new ExportError(name === 'NotFoundError' ? 'WORKSPACE_FILE_MISSING' : 'OUTPUT_STREAM_FAILED', `Writing the export failed (errored writable stream): ${text}`);
 }
-/** The destination writable behind one that maps its write and close failures to the §12 classes. */
-function guarded(inner: WritableStream<StreamTargetChunk>): WritableStream<StreamTargetChunk> {
+/** The destination writable behind one that maps its write failures to the §12 classes. Its close commits nothing: mediabunny
+ *  also closes it when finalize fails (audit F1 R2), so `commit` (closing the destination, failures mapped the same way) is the
+ *  only commit. `abort` aborts the destination through the writer held here, so it works while the StreamTarget holds the lock
+ *  on the outer stream (audit F1). */
+function guarded(inner: WritableStream<StreamTargetChunk>): { writable: WritableStream<StreamTargetChunk>; abort(): Promise<void>; commit(): Promise<void> } {
   const w = inner.getWriter();
-  return new WritableStream<StreamTargetChunk>({
-    write: async c => { try { await w.write(c); } catch (e) { throw writeFailure(e); } },
-    close: async () => { try { await w.close(); } catch (e) { throw writeFailure(e); } },
-    abort: async r => { await w.abort(r).catch(() => undefined); },
-  });
-}
-const streamSink = (kind: SinkKind, inner: WritableStream<StreamTargetChunk>, message: string, done: () => Promise<SinkResult>): Sink => {
-  const writable = guarded(inner);
   return {
-    kind, message, fastStart: false, target: new StreamTarget(writable, { chunked: true, chunkSize: CHUNK_BYTES }),
-    finish: done, abort: async () => { await writable.abort().catch(() => undefined); },
+    writable: new WritableStream<StreamTargetChunk>({
+      write: async c => { try { await w.write(c); } catch (e) { throw writeFailure(e); } },
+      close: async () => { /* committed by Sink.finish */ },
+      abort: async r => { await w.abort(r).catch(() => undefined); },
+    }),
+    abort: () => w.abort().catch(() => undefined),
+    commit: async () => { try { await w.close(); } catch (e) { throw writeFailure(e); } },
+  };
+}
+const streamSink = (kind: SinkKind, inner: WritableStream<StreamTargetChunk>, message: string, done: () => Promise<SinkResult>, remove?: () => Promise<void>): Sink => {
+  const g = guarded(inner);
+  return {
+    kind, message, fastStart: false, target: new StreamTarget(g.writable, { chunked: true, chunkSize: CHUNK_BYTES }),
+    finish: async () => { await g.commit(); return done(); }, abort: async r => { await g.abort(); if (r && remove) await remove().catch(() => undefined); },
   };
 };
 
@@ -70,7 +80,7 @@ export async function openSink(o: SinkOptions): Promise<Sink> {
       const now = o.now ?? Date.now(); await cleanStaleExports(now);
       const dir = await exportsDir(), name = `export-${now}.mp4`, fh = await dir.getFileHandle(name, { create: true });
       const writable = await fh.createWritable() as unknown as WritableStream<StreamTargetChunk>;
-      return streamSink('opfs', writable, `Writing to browser storage (${name}).`, async () => ({ kind: 'opfs', name, blob: await fh.getFile() }));
+      return streamSink('opfs', writable, `Writing to browser storage (${name}).`, async () => ({ kind: 'opfs', name, blob: await fh.getFile() }), () => dir.removeEntry(name));
     } catch { /* OPFS refused: memory below */ }
   }
   const target = new BufferTarget();

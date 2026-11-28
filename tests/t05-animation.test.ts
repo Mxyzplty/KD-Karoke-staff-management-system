@@ -285,6 +285,16 @@ describe('formula oracle: W3 fixture 3 — "World", Roboto Bold 150, 30 fps (W3-
       expect(Math.abs(slow.channels.k - ratio)).toBeLessThanOrEqual(0.011);
     }
   });
+  // §59 item 8 (findings l.1535): "pop at 33 ms, speed 2: opacity 0.51 at scale 0.61". By hand: c = min(33 × 2, 650) = 66, q = 66 / 650 = 0.10154,
+  // o = clamp01(5q) = 0.5077; k on the key pair [0, 0.45] → [0.34, 1.18]: t = q / 0.34 = 0.29864, s = 3t² − 2t³ = 0.21429, k = 0.45 + 0.73 s = 0.6064.
+  it('pop at speed 2, 33 ms: o = 0.5077 and k = 0.6064 (hand values, ±0.001), and the findings\' 0.51 / 0.61 within 0.005 (§59 item 8)', () => {
+    const s = animationState({ version: 1, preset: 'pop', speed: 2 }, 33, WORD), { o, k } = s.channels;
+    near(s.c, 66); near(s.q, 66 / 650, 1e-12);
+    expect(Math.abs(o - 0.5077), `o=${o}`).toBeLessThanOrEqual(0.001);
+    expect(Math.abs(k - 0.6064), `k=${k}`).toBeLessThanOrEqual(0.001);
+    expect(Math.abs(o - 0.51), `o=${o}`).toBeLessThanOrEqual(0.005);
+    expect(Math.abs(k - 0.61), `k=${k}`).toBeLessThanOrEqual(0.005);
+  });
   it('fixture 4: a 5 s item\'s pop is final by 650 ms and stays final (the item length does not stretch it)', () => {
     for (const tau of [650, 700, 2500, 5000]) {
       const s = animationState({ version: 1, preset: 'pop' }, tau, WORD);

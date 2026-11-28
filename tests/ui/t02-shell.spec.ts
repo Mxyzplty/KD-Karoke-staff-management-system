@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T02 owned acceptance A1–A2, B1–B5, C1–C4, H1–H4, I1 in real Chromium with real IndexedDB. Stubs must stay visible: after every stub
 // dispatch the stored document is byte-identical, the revision is unchanged, the session is still "saved" and a notice names the owner.
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { liveDoc, savedDoc, undoEntries } from './t03-support';
 import { addAsset, blurAll, clearIntents, clip, createProject, expectUntouched, guard, intents, notices, openEditor, richDoc, sessionState, setViewState, skipTour, stored, TINY_PNG, typesDoc, viewState, watchIntents } from './t02-support';
 
@@ -211,7 +211,7 @@ test('B4 preview: stage at the project aspect, empty-project upload target is re
   await expect(stage).toHaveCSS('aspect-ratio', '1920 / 1080'); await expect(stage.locator('canvas.run').first()).toHaveAttribute('data-frame', '0'); await expect(stage.locator('canvas.run').first()).toHaveAttribute('data-exact', 'false'); await expect(page.getByRole('button', { name: 'Add media' })).toHaveCount(0); // T15 (was: "Preview rendering is not yet implemented (T15)." visible; then data-exact true). richDoc() has video and image items with no media, so each source is 'failed' and draws grey MISSING_MEDIA: a failed or placeholder frame is never data-exact="true" (P23), so wait for the paused render (data-frame 0) and expect "false"
   // Reset view (fit) returns the preview zoom to 1.
   const preview = page.getByRole('region', { name: 'Preview' }); const box = (await preview.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.keyboard.down('Control'); await page.mouse.wheel(0, -200); await page.keyboard.up('Control');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.wheel(0, -200); // T28 row 2 (C8 assertion edit): a plain wheel zooms, no key is read (was Ctrl+wheel)
   await expect.poll(async () => Number(await stage.getAttribute('data-scale'))).toBeGreaterThan(1);
   await page.getByRole('button', { name: 'Reset view (fit)' }).click(); await expect(stage).toHaveAttribute('data-scale', '1');
   // Quality: default Full; choose 1/2 → stored, survives reload, applies to another project too.
@@ -347,10 +347,179 @@ test('R2 stage physically fits landscape, portrait and square at both breakpoint
       expect(s.x + s.width).toBeLessThanOrEqual(p.x + p.width + 1); expect(s.y + s.height).toBeLessThanOrEqual(p.y + p.height + 1);
     };
     await check(); const p = (await preview.boundingBox())!; await page.mouse.move(p.x + p.width / 2, p.y + p.height / 2);
-    await page.keyboard.down('Control'); await page.mouse.wheel(0, -200); await page.keyboard.up('Control');
+    await page.mouse.wheel(0, -200); // T28 row 2 (C8 assertion edit): a plain wheel zooms, no key is read (was Ctrl+wheel)
     await expect.poll(async () => Number(await stage.getAttribute('data-scale'))).toBeGreaterThan(1);
     await page.getByRole('button', { name: 'Reset view (fit)' }).click(); await expect(stage).toHaveAttribute('data-scale', '1'); await check();
   }
+});
+
+// T28 rows 1-2 (ticket "Follow-up to T26", rows 1-2): fit = min((area width − 30) / canvas width, (area height − 30) / canvas height); every
+// wheel event over the preview zooms (no key read, the page does not scroll): zoom × (1 − 0.003 × deltaY), held to 0.1..3 screen px per canvas
+// px, about the pointer through a pan offset; Reset view = fit zoom, offset 0, 0; a size change refits until the first wheel zoom (and again
+// after Reset view); no pan gesture. Lane A (15 Nov): a wheel inside the Jobs corner does not zoom; over the preview controls it does.
+test.describe('T28 rows 1-2: fit, wheel zoom about the pointer, Reset view, refit', () => {
+  type Box = { x: number; y: number; width: number; height: number };
+  const stage = (page: Page) => page.locator('.stage'), preview = (page: Page) => page.getByRole('region', { name: 'Preview' });
+  const rect = async (page: Page) => (await stage(page).boundingBox())!, area = async (page: Page) => (await preview(page).boundingBox())!;
+  const centre = (b: Box) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+  /** The stage's centre from the preview area's centre, in screen px. */
+  const from = async (page: Page) => { const s = centre(await rect(page)), p = centre(await area(page)); return { x: s.x - p.x, y: s.y - p.y }; };
+  /** The ticket's fit, as the stage's screen width: canvas width × fit = min(W − 30, (H − 30) × cw / ch). */
+  const fitWidth = async (page: Page, cw: number, ch: number) => { const { W, H } = await preview(page).evaluate(el => ({ W: el.clientWidth, H: el.clientHeight })); return Math.min(W - 30, (H - 30) * cw / ch); };
+  const fitted = (page: Page, cw: number, ch: number) => expect.poll(async () => Math.abs((await rect(page)).width - await fitWidth(page, cw, ch))).toBeLessThanOrEqual(1);
+  const centred = async (page: Page) => { const d = await from(page); expect(Math.abs(d.x)).toBeLessThanOrEqual(1); expect(Math.abs(d.y)).toBeLessThanOrEqual(1); };
+  /** Two animation frames: React has committed whatever an input event changed (used where the expected change is none). */
+  const frames = (page: Page) => page.evaluate(() => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  /** A pointer over the stage, right of and below its centre: off-centre, and clear of the controls (top right) and the Jobs corner (bottom left). */
+  const point = async (page: Page) => { const s = await rect(page), x = s.x + s.width * 0.75, y = s.y + s.height * 0.7; await page.mouse.move(x, y); return { x, y }; };
+  /** One wheel event at the current pointer, waiting until the zoom changed. */
+  const wheel = async (page: Page, deltaY: number) => { const before = (await stage(page).getAttribute('data-scale'))!; await page.mouse.wheel(0, deltaY); await expect(stage(page)).not.toHaveAttribute('data-scale', before); };
+  const open = async (page: Page, size = { width: 1920, height: 1080 }) => { await page.setViewportSize({ width: 1280, height: 800 }); await openEditor(page, richDoc({ size })); await fitted(page, size.width, size.height); return size; };
+  const resetView = async (page: Page) => { await page.getByRole('button', { name: 'Reset view (fit)' }).click(); await expect(stage(page)).toHaveAttribute('data-scale', '1'); };
+
+  // T28 round 2 (review finding 4): 160 x 90 fits above 3 screen px per canvas px; the fit is not held to the wheel's 0.1..3 range, so its stage is still the fit width.
+  test('fit: the stage is min(area width − 30, (area height − 30) × canvas aspect) wide, centred, at 16:9, 9:16 and 1:1, and at 160 x 90 where the fit is above 3', async ({ page }) => {
+    for (const size of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 1080, height: 1080 }, { width: 160, height: 90 }]) {
+      await open(page, size); const s = await rect(page), label = `${size.width}x${size.height}`;
+      if (size.width === 160) expect(s.width / size.width, `${label}: the fit is above the wheel's cap of 3`).toBeGreaterThan(3);
+      expect(Math.abs(s.width - await fitWidth(page, size.width, size.height)), label).toBeLessThanOrEqual(1); expect(s.width / s.height, label).toBeCloseTo(size.width / size.height, 2);
+      await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
+    }
+  });
+
+  // The fit pinned at the specs' 1440 x 900 viewport with the 9:16 fixture. The exact pin is the formula check (stage = fit width +/- 0.5 px; the old layout is
+  // 26 px off it); the band on k only guards the preview height. Windows measured k 0.203646 (preview area 774 x 421, run 1 of 0439e25). The band [0.185, 0.228]
+  // is wide for Ubuntu's fonts (a wrapped top row gives about 0.196); 0.228 is the physical maximum (preview at 52 % of 900). It fails the old layout's 0.1798 and
+  // a halving to 0.10. Source: tickets l.571, Xapp facts l.2371.
+  test('fit pin: at 1440 x 900 with 1080 x 1920 the stage is min(W − 30, (H − 30) × 1080 / 1920) wide +/- 0.5 px, and k = stage width / 1080 is in [0.185, 0.228]', async ({ page }) => {
+    const size = { width: 1080, height: 1920 };
+    await page.setViewportSize({ width: 1440, height: 900 }); await openEditor(page, richDoc({ size })); await fitted(page, size.width, size.height);
+    const s = await rect(page), k = s.width / size.width;
+    expect(Math.abs(s.width - await fitWidth(page, size.width, size.height)), 'the stage width is the fit width').toBeLessThanOrEqual(0.5);
+    expect(k, `k ${k}`).toBeGreaterThanOrEqual(0.185); expect(k, `k ${k}`).toBeLessThanOrEqual(0.228);
+  });
+
+  // T28 audit C4 (26 Nov): a case that is width-bound by construction, whatever the top bar's height. 1920 x 300 at 1280 x 800: the width term is about
+  // (614 − 30) / 1920 = 0.30, and the height term stays above it while the area is over about 121 px high. The guard checks it on the measured area.
+  test('T28 audit C4: fit, width-bound: 1920 x 300 at 1280 x 800, the stage is area width − 30 wide +/- 1 px', async ({ page }) => {
+    const size = await open(page, { width: 1920, height: 300 });
+    const { W, H } = await preview(page).evaluate(el => ({ W: el.clientWidth, H: el.clientHeight })), s = await rect(page);
+    expect(W - 30, 'the width term is the smaller one').toBeLessThan((H - 30) * size.width / size.height);
+    expect(Math.abs(s.width - (W - 30)), 'the stage is the width term').toBeLessThanOrEqual(1);
+    await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
+  });
+
+  // T28 audit C5 (26 Nov): the lower side of "not held to the wheel's range". 8000 x 800 at 1280 x 800: the fit is about (614 − 30) / 8000 = 0.073, under the
+  // wheel's 0.1, and is used as it is. The stage width decides it: data-scale is 1 with or without a hold.
+  test('T28 audit C5: fit below the wheel\'s 0.1: 8000 x 800 at 1280 x 800, the stage is the fit width (unheld) +/- 1 px', async ({ page }) => {
+    const size = await open(page, { width: 8000, height: 800 });
+    const { W, H } = await preview(page).evaluate(el => ({ W: el.clientWidth, H: el.clientHeight })), s = await rect(page);
+    expect(Math.min(W - 30, (H - 30) * size.width / size.height) / size.width, 'the fit is below the wheel\'s minimum of 0.1').toBeLessThan(0.1);
+    expect(s.width / size.width, 'the stage is not held to 0.1').toBeLessThan(0.1);
+    expect(Math.abs(s.width - await fitWidth(page, size.width, size.height)), 'the stage is the fit width').toBeLessThanOrEqual(1);
+  });
+
+  test('a plain wheel (no key) over the preview zooms, and the page does not scroll', async ({ page }) => {
+    await open(page); await page.evaluate(() => { (window as any).__t28wheel = []; window.addEventListener('wheel', e => (window as any).__t28wheel.push(e.defaultPrevented)); });
+    const scrollY = await page.evaluate(() => window.scrollY); await point(page); await wheel(page, -100);
+    expect(await stage(page).getAttribute('data-scale')).not.toBe('1'); expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
+    const seen: boolean[] = await page.evaluate(() => (window as any).__t28wheel); expect(seen.length).toBeGreaterThan(0); expect(seen.every(Boolean)).toBe(true); // the default (page scroll) was prevented
+  });
+
+  // T28 audit C3 (26 Nov): "no key is read", with a key held. Control, because the old handler read ctrlKey; not Shift, which Chromium may turn into a
+  // sideways scroll. Plain, then Reset view, then Control + wheel at the same pointer: the same × 1.3 and the same stage.
+  test('T28 audit C3: a wheel with Control held zooms as a plain one: × 1.3 about the pointer, the same data-scale and the same stage', async ({ page }) => {
+    await open(page); await point(page); const s0 = await rect(page);
+    await wheel(page, -100); const plain = (await stage(page).getAttribute('data-scale'))!, s1 = await rect(page);
+    await resetView(page); const r = await rect(page);
+    for (const k of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(r[k] - s0[k]), `after Reset view: ${k}`).toBeLessThanOrEqual(0.5);
+    await point(page); await page.keyboard.down('Control');
+    try { await wheel(page, -100); } finally { await page.keyboard.up('Control'); }
+    const s2 = await rect(page);
+    expect(Math.abs(s2.width / s0.width - 1.3)).toBeLessThan(3e-3); await expect(stage(page)).toHaveAttribute('data-scale', plain);
+    for (const k of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(s2[k] - s1[k]), k).toBeLessThanOrEqual(0.5);
+  });
+
+  test('deltaY −100 multiplies the zoom by 1.3 about the pointer: the canvas point under the pointer stays under it (twice, so the offset carries)', async ({ page }) => {
+    await open(page); const p = await point(page);
+    for (let step = 1; step <= 2; step++) {
+      const s0 = await rect(page), fx = (p.x - s0.x) / s0.width, fy = (p.y - s0.y) / s0.height; // the pointer's canvas point, as a fraction of the canvas
+      await wheel(page, -100); const s1 = await rect(page);
+      expect(Math.abs(s1.width / s0.width - 1.3), `step ${step}`).toBeLessThan(3e-3); expect(Math.abs(s1.height / s0.height - 1.3), `step ${step}`).toBeLessThan(3e-3);
+      expect(Math.abs(s1.x + fx * s1.width - p.x), `step ${step}`).toBeLessThanOrEqual(1); expect(Math.abs(s1.y + fy * s1.height - p.y), `step ${step}`).toBeLessThanOrEqual(1);
+    }
+    expect(Number(await stage(page).getAttribute('data-scale'))).toBeCloseTo(1.69, 2); // zoom ÷ fit after two × 1.3 steps from fit
+  });
+
+  test('the zoom is held to 3 and to 0.1 screen px per canvas px; a wheel past either limit changes nothing', async ({ page }) => {
+    const { width: cw } = await open(page); await point(page);
+    for (const [limit, deltaY] of [[3, -100], [0.1, 100]]) {
+      for (let n = 0; n < 8; n++) await page.mouse.wheel(0, deltaY * 3); // × 1.9 or × 0.1 per event (or several events coalesced), well past the limit
+      await expect.poll(async () => (await rect(page)).width / cw, `limit ${limit}`).toBeCloseTo(limit, 3);
+      const scale = (await stage(page).getAttribute('data-scale'))!, before = await rect(page);
+      await page.mouse.wheel(0, deltaY); await frames(page);
+      await expect(stage(page)).toHaveAttribute('data-scale', scale); expect(await rect(page), `limit ${limit}`).toEqual(before);
+    }
+  });
+
+  // T28 round 2 (review finding 5): a wheel whose zoom comes out equal to the current one changes nothing, the refit rule included. With deltaY 0 (a
+  // sideways swipe) the zoom is unchanged, so it must not count as a wheel zoom: a later size change still refits.
+  test('a wheel that leaves the zoom unchanged (deltaX only, before any zoom) is not a zoom: a size change afterwards still refits', async ({ page }) => {
+    const { width: cw, height: ch } = await open(page); const w0 = (await rect(page)).width; await point(page);
+    await page.mouse.wheel(100, 0); await frames(page);
+    await expect(stage(page)).toHaveAttribute('data-scale', '1'); expect(Math.abs((await rect(page)).width - w0)).toBeLessThanOrEqual(0.5);
+    await page.setViewportSize({ width: 1440, height: 900 }); await fitted(page, cw, ch);
+    expect(Math.abs((await rect(page)).width - w0)).toBeGreaterThan(1); await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
+  });
+
+  test('Reset view (fit): data-scale 1, the stage centred in the preview at the fit width', async ({ page }) => {
+    const { width: cw, height: ch } = await open(page); await point(page); await wheel(page, -100); await wheel(page, -100);
+    expect(Math.abs((await from(page)).x)).toBeGreaterThan(1); // zooming about an off-centre pointer moved the stage off centre
+    await resetView(page); expect(Math.abs((await rect(page)).width - await fitWidth(page, cw, ch))).toBeLessThanOrEqual(1); await centred(page);
+  });
+
+  test('refit (a): before any wheel zoom, a size change of the preview fits again and keeps the stage centred', async ({ page }) => {
+    const { width: cw, height: ch } = await open(page); const w0 = (await rect(page)).width;
+    await page.setViewportSize({ width: 1440, height: 900 }); await fitted(page, cw, ch);
+    expect(Math.abs((await rect(page)).width - w0)).toBeGreaterThan(1); // the fit did change
+    await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
+  });
+
+  // After a wheel zoom the zoom (screen px per canvas px) and the offset (screen px from the stage's centred place) stay. The stage is centred
+  // in the area, then moved by the offset, so its screen width (canvas width × zoom) and its centre measured from the area's centre both stay.
+  test('refit (b): after a wheel zoom, a size change keeps the zoom and the offset: the same screen width, the same place from the area centre', async ({ page }) => {
+    await open(page); await point(page); await wheel(page, -100);
+    const s0 = await rect(page), d0 = await from(page), scale = (await stage(page).getAttribute('data-scale'))!;
+    await page.setViewportSize({ width: 1440, height: 900 }); await expect(stage(page)).not.toHaveAttribute('data-scale', scale); // data-scale = zoom ÷ fit: the fit moved, the zoom did not
+    const s1 = await rect(page), d1 = await from(page);
+    expect(Math.abs(s1.width - s0.width)).toBeLessThanOrEqual(0.5); expect(Math.abs(s1.height - s0.height)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(d1.x - d0.x)).toBeLessThanOrEqual(1); expect(Math.abs(d1.y - d0.y)).toBeLessThanOrEqual(1);
+  });
+
+  test('refit (c): after a wheel zoom and Reset view, a size change fits again and keeps the stage centred', async ({ page }) => {
+    const { width: cw, height: ch } = await open(page); await point(page); await wheel(page, -100); await resetView(page);
+    const w0 = (await rect(page)).width; await page.setViewportSize({ width: 1440, height: 900 }); await fitted(page, cw, ch);
+    expect(Math.abs((await rect(page)).width - w0)).toBeGreaterThan(1); await expect(stage(page)).toHaveAttribute('data-scale', '1'); await centred(page);
+  });
+
+  test('no pan gesture: a drag on the empty preview area does not move the stage, at fit and after a wheel zoom', async ({ page }) => {
+    await open(page, { width: 1080, height: 1920 }); // portrait: empty preview area beside the stage
+    for (const zoomed of [false, true]) {
+      if (zoomed) { await point(page); await wheel(page, 100); } // × 0.7, so the stage has an offset now
+      const s0 = await rect(page), p = await area(page), scale = (await stage(page).getAttribute('data-scale'))!;
+      expect(p.x + p.width - (s0.x + s0.width)).toBeGreaterThan(40); // room to press beside the stage
+      const x = (s0.x + s0.width + p.x + p.width) / 2, y = p.y + p.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x - 200, y, { steps: 10 }); await page.mouse.up(); await frames(page);
+      expect(await rect(page), `zoomed ${zoomed}`).toEqual(s0); await expect(stage(page)).toHaveAttribute('data-scale', scale);
+    }
+  });
+
+  test('a wheel over the preview controls zooms; a wheel inside the Background Jobs corner does not (its list keeps the browser scroll)', async ({ page }) => {
+    await open(page);
+    const jobs = page.getByRole('region', { name: 'Background Jobs' }).getByRole('button', { name: /^Background Jobs/ }); await jobs.hover();
+    await page.mouse.wheel(0, -100); await frames(page); await expect(stage(page)).toHaveAttribute('data-scale', '1');
+    await page.getByRole('button', { name: 'Reset view (fit)' }).hover(); await wheel(page, -100); expect(await stage(page).getAttribute('data-scale')).not.toBe('1');
+  });
 });
 
 test('R7 guard rejects both live in-place mutation and a pending session update', async ({ page }) => {

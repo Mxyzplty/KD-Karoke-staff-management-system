@@ -21,6 +21,7 @@ import { usePlayback } from '../render/playback';
 import { cutsByTrack, TransitionMarks } from './transition-ui';
 import { Waveform } from './waveform';
 import { savePresetAction } from '../presets/panel';
+import { useSelectionDraft } from './selection-overlay';
 
 export const HEADER_PX = 200;
 type Ctx = { doc: ProjectDocument; assets: Map<string, Asset> };
@@ -79,8 +80,9 @@ function Toolbar({ doc }: Ctx) {
 }
 
 type Drag = { kind: 'move' | 'trim-start' | 'trim-end' | 'slip'; itemId: string; x: number; dx: number; px: number; snapMs: number | null; moved: boolean; trackId: string | null; below: boolean };
-export function Timeline({ doc, assets }: Ctx) {
-  const v = useView(), scroller = useRef<HTMLDivElement>(null), lanes = useRef<HTMLDivElement>(null);
+export function Timeline({ doc: stored, assets }: Ctx) {
+  // T28 row 3: during a preview drag the timeline shows the drag's draft (Author, 14 Nov); the document is written on release only.
+  const doc = useSelectionDraft(s => s.doc) ?? stored, v = useView(), scroller = useRef<HTMLDivElement>(null), lanes = useRef<HTMLDivElement>(null);
   const rows = displayRows(doc, new Set(v.collapsedGroups)), parents = trackGroups(doc), laneCuts = cutsByTrack(doc);
   const [menu, setMenu] = useState<{ x: number; y: number; label: string; items: MenuItem[] }>(), [drag, setDrag] = useState<Drag>(), [rename, setRename] = useState<string>();
   const [resize, setResize] = useState<{ trackId: string; start: number; y: number; height: number }>(), [reorder, setReorder] = useState<string>();
