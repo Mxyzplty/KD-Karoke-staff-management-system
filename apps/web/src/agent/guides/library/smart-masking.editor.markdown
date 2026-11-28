@@ -32,7 +32,7 @@ Make a tracked alpha mask that follows an object through a video item. You selec
 - `viewMaskFrame`: `itemId` (a video item), `timelineSeconds` inside the item. Read-only.
 - `previewSmartMask`: `frameRef`, `strokes: [{label, points, radius}]`. `points` are `[x, y]` pairs as fractions of the image; `radius` is a fraction of the image's shorter side; it is checked but not sent to the model, so it does not change the selection. Read-only (it only makes a selection).
 - `trackSmartMask`: `selectionId`, `sourceStartSeconds`, `sourceEndSeconds`, `name`. Existing masks stay; the new one is appended in `add` mode.
-- `removeBackground`: `itemId`, `name` (default "Background Removal"). The mask is binary (no hair detail or translucency). It works well for people: up to 3 per shot, found at the shot's start; someone who walks in later is not kept. For a specific object, draw strokes instead. It is added in `add` mode, or `intersect` when the item already has masks.
+- `removeBackground`: `itemId`, `name` (default "Background Removal"). The mask is binary (no hair detail or translucency). It works well for people: up to 3 subjects per shot (people, or salient regions when no person is found), found at the shot's start; a subject who enters later is not kept. For a specific object, draw strokes instead. It is added in `add` mode, or `intersect` when the item already has masks.
 - After attaching, read `viewItemDetails` `include: "masks"` first (tracking and removal do not mark the masks as read), then `editMaskProperties` changes `feather`, `expansion`, `opacity`, `inverted`, `mode`, `enabled` and `name`, and `writeKeyframes` animates feather, expansion and opacity. The shape itself cannot be edited.
 
 ## Units and limits
@@ -62,7 +62,7 @@ Make a tracked alpha mask that follows an object through a video item. You selec
 | fact:smartMask.keepSeconds | 1800 | s | How long a frame or selection stays usable |
 | fact:smartMask.keepMax | 64 | count | Frames (and selections) kept at once |
 | fact:removeBackground.maxSourceSeconds | 300 | s | Longest item source `removeBackground` takes |
-| fact:removeBackground.maxSubjects | 3 | count | People kept per shot |
+| fact:removeBackground.maxSubjects | 3 | count | Most subjects kept per shot: people, or salient regions when no person is found |
 | fact:helper.toolTimeoutSeconds | 60 | s | Helper time-out for a call that is not a mask job |
 
 ## Verification

@@ -137,10 +137,10 @@ const relatedOf = (text: string) => (splitHead(text.replace(/\r\n/g, '\n')).fiel
 /** Tool names of the contracts that this branch does not serve; an `unserved` name outside this list and TOOLS is a typo (rule 4). */
 const KNOWN_UNSERVED = ['captureFrame', 'exportProject', 'getExportStatus', 'viewProjectAssets', 'searchProjectAssets', 'searchUserLibrary', 'addAssetToProject', 'viewReferenceVideo', 'viewReferenceFrame', 'listEffects', 'getEffectDetails'];
 const NOT_SERVED_LINE = /not served|missing from this build's tool list/i;
-/** Probe input per tool: the T03 fixture's item v1, asset asset-vid1 and track V1. */
-const PROBE_BASE: Record<string, Record<string, unknown>> = { viewItemDetails: { itemId: 'v1' }, context: {}, addMedia: { assetId: 'asset-vid1', trackId: 'V1' } };
+/** Probe input per tool: the T03 fixture's item v1. */
+const PROBE_BASE: Record<string, Record<string, unknown>> = { viewItemDetails: { itemId: 'v1' }, context: {} };
 /** The value of a `tool.param` entry that names no value. */
-const PROBE_VALUE: Record<string, unknown> = { 'addMedia.transcriptRange': { text: 'hello' } };
+const PROBE_VALUE: Record<string, unknown> = {};
 /** Extra input an entry needs to reach its refusal (context.ts: transcript_words without a window is INVALID_TOOL_INPUT). */
 const PROBE_EXTRA: Record<string, Record<string, unknown>> = { 'context.include=transcript_words': { startSeconds: 0, endSeconds: 5 } };
 export type Probe = (tool: string, input: Record<string, unknown>) => Promise<string | undefined>;

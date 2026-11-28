@@ -2,7 +2,7 @@
 // T23 agent memory in Settings: the save switch (off by default), the memory files, and view, edit, delete and clear all.
 // The user may always edit or delete, whatever the switch; the switch only governs the agent's writes.
 import { useEffect, useState } from 'react';
-import { clearMemory, deleteMemory, listMemory, memoryEnabled, readMemory, setMemoryEnabled, writeMemory } from '../agent/workspace/memory';
+import { clearMemory, deleteMemory, listMemory, memoryEnabled, MemoryError, setMemoryEnabled, writeMemory } from '../agent/workspace/memory';
 import type { MemoryFile } from '../agent/workspace/memory';
 import { Dialog, notify, reportError } from '../ui';
 
@@ -18,13 +18,12 @@ export function Memory() {
   useEffect(() => { void memoryEnabled().then(setEnabled).catch(reportError); void refresh(); }, []);
   const turn = (on: boolean) => { setEnabled(on); void Promise.resolve(setMemoryEnabled(on)).catch(e => { setEnabled(!on); reportError(e); }); };
   const view = (f: MemoryFile) => { setOpen(f.path); setDraft(f.text); setVersion(f.version); };
-  // An agent may write the file while it is open here: a Save over a newer version is refused and the stored text stays.
+  // An agent may write the file while it is open here: writeMemory refuses a Save over a newer version, and the stored text stays.
   const save = (path: string) => {
     setBusy(true);
-    void readMemory(path).then(async stored => {
-      if (stored?.version !== version) { notify(CHANGED); await refresh(); return; }
-      setVersion((await writeMemory(path, draft)).version); await refresh();
-    }).catch(reportError).finally(() => setBusy(false));
+    void writeMemory(path, draft, undefined, undefined, version).then(async saved => { setVersion(saved.version); await refresh(); })
+      .catch(async (e: unknown) => { if (e instanceof MemoryError && e.code === 'VERSION_CHANGED') { notify(CHANGED); await refresh(); } else reportError(e); })
+      .finally(() => setBusy(false));
   };
   const remove = (path: string) => { if (open === path) setOpen(undefined); void deleteMemory(path).then(refresh).catch(reportError); };
   const clear = () => { setBusy(true); void clearMemory().then(() => { setOpen(undefined); setConfirm(false); return refresh(); }).catch(reportError).finally(() => setBusy(false)); };

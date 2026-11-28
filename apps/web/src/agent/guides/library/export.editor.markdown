@@ -67,8 +67,8 @@ These describe the export core as built, which agents cannot reach yet.
   - The tab must stay open and in front: a background tab renders slower, and the browser may take a decoder back (`CODEC_RECLAIMED`).
   - `USER_CANCELLED` means the user stopped it; do not restart without asking.
   - Fix-and-retry codes: `UNRESOLVED_MEDIA` or `MISSING_LOCAL_FILES` (re-add the media), `ASSETS_STILL_UPLOADING` (wait), `FONT_NOT_FOUND` (change the font), `OOM` or `STORAGE_QUOTA` (lower the resolution or free space).
-  - `ENCODE_ERROR` can be a browser limit: no H.264 encoder at that size ("cannot be encoded at" a width and height). Retry once at a lower `resolution`; if it fails again, tell the user and stop.
-  - `AUDIO_FAILED` when the browser has no AAC-LC and no Opus encoder: do not retry, since a lower resolution does not change the audio. Tell the user that this browser cannot encode the sound.
+  - `ENCODE_ERROR` can be a browser limit: no H.264 encoder at that size (the error's `detail` says "cannot be encoded at" a width and height; its `message` is a generic text). Retry once at a lower `resolution`; if it fails again, tell the user and stop.
+  - `AUDIO_FAILED` has two causes; never retry either, since a lower resolution does not change the audio. The `message` is the same generic text for both; read the cause from `detail`. If `detail` says the browser supports neither AAC-LC nor Opus, tell the user that this browser cannot encode the sound. If `detail` starts "Audio mix failed", the mix itself broke, which Cutframe counts as its own bug: tell the user the sound could not be mixed, and stop.
   - `DECODE_ERROR` and other bug codes: report them to the user and do not loop.
 
 | Check | Value | Unit | Meaning |

@@ -28,7 +28,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SERVED = ['addCaptions', 'addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyPreset', 'applyTransition', 'browsePresets', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'deleteItems', 'editAllCaptionStyles', 'editLayout', 'editMotionGraphic', 'editProperties', 'fonts', 'getHelpSection', 'listCaptionTemplates', 'manageMarkers', 'manageTrack', 'manageTrackGroup', 'moveItem', 'reorderItems',
   'resizeCanvas', 'searchHelpDocs', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails', 'writeEffects', 'writeKeyframes', 'writeShapePoints', // T10 (C8): + writeEffects; T06 (C8): + addShape, writeShapePoints; T07 (C8): + addLayout, editLayout; T11 (C8): + applyTransition; T05: + addText; T09 (C8 assertion-only edit): + addCaptions, editAllCaptionStyles, listCaptionTemplates; T22 (C8 assertion-only edit): + applyPreset, browsePresets, fonts
   'createMask', 'editMaskProperties', 'removeMask', 'writeMaskPoints', // T12 (C8): declared last in schemas.ts
-  'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground']; // T12 smart masks (C8): declared last of all
+  'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground', // T12 smart masks (C8): declared last of all
+  'getAgentOverview', 'loadSkill', 'workspace']; // T23 (C8 assertion-only edit): GUIDE_TOOL_LIST, spread after them
 
 // ---- Per-test resources, released in afterEach.
 const cleanups: (() => unknown | Promise<unknown>)[] = [];
@@ -302,7 +303,7 @@ describe('t18a MCP (row 1)', () => {
     return { client, transport };
   }
 
-  it('row 1: MCP over Streamable HTTP — server info, capabilities, instructions and the 46 tools', async () => {
+  it('row 1: MCP over Streamable HTTP — server info, capabilities, instructions and the 49 tools', async () => {
     const { helper } = await start();
     const { client } = await httpClient(helper.port);
     expect(client.getServerVersion()).toMatchObject({ name: 'cutframe-helper', version: VERSION });
@@ -348,7 +349,7 @@ describe('t18a MCP (row 1)', () => {
     expect([unknown.status, JSON.parse(unknown.body)]).toEqual([404, rpc(-32001, 'Session not found')]);
   });
 
-  it('row 1: MCP over stdio — a helper started by the client serves the 46 tools and logs to stderr', async () => {
+  it('row 1: MCP over stdio — a helper started by the client serves the 49 tools and logs to stderr', async () => {
     const dir = tmp();
     const transport = new StdioClientTransport({ command: process.execPath, args: [BIN, '--stdio', '--port', '0', '--config-dir', dir], cwd: ROOT, stderr: 'pipe' });
     const err: string[] = [];

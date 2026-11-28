@@ -21,7 +21,7 @@ type SwitchRow = { id: typeof MEMORY_SWITCH_ROW; enabled: boolean };
 type FilesRow = { id: typeof MEMORY_FILES_ROW; files: MemoryFile[] };
 
 export class MemoryError extends Error {
-  constructor(public code: 'INVALID_TOOL_INPUT', message: string) { super(message); this.name = 'MemoryError'; }
+  constructor(public code: 'INVALID_TOOL_INPUT' | 'VERSION_CHANGED', message: string) { super(message); this.name = 'MemoryError'; }
 }
 const valid = (f: unknown): f is MemoryFile => !!f && typeof f === 'object' && typeof (f as MemoryFile).path === 'string' && typeof (f as MemoryFile).text === 'string' && Number.isInteger((f as MemoryFile).version);
 const filesOf = (row: FilesRow | undefined): MemoryFile[] => (Array.isArray(row?.files) ? row!.files : []).filter(valid);
@@ -47,8 +47,9 @@ export async function readMemory(path: string, store: MemoryStore = projectStore
   return (await listMemory(store)).find(f => f.path === path);
 }
 /** Writes the whole file (creates it at version 1, or replaces it at version + 1). Not limited by the switch: the agent's
- *  writes are checked by the workspace tool before they reach here. */
-export async function writeMemory(path: string, text: string, store: MemoryStore = projectStore, now = new Date()): Promise<MemoryFile> {
+ *  writes are checked by the workspace tool before they reach here.
+ *  Settings passes the version it opened (`expectedVersion`, 0 for a new file), so an agent write in between is never overwritten. */
+export async function writeMemory(path: string, text: string, store: MemoryStore = projectStore, now = new Date(), expectedVersion?: number): Promise<MemoryFile> {
   const at = checkedPath(path);
   if (typeof text !== 'string') throw new MemoryError('INVALID_TOOL_INPUT', 'The memory text must be text.');
   if (text.length > MEMORY_MAX_CHARS) throw new MemoryError('INVALID_TOOL_INPUT', `The text for ${at} is longer than ${MEMORY_MAX_CHARS} characters.`);
@@ -56,10 +57,12 @@ export async function writeMemory(path: string, text: string, store: MemoryStore
   let written: MemoryFile | undefined;
   await store.swapRow<FilesRow>('settings', MEMORY_FILES_ROW, row => {
     const files = filesOf(row), before = files.find(f => f.path === at);
+    if (expectedVersion !== undefined && (before?.version ?? 0) !== expectedVersion) return null;
     written = { path: at, text, version: (before?.version ?? 0) + 1, bytes, sha256, updatedAt };
     return { id: MEMORY_FILES_ROW, files: [...files.filter(f => f.path !== at), written] };
   });
-  return written!;
+  if (!written) throw new MemoryError('VERSION_CHANGED', `${at} changed after it was read.`);
+  return written;
 }
 /** Removes one file; true when it was there. */
 export async function deleteMemory(path: string, store: MemoryStore = projectStore): Promise<boolean> {

@@ -8,7 +8,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { guideFiles } from '../apps/web/src/agent/guides/registry';
 import type { GuideContext } from '../apps/web/src/agent/guides/tools';
 import { elementsMarkdown, soundsMarkdown } from '../apps/web/src/agent/workspace/catalogue';
-import { MemoryError, listMemory, memoryEnabled, readMemory, setMemoryEnabled, writeMemory, deleteMemory, clearMemory, MEMORY_MAX_CHARS } from '../apps/web/src/agent/workspace/memory';
+import { MemoryError, listMemory, memoryEnabled, readMemory, setMemoryEnabled, writeMemory, deleteMemory, clearMemory, MEMORY_FILES_ROW, MEMORY_MAX_CHARS } from '../apps/web/src/agent/workspace/memory';
+import type { MemoryFile, MemoryStore } from '../apps/web/src/agent/workspace/memory';
 import { workspaceTool } from '../apps/web/src/agent/workspace/tools';
 import { ELEMENTS } from '../apps/web/src/catalogue/elements';
 import { SOUNDS } from '../apps/web/src/catalogue/sounds';
@@ -385,5 +386,51 @@ describe('T23 RC Part 11: I2 batch (Xapp parity of codes and texts)', () => {
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) expect(f.readOnly, f.path).toBe(true);
     expect((await ws({ command: 'cat', path: 'template/skills/vlog.md' })).success).toBe(true);
+  });
+});
+
+describe('T23 memory: Settings save checks the version inside the swap (N2 race)', () => {
+  // writeMemory's 5th argument (expectedVersion) is I2's fix; typed here so this file compiles before and after it.
+  const save = writeMemory as (path: string, text: string, store: MemoryStore, now: Date, expectedVersion?: number) => Promise<MemoryFile>;
+  const stored = async (s: MemoryStore) => { const f = await readMemory('a.md', s); return f && { text: f.text, version: f.version }; };
+  it('1: stale: an agent write since the read makes the save VERSION_CHANGED, and the agent text stays', async () => {
+    const s = setup();
+    await writeMemory('a.md', 'A', s, NOW); await writeMemory('a.md', 'B', s, NOW);
+    await expect(save('a.md', 'C', s, NOW, 1)).rejects.toMatchObject({ name: 'MemoryError', code: 'VERSION_CHANGED' });
+    expect(await stored(s)).toEqual({ text: 'B', version: 2 });
+  });
+  it('2: matching: the save writes the next version', async () => {
+    const s = setup();
+    await writeMemory('a.md', 'A', s, NOW); await writeMemory('a.md', 'B', s, NOW);
+    expect(await save('a.md', 'C', s, NOW, 2)).toMatchObject({ text: 'C', version: 3 });
+    expect(await stored(s)).toEqual({ text: 'C', version: 3 });
+  });
+  it('3: deleted: a save against a deleted file is VERSION_CHANGED and does not recreate it', async () => {
+    const s = setup();
+    for (const t of ['A', 'B', 'C']) await writeMemory('a.md', t, s, NOW);
+    expect(await deleteMemory('a.md', s)).toBe(true);
+    await expect(save('a.md', 'D', s, NOW, 3)).rejects.toMatchObject({ name: 'MemoryError', code: 'VERSION_CHANGED' });
+    expect(await readMemory('a.md', s)).toBeUndefined();
+  });
+  it('4: omitted: no version check; a new path is v1, an existing one bumps by one', async () => {
+    const s = setup();
+    expect(await save('b.md', 'one', s, NOW)).toMatchObject({ text: 'one', version: 1 });
+    await writeMemory('a.md', 'A', s, NOW); await writeMemory('a.md', 'B', s, NOW);
+    expect(await save('a.md', 'C', s, NOW)).toMatchObject({ text: 'C', version: 3 });
+  });
+  it('5: the window: an agent write landing just before the swap is caught (a read before the swap would pass)', async () => {
+    const inner = setup();
+    await writeMemory('a.md', 'A', inner, NOW);
+    let first = true;
+    const wrapped: MemoryStore = {
+      row: inner.row.bind(inner),
+      swapRow: (async (table: Parameters<ProjectStore['swapRow']>[0], key: string, change: (row: any) => any) => {
+        if (key === MEMORY_FILES_ROW && first) { first = false; await writeMemory('a.md', 'agent', inner, NOW); }
+        return inner.swapRow(table, key, change);
+      }) as MemoryStore['swapRow'],
+    };
+    await expect(save('a.md', 'user', wrapped, NOW, 1)).rejects.toMatchObject({ name: 'MemoryError', code: 'VERSION_CHANGED' });
+    expect(first).toBe(false);
+    expect(await stored(inner)).toEqual({ text: 'agent', version: 2 });
   });
 });

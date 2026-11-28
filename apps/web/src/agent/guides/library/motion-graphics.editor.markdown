@@ -89,7 +89,7 @@ Build animated graphics that no preset covers (titles, charts, counters, kinetic
 - Refused as unsafe (`VALIDATION_ERROR`): links, forms, frames, scripts, `dangerouslySetInnerHTML`, `eval` and dynamic `import()`, async and generator functions, names beginning `__mg`.
 - A syntax error, a helper after the export, or an error thrown during that first-frame check answers `COMPILATION_ERROR`; an error thrown in a real render answers `MG_RENDER_FAILED`.
 - A frame whose code runs past 1700 ms or 200,000 steps (function calls plus loop iterations) fails with `MG_WATCHDOG`; the host watchdog in the table is only the backstop. Avoid heavy loops per frame. Each `Img` / `OffthreadVideo` load waits at most 1800 ms, inside the media budget.
-- A frame with more than 2000 elements, a canvas or box whose area (width × height) is over the largest area in the table, heap growth past its budget, or a source over the longest-source limit fails with `MG_MEMORY_LIMIT`. The element count is checked only when a frame is drawn, not when the graphic is added.
+- A frame with more than 2000 elements, a canvas or box whose area (width × height) is over the largest area in the table (except a `ThreeCanvas`, which fails the frame with `MG_RENDER_FAILED`), heap growth past its budget, or a source over the longest-source limit fails with `MG_MEMORY_LIMIT`. The element count is checked only when a frame is drawn, not when the graphic is added.
 - A `fontFamily` outside the sandbox font catalogue still adds, with a FONT WARNING suffix and `fontWarnings`; the render falls back to a system font.
 - An occupied range answers `TRACK_OVERLAP` with the next free start on that track and the free tracks.
 - A summary that is empty or too long answers `MISSING_PARAM`.
