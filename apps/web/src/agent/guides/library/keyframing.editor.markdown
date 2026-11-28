@@ -44,7 +44,7 @@ unserved: captureFrame
 Per property, in this order:
 1. `replace` swaps the whole curve for its list, sorted by time; `[]` clears it. Its `delta` and `factor` read the curve as it was before the call.
 2. `add` appends a keyframe. If one already sits within the add window, that keyframe is overwritten in place (its time is kept) and a warning says so.
-3. `update` overwrites the nearest keyframe, before or after its time, that existed before this call, within the match window; with none in reach it appends. It never hits a keyframe added or replaced in the same call.
+3. `update` overwrites the nearest keyframe, before or after its time, that existed before this call, within the match window; with none in reach it appends. It never hits a keyframe this call appended or set with `replace`. A keyframe the call overwrote (an `add` at the same instant, or an earlier `update`) keeps its id, so a later `update` can overwrite it again.
 4. `remove` deletes every keyframe within the match window of each time. A time with no keyframe in reach refuses the whole call with `REMOVE_TIME_NOT_FOUND`, which lists the times that exist.
 
 So `replace` sets the base, and `add` / `update` in the same call land on top of it. To rebuild a curve, send `replace` alone.

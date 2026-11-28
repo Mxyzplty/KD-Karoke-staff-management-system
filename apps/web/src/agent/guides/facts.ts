@@ -13,7 +13,9 @@ import { COUNTDOWN_S } from '../../editor/voiceover';
 import { KEYFRAME_S } from '../../export/pipeline';
 import { AUDIO, DEFAULT_BITRATE } from '../../export/probe';
 import { MASK_RANGE } from '../../masks/model';
+import { MAX_OBJECTS } from '../../masks/foreground';
 import { STROKE_LIMITS } from '../../masks/strokes';
+import { SANDBOX_FONTS } from '../../mg/fonts';
 import { COMPUTE_MS, MEDIA_BUDGET_MS } from '../../mg/watchdog';
 import { MAX_DURATION_MS, SPEED } from '../../text/animation';
 import { AGENT_TEXT } from '../../text/tools';
@@ -146,6 +148,17 @@ export const FACTS: Record<string, Fact> = {
   'mg.codeMaxChars': f(262144, 'chars', 'code only', 'mg/compiler.ts:12'),
   'mg.computeBudgetMs': f(2000, 'ms', 'code only', 'mg/watchdog.ts:COMPUTE_MS'),
   'mg.mediaBudgetMs': f(4000, 'ms', 'code only', 'mg/watchdog.ts:MEDIA_BUDGET_MS'),
+  'mask.roundnessMax': f(100, 'percent', 'code only', 'timeline/shapes.ts:44 roundness / 100, via masks/tools.ts:83'),
+  'smartMask.promptPointsMax': f(12, 'count', 'code only', 'masks/strokes.ts:STROKE_LIMITS.promptPoints'),
+  'smartMask.promptSpacingPx': f(4, 'px', 'code only', 'masks/strokes.ts:STROKE_LIMITS.spacingPx'),
+  'removeBackground.maxSubjects': f(3, 'count', 'code only', 'masks/foreground.ts:MAX_OBJECTS'),
+  'helper.toolTimeoutSeconds': f(60, 's', 'code only', 'helper/src/helper.ts:26 DEFAULT_TOOL_TIMEOUT_MS'),
+  'mg.sandboxComputeMs': f(1700, 'ms', 'code only', 'mg/sandbox-entry.tsx:135, 147'),
+  'mg.stepsMax': f(200000, 'count', 'code only', 'mg/sandbox-entry.tsx:135'),
+  'mg.mediaLoadMaxMs': f(1800, 'ms', 'code only', 'mg/runtime-components.tsx:79, 95'),
+  'mg.elementsMax': f(2000, 'count', 'code only', 'mg/sandbox-entry.tsx:28 elementLimit'),
+  'mg.fontWeights': f([400, 700], 'none', 'code only', 'mg/fonts.ts:SANDBOX_FONTS'),
+  'mg.canvasMaxPixels': f(16777216, 'count', 'code only', 'mg/runtime-components.tsx:117, 137; mg/index.ts:90'),
 };
 
 const apiNames = [.../export const API_NAMES = \[([^\]]*)\]/.exec(mgRuntime)?.[1].matchAll(/'([^']+)'/g) ?? []].map(m => m[1]);
@@ -199,6 +212,10 @@ export const CODE_VALUES: Record<string, unknown> = {
   'mg.apiNameCount': apiNames.length,
   'mg.computeBudgetMs': COMPUTE_MS,
   'mg.mediaBudgetMs': MEDIA_BUDGET_MS,
+  'smartMask.promptPointsMax': STROKE_LIMITS.promptPoints,
+  'smartMask.promptSpacingPx': STROKE_LIMITS.spacingPx,
+  'removeBackground.maxSubjects': MAX_OBJECTS,
+  'mg.fontWeights': SANDBOX_FONTS.map(font => font.weight),
 };
 
 // The schema builders: secs() fields and fields whose description names seconds are `s`; layout cell trims and setTimeRemap

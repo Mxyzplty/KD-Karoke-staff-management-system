@@ -62,7 +62,7 @@ How to cut between several cameras that recorded the same moment: an interview, 
 
 ## Checklist before handing back
 
-- Every angle is in sync: check lips against speech at the start, middle and end. `captureFrame` is not served in this build: ask the user to check the preview, or use `viewMaskFrame {itemId, timelineSeconds}` for a video item's source frame.
+- Every angle is in sync: check lips against speech at the start, middle and end. `captureFrame` is not served in this build: compare the words and their times with `viewItemDetails {itemIds:[base, swapped], include:"transcript"}`, and ask the user to watch the preview for lip sync.
 - Only one audio source carries the speech.
 - Each speaker is on screen when they make their key points.
 - No angle holds shorter than the minimum above, except deliberate reactions.

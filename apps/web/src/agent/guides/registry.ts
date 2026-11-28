@@ -2,7 +2,7 @@
 // T23 skill registry (findings part 2 §42; T23 notes "Guide files"): our own guides, `library/<topic>.editor.markdown`
 // (mechanics) and `library/<topic>.creative.markdown` (creative defaults), each opening with a front-matter block
 // (topic, kind, summary, related). D37's public copy drops every .md, so the files are .markdown, imported raw.
-// Ids follow Xapp's where sensible (contracts loadSkill, §3h #44); the table is lane F's default until lane R's RC B1.
+// Ids follow Xapp's where sensible (contracts loadSkill, §3h #44); the aliases follow RC 11.2 B1.
 
 export type GuideKind = 'technical' | 'creative';
 export type Guide = { topic: string; kind: GuideKind; summary: string; related: string[]; body: string; path: string };

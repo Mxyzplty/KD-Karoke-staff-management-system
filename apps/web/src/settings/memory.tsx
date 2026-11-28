@@ -22,7 +22,7 @@ export function Memory() {
   const save = (path: string) => {
     setBusy(true);
     void readMemory(path).then(async stored => {
-      if (stored?.version !== version) { notify(CHANGED); return; }
+      if (stored?.version !== version) { notify(CHANGED); await refresh(); return; }
       setVersion((await writeMemory(path, draft)).version); await refresh();
     }).catch(reportError).finally(() => setBusy(false));
   };

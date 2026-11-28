@@ -146,15 +146,35 @@ test('a save after the stored file changed behind the editor shows a notice and 
   await seed(page, SEED);
   await section(page).getByRole('button', { name: 'View overview.md' }).click();
   const agent = '# Memory\n- the agent wrote this';
-  await page.evaluate(async text => { // as an agent write would: same row, text replaced, version + 1
+  await page.evaluate(async text => { // as an agent write would: same row, text and its bytes replaced, version + 1
     const s = '/src/store/database.ts', { projectStore } = await import(s);
-    await projectStore.swapRow('settings', 'memory_files', (row: { id: string; files: { path: string; text: string; version: number }[] }) =>
-      ({ ...row, files: row.files.map(f => f.path === 'overview.md' ? { ...f, text, version: f.version + 1 } : f) }));
+    await projectStore.swapRow('settings', 'memory_files', (row: { id: string; files: { path: string; text: string; version: number; bytes: number }[] }) =>
+      ({ ...row, files: row.files.map(f => f.path === 'overview.md' ? { ...f, text, bytes: new TextEncoder().encode(text).length, version: f.version + 1 } : f) }));
   }, agent);
-  await section(page).getByRole('textbox', { name: 'Memory file overview.md' }).fill('the user edit');
-  await section(page).getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(notices(page)).toContainText('This file changed after you opened it. Close it and view it again to edit the latest text.');
-  expect((await stored(page)).find(f => f.path === 'overview.md')).toMatchObject({ text: agent, version: 2 });
+  const box = section(page).getByRole('textbox', { name: 'Memory file overview.md' }), save = section(page).getByRole('button', { name: 'Save', exact: true });
+  const CHANGED = 'This file changed after you opened it. Close it and view it again to edit the latest text.';
+  const overview = async () => (await stored(page)).find(f => f.path === 'overview.md');
+  await box.fill('the user edit');
+  await save.click();
+  await expect(notices(page)).toContainText(CHANGED);
+  expect(await overview()).toMatchObject({ text: agent, version: 2 });
+  // The list refreshed to the agent's file while the editor kept the user's draft.
+  await expect(box).toHaveValue('the user edit');
+  await expect(section(page).locator('li[data-memory="overview.md"]')).toContainText(`${new TextEncoder().encode(agent).length} B`);
+  await section(page).getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(box).toHaveCount(0);
+  // Viewed again, the editor holds the latest text, and its own saves never trip the check.
+  await section(page).getByRole('button', { name: 'View overview.md' }).click();
+  await expect(box).toHaveValue(agent);
+  const changedBefore = await notices(page).getByText(CHANGED).count();
+  await box.fill('the user edit 2');
+  await save.click();
+  await expect.poll(overview).toMatchObject({ text: 'the user edit 2', version: 3 });
+  expect(await notices(page).getByText(CHANGED).count(), 'no second CHANGED notice').toBeLessThanOrEqual(changedBefore);
+  await box.fill('the user edit 3');
+  await save.click();
+  await expect.poll(overview).toMatchObject({ text: 'the user edit 3', version: 4 });
+  expect(await notices(page).getByText(CHANGED).count(), 'no CHANGED notice on the editor\'s own writes').toBeLessThanOrEqual(changedBefore);
 });
 
 test("T21's Delete local data also wipes memory: the files and the switch", async ({ page }) => {

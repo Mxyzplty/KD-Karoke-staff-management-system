@@ -45,8 +45,8 @@ These describe the export core as built, which agents cannot reach yet.
 
 - **Container and codecs:** MP4 with H.264 video. Audio is AAC-LC at the sample rate, channel count and bitrate in the table; if the browser has no AAC-LC encoder, Opus at the same sample rate and channels, with a message.
 - **Frame rate:** the timeline's fps, constant. A key frame comes at the interval in the table, with no B-frames.
-- **Length:** the frame count is ceil(duration × fps), so the file can run up to one frame past the timeline's end.
-- **Empty lead-in:** if the first item starts after the timeline's start, the empty part before it is not exported. To keep a lead-in, start an item at the very start of the timeline.
+- **Length:** the frame count is ceil((duration − lead-in) × fps), where the lead-in is the earliest start of an item on a visible track (zero when that item starts at the timeline's start). The file can run up to one frame past the timeline's end.
+- **Empty lead-in:** if the first item on a visible track starts after the timeline's start, the empty part before it is not exported. Items on hidden tracks do not count. To keep a lead-in, start an item on a visible track at the very start of the timeline.
 - **Resolution:** `original` keeps the canvas, with an odd side rounded to an even number. The other choices set the long edge (table); the short edge is scaled and rounded to even. Larger than the canvas is an upscale.
 - **Bitrate:** the video target in the table, for variable bitrate; actual rates vary with the content.
 - **Copy exception:** when the timeline is one whole, unedited H.264/AAC clip at the canvas size and fps (no trim, move, speed, keyframes, effects, masks or styling, full volume), its packets are copied, not encoded. The file then keeps the source's bitrate, key frames and audio, and the audio does not pass the limiter.
@@ -67,7 +67,8 @@ These describe the export core as built, which agents cannot reach yet.
   - The tab must stay open and in front: a background tab renders slower, and the browser may take a decoder back (`CODEC_RECLAIMED`).
   - `USER_CANCELLED` means the user stopped it; do not restart without asking.
   - Fix-and-retry codes: `UNRESOLVED_MEDIA` or `MISSING_LOCAL_FILES` (re-add the media), `ASSETS_STILL_UPLOADING` (wait), `FONT_NOT_FOUND` (change the font), `OOM` or `STORAGE_QUOTA` (lower the resolution or free space).
-  - `ENCODE_ERROR` or `AUDIO_FAILED` can be a browser limit, such as no H.264 encoder at that size ("cannot be encoded at" a width and height) or no AAC-LC and no Opus encoder. Retry once at a lower `resolution`; if it fails again, tell the user and stop.
+  - `ENCODE_ERROR` can be a browser limit: no H.264 encoder at that size ("cannot be encoded at" a width and height). Retry once at a lower `resolution`; if it fails again, tell the user and stop.
+  - `AUDIO_FAILED` when the browser has no AAC-LC and no Opus encoder: do not retry, since a lower resolution does not change the audio. Tell the user that this browser cannot encode the sound.
   - `DECODE_ERROR` and other bug codes: report them to the user and do not loop.
 
 | Check | Value | Unit | Meaning |

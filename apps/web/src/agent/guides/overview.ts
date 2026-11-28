@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // T23 getAgentOverview (contracts getAgentOverview, §3h #41; results §2 getAgentOverview; T23 notes "getAgentOverview"). Plain
-// MCP text blocks, no JSON envelope (RC 11.1 A1; lane R's 07:1x follow-up: G-07 0001, A01, G-04 c001; lane F and lane A
-// 07:1x): 1 our orientation; 2 the user's memory/overview.md in a tagged section, G-07's bytes; 3 the open project's
+// MCP text blocks, no JSON envelope (RC 11.8, which corrects 11.1 A1: G-07 0001, A01, G-04 c001;
+// lane F and lane A 07:1x): 1 our orientation; 2 the user's memory/overview.md in a tagged section, G-07's bytes; 3 the open project's
 // template/overview.md when it has a template, or the stored notice before connecting. `refresh` changes nothing.
 import type { ProjectRecord } from '../../store/model';
 import type { ToolResult } from '../protocol';
@@ -29,7 +29,7 @@ export async function getAgentOverview(_input: Record<string, unknown>, ctx: Gui
     const blocks = [ORIENTATION]; // as is: it ends with "\n" and nothing follows (G-07)
     // Ours: empty memory was not captured (RC 11.1 A2), so block 2 is left out.
     if (memory.trim()) blocks.push(memoryBlock(memory));
-    // Block 3 follows connection (lane A 07:1x): the notice only before connecting (G-04 c001); connected, a template's
+    // Block 3 follows connection (RC 11.8; lane A 07:1x): the notice only before connecting (G-04 c001); connected, a template's
     // overview as a plain block (the 21 Oct role) and nothing without one (A01, G-07), a demo too. A call reaches this
     // tab only through a connected link (helper.ts:180-181), so "not connected" here is ours: the project's row is gone.
     if (!record) blocks.push(NO_PROJECT_TEMPLATE);

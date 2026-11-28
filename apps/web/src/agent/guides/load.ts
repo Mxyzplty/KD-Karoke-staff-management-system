@@ -35,7 +35,7 @@ export async function loadSkill(input: Record<string, unknown>, ctx: GuideContex
     }
   }
   // RC B6: with no project open, the mechanics and our creative defaults still load.
-  // A `.editor` id is the mechanics guide alone, with no creative layer (RC 11.2 B5).
+  // A `.editor` id loads the mechanics guide and its related bundle, no creative layer (ours; RC 11.2 B4: not tested).
   const own = ctx.projectId && !skill.technicalOnly ? await templateSkill(ctx.store, ctx.projectId, skill.id) : undefined;
   const fallback = skill.creative ? guide(skill.creative, 'creative') : undefined;
   if (own !== undefined) {
