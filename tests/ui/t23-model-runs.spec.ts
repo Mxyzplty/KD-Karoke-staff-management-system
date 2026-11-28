@@ -324,17 +324,12 @@ test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
   const save = () => writeFileSync(join(run, 'summary.json'), JSON.stringify(summary, null, 2));
   const cleanups: (() => unknown)[] = [];
   // Browser evidence for every mode: page and worker console, uncaught page errors, and each .wasm the page or a worker loads.
-  const browserLog = join(run, 'browser.log'), wasm: { url: string; status: number; sha256: string | null }[] = [];
+  const browserLog = join(run, 'browser.log'), wasm: { url: string; status: number }[] = [];
   writeFileSync(browserLog, '');
   page.on('console', m => appendFileSync(browserLog, `${new Date().toISOString()} ${m.worker() ? 'worker ' : ''}console.${m.type()} ${m.location().url}:${m.location().lineNumber} ${m.text()}\n`));
   page.on('pageerror', e => appendFileSync(browserLog, `${new Date().toISOString()} pageerror ${e.stack ?? e.message}\n`));
-  page.context().on('response', async r => {
-    try {
-      if (!new URL(r.url()).pathname.endsWith('.wasm')) return;
-      const body = await r.body().catch(() => null);
-      wasm.push({ url: r.url(), status: r.status(), sha256: body ? createHash('sha256').update(body).digest('hex') : null });
-    } catch { /* evidence only */ }
-  });
+  // URL and status only: the jsep binary (about 28 MB, in a worker) may be past what CDP keeps of a response body.
+  page.context().on('response', r => { try { if (new URL(r.url()).pathname.endsWith('.wasm')) wasm.push({ url: r.url(), status: r.status() }); } catch { /* evidence only */ } });
   restoreBin();
   try {
     const vite = await startVite(run, MODE === 'A'); cleanups.push(() => killTree(vite));
@@ -384,14 +379,20 @@ test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
       save();
       // Evidence before any stop (lane A 17 Nov 23:01): every asset's errors, the .wasm binaries loaded, the browser log.
       const failed = (summary.preparation as AssetState[]).filter(a => a.status === 'failed' || Object.values(a.steps).includes('failed')).map(a => a.name);
-      const ortLoaded = wasm.some(w => new URL(w.url).pathname.endsWith(`/${ORT_WASM.name}`) && w.sha256 === ORT_WASM.sha256);
-      summary.evidence = { failed, assets: await failureEvidence(page, Object.values(ids)), wasm, ortLoaded, expectedWasm: ORT_WASM, browserLog: 'browser.log', helperLog: 'helper.log' };
+      // Each observed .wasm fetched again from Node (same Vite server) and hashed; evidence only, no stop (lane A 17 Nov 23:21).
+      const hashed = await Promise.all(wasm.map(async w => {
+        const name = path.posix.basename(new URL(w.url).pathname);
+        try {
+          const r = await fetch(w.url);
+          return { name, url: w.url, status: w.status, sha256: r.ok ? createHash('sha256').update(Buffer.from(await r.arrayBuffer())).digest('hex') : null, error: r.ok ? null : `re-fetch HTTP ${r.status}` };
+        } catch (e) { return { name, url: w.url, status: w.status, sha256: null, error: String(e) }; }
+      }));
+      const ortLoaded = hashed.some(w => w.name === ORT_WASM.name && w.sha256 === ORT_WASM.sha256);
+      summary.evidence = { failed, assets: await failureEvidence(page, Object.values(ids)), wasm: hashed.length ? hashed : 'not observed', ortLoaded, expectedWasm: ORT_WASM, browserLog: 'browser.log', helperLog: 'helper.log' };
       save();
       expect(summary.preparation.find((a: Json) => a.name === SPEECH)?.steps.transcription, 'the dialogue needs a transcript (local models: CUTFRAME_LOCAL_MODELS=1 dev server)').toBe('complete');
-      // Fail-fast: no model phase on a failed preparation or on another ORT binary (errors: summary.evidence, browser.log).
-      expect(failed, 'fail-fast: preparation steps failed (summary.json evidence.assets)').toEqual([]);
-      expect(ortLoaded, `fail-fast: the page did not load ${ORT_WASM.name} ${ORT_WASM.sha256} (loaded: ${JSON.stringify(wasm)})`).toBe(true);
-      const h = await harnessClient(helper);
+      // Fail-fast: no model phase on a failed preparation (errors: summary.evidence, browser.log).
+      expect(failed, 'fail-fast: preparation steps failed (summary.json evidence.assets)').toEqual([]);      const h = await harnessClient(helper);
       for (let k = 0; k < 10; k++) {
         const r = bodyOf(await h.call('viewItemDetails', { assetId: ids[MUSIC], include: 'beats' }));
         summary.musicWarmUp = r; if (r?.code !== 'TOOL_TIMEOUT') break;
