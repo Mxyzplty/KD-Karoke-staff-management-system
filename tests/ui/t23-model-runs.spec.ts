@@ -392,7 +392,8 @@ test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
       save();
       expect(summary.preparation.find((a: Json) => a.name === SPEECH)?.steps.transcription, 'the dialogue needs a transcript (local models: CUTFRAME_LOCAL_MODELS=1 dev server)').toBe('complete');
       // Fail-fast: no model phase on a failed preparation (errors: summary.evidence, browser.log).
-      expect(failed, 'fail-fast: preparation steps failed (summary.json evidence.assets)').toEqual([]);      const h = await harnessClient(helper);
+      expect(failed, 'fail-fast: preparation steps failed (summary.json evidence.assets)').toEqual([]);
+      const h = await harnessClient(helper);
       for (let k = 0; k < 10; k++) {
         const r = bodyOf(await h.call('viewItemDetails', { assetId: ids[MUSIC], include: 'beats' }));
         summary.musicWarmUp = r; if (r?.code !== 'TOOL_TIMEOUT') break;
