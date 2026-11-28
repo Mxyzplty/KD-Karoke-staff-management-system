@@ -93,12 +93,14 @@ const docOf = (page: Page, id: string) => page.evaluate(async id => {
  *  only, the 9:16 starting state RF-P02 needs: resizeCanvas 9:16 and transformItem {fillCanvas} through the app's functions. */
 type Placed = { natural: { width: number; height: number }; stored: Record<string, number>; placement: Record<string, number>; dryFill: { canvas: { width: number; height: number }; drawnBox: { x: number; y: number; width: number; height: number } } };
 const placeClip = (page: Page, projectId: string, assetId: string, itemId: string): Promise<Placed> => page.evaluate(async ({ projectId, assetId, itemId }) => {
-  const s = '/src/store/database.ts', it = '/src/timeline/items.ts', tr = '/src/timeline/tracks.ts', pr = '/src/timeline/properties.ts';
-  const { projectStore } = await import(s), items = await import(it), tracks = await import(tr), props = await import(pr);
+  const s = '/src/store/database.ts', it = '/src/timeline/items.ts', tr = '/src/timeline/tracks.ts', pr = '/src/timeline/properties.ts', pp = '/src/media/prepare.ts';
+  const { projectStore } = await import(s), items = await import(it), tracks = await import(tr), props = await import(pr), { prepareAsset } = await import(pp);
+  // uploadAsset only stores the file; the app's own upload also starts preparation (media/ingest.ts startPreparation), not awaited.
+  void prepareAsset(projectStore, assetId).catch(() => 'failed');
   let asset: any = null;
   for (const end = Date.now() + 120_000; ; await new Promise(r => setTimeout(r, 500))) {
     asset = (await projectStore.library()).assets.find((a: any) => a.id === assetId);
-    if (asset && items.naturalSize(asset)) break;
+    if (asset?.processing_status === 'ready' && items.naturalSize(asset)) break;
     if (asset?.processing_status === 'failed' || Date.now() > end) throw new Error(`asset ${assetId} has no display size (${asset?.processing_status})`);
   }
   const { document } = await projectStore.read(projectId), statics = (i: any) => props.statics(i) as Record<string, number>;
