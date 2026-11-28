@@ -105,7 +105,7 @@ test('Delete removes one file and keeps the others', async ({ page }) => {
   await expect(section(page).locator('li[data-memory="overview.md"]')).toHaveCount(0);
   await expect.poll(async () => (await stored(page)).map(f => f.path).sort()).toEqual(['brand.md', 'projects/next.md']);
   await page.reload();
-  expect(await items(page).evaluateAll(li => li.map(e => e.getAttribute('data-memory')))).toEqual(['brand.md', 'projects/next.md']);
+  await expect.poll(() => items(page).evaluateAll(li => li.map(e => e.getAttribute('data-memory')))).toEqual(['brand.md', 'projects/next.md']);
 });
 
 test('Clear all asks first: Cancel keeps the files, confirming leaves "No memory saved" and the switch as it was', async ({ page }) => {
