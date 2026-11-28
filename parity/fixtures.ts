@@ -23,7 +23,7 @@ export function manifestFiles(markdown: string): FixtureFile[] {
     const bytes = cells.find(c => /^\d+$/.test(c));
     if (!bytes) throw Error(`Manifest has no byte length: ${name}`);
     const folder = section.includes('Synthetic') ? 'synthetic' : section.includes('Fonts') ? 'fonts' : 'corpus';
-    const isRepo = /^OT-[367] /.test(name);
+    const isRepo = /^(OT-[367]|SUBJ) /.test(name);
     const relative = isRepo ? `fixtures/${name}` : name.includes('/') ? name : `${folder}/${name}`;
     if (path.isAbsolute(relative) || relative.split(/[\\/]/).some(s => s === '..' || s === '.')) throw Error(`Unsafe fixture path: ${name}`);
     files.push({ name, relative, sha256: hashCell.slice(1, -1), bytes: Number(bytes), location: isRepo ? 'repo' : 'store' });
