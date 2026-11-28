@@ -34,7 +34,13 @@ export type Template = {
   /** Set, with `saved: false`, on a project's own template that a lesson made and no click has saved yet (D99): the first
    *  "Save to My templates" then takes its name, fonts and colours from the project. A removed template does not have it. */
   neverSaved?: true;
+  /** The template's own text files (T23 workspace `template/`): `skills/<id>.md` and `examples/<name>`, written by the agent
+   *  while Learn is on. Text only. They travel in a template file like the preferences. Absent = none. */
+  files?: TemplateTextFile[];
 };
+export type TemplateTextFile = { path: string; text: string; version: number; updatedAt: string };
+export const TEMPLATE_FILE_PATH = /^(skills\/[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)*\.md|examples\/[A-Za-z0-9][A-Za-z0-9._ -]*)$/;
+export const TEMPLATE_FILE_MAX_CHARS = 200_000;
 export const TEMPLATE_VERSION = 1, BUILT_IN_FAMILY = 'Cutframe', PERSONAL_FAMILY = 'Personal';
 /** The document key new items read (plan P3). */
 export type TemplateDefaults = FontDefaults & { templateId: string; epoch: number; palette: Swatch[] };
@@ -45,8 +51,8 @@ export const defaultFont = (doc: Record<string, unknown>, key: 'titlesFont' | 'c
 };
 export const defaultsOf = (t: Template, epoch: number): TemplateDefaults => ({ templateId: t.id, epoch, ...t.defaults, palette: t.palette.map(s => ({ ...s })) });
 
-const KEYS = ['id', 'name', 'family', 'author', 'palette', 'examples', 'assets', 'defaults', 'captionTemplateId', 'presetIds', 'guidance', 'learning', 'preferences', 'version', 'savedAt', 'basedOn', 'fromProject', 'saved', 'neverSaved'];
-const OPTIONAL = ['captionTemplateId', 'basedOn', 'fromProject', 'saved', 'neverSaved'];
+const KEYS = ['id', 'name', 'family', 'author', 'palette', 'examples', 'assets', 'defaults', 'captionTemplateId', 'presetIds', 'guidance', 'learning', 'preferences', 'version', 'savedAt', 'basedOn', 'fromProject', 'saved', 'neverSaved', 'files'];
+const OPTIONAL = ['captionTemplateId', 'basedOn', 'fromProject', 'saved', 'neverSaved', 'files'];
 const text = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
 const plain = (v: unknown): v is RecordData => !!v && typeof v === 'object' && !Array.isArray(v);
 /** The keys of `o` outside `allowed`, or the missing ones, as a reason; null when the keys are exactly right. */
@@ -101,6 +107,21 @@ export function templateProblem(r: unknown): string | null {
   if (r.captionTemplateId !== undefined && !text(r.captionTemplateId)) return 'captionTemplateId is not text';
   if (!Array.isArray(r.presetIds) || r.presetIds.some((p: unknown) => !text(p))) return 'presetIds is not a list of ids';
   if (r.basedOn !== undefined && r.basedOn !== r.id) return 'basedOn must equal id';
+  if (r.files !== undefined) {
+    if (!Array.isArray(r.files)) return 'files is not a list';
+    const seen = new Set<string>();
+    for (const [n, f] of r.files.entries()) {
+      if (!plain(f)) return `files[${n}] is not an object`;
+      const k = keysProblem(f, ['path', 'text', 'version', 'updatedAt']);
+      if (k) return `files[${n}]: ${k}`;
+      if (typeof f.path !== 'string' || !TEMPLATE_FILE_PATH.test(f.path)) return `files[${n}]: path must be skills/<id>.md or examples/<name>`;
+      if (seen.has(f.path)) return `files[${n}]: ${f.path} appears twice`;
+      seen.add(f.path);
+      if (typeof f.text !== 'string' || f.text.length > TEMPLATE_FILE_MAX_CHARS) return `files[${n}]: text must be at most ${TEMPLATE_FILE_MAX_CHARS} characters`;
+      if (!Number.isInteger(f.version) || f.version < 1) return `files[${n}]: version must be a whole number of at least 1`;
+      if (!text(f.updatedAt)) return `files[${n}]: updatedAt is missing`;
+    }
+  }
   return null;
 }
 /** Every `{name, ref}` of a template, examples first. */

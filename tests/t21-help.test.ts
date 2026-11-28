@@ -31,8 +31,8 @@ describe('help corpus', () => {
       ['one', 'One', 'Parent', 'First body.'], ['two', 'Two', 'Parent', 'Second body.'],
     ]);
   });
-  test('HELP_TOOLS is exactly the two help tools', () => {
-    expect([...HELP_TOOLS].sort()).toEqual(['getHelpSection', 'searchHelpDocs']);
+  test('HELP_TOOLS is exactly the two help tools and the two T23 guide reads', () => {
+    expect([...HELP_TOOLS].sort()).toEqual(['getAgentOverview', 'getHelpSection', 'loadSkill', 'searchHelpDocs']);
   });
 });
 

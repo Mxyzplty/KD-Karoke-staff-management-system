@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// The helper's own JSON Schemas for the 46 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks, T09 captions, T22 applyPreset / browsePresets / fonts; agent tool results §4 rule 1). Every call is
+// The helper's own JSON Schemas for the 49 served tools (T18a ledger row 6, T21 help tools, T08, T19 D, T10 writeEffects, T06 shapes, T07 layouts, T11 applyTransition, T05 addText, T12 masks and smart masks, T09 captions, T22 applyPreset / browsePresets / fonts, T23 getAgentOverview / loadSkill / workspace; agent tool results §4 rule 1). Every call is
 // checked here before the tab sees it; a violation answers Xapp's server shape:
 // {success:false, code:"INVALID_TOOL_INPUT", error:"Invalid input for <tool>", message:"<path>: <reason>", details:{errors:[{path, code, message}]}}.
 // Paths use Xapp's stored form ("$.items.0.trackId"); detail codes are the upper-cased JSON Schema keyword (MAXIMUM, MINITEMS,
@@ -11,6 +11,7 @@
 import Ajv from 'ajv';
 import type { ErrorObject, ValidateFunction } from 'ajv';
 import { EASING_NAMES, SERVED_TOOLS } from '../../web/src/agent/protocol';
+import { GUIDE_TOOL_LIST } from '../../web/src/agent/guides/schemas';
 
 type Schema = Record<string, unknown>;
 export type Tool = { name: string; description: string; inputSchema: Schema };
@@ -241,6 +242,7 @@ const TOOL_LIST: Tool[] = [
     inputSchema: obj({ selectionId: str, sourceStartSeconds: secs('Range start, source time (inclusive)'), sourceEndSeconds: secs('Range end, source time (exclusive)'), name: str }, ['selectionId', 'sourceStartSeconds', 'sourceEndSeconds']) },
   { name: 'removeBackground', description: 'Automatic subject selection kept as a persistent binary smart mask on a video item, over the whole item (up to 5 minutes of source). Works well for people; for a specific object draw strokes instead. One job runs at a time, others wait. Waits for the finished mask.',
     inputSchema: obj({ itemId: str, name: str }, ['itemId']) },
+  ...GUIDE_TOOL_LIST, // T23: getAgentOverview, loadSkill, workspace
 ];
 export const TOOLS: Tool[] = TOOL_LIST.filter(t => (SERVED_TOOLS as readonly string[]).includes(t.name));
 

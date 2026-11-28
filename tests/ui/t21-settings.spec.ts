@@ -9,10 +9,10 @@ const leaks = new WeakMap<Page, string[]>();
 test.beforeEach(async ({ page }) => { leaks.set(page, guard(page)); await skipTour(page); });
 test.afterEach(async ({ page }) => { expect(leaks.get(page), 'requests that left localhost').toEqual([]); });
 
-test('/settings shows the six sections in order', async ({ page }) => {
+test('/settings shows the seven sections in order', async ({ page }) => {
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
-  await expect(page.locator('.settings > section > h2')).toHaveText(['Profile', 'Local usage', 'AI and services', 'Storage', 'External Agent (MCP)', 'Danger Zone']);
+  await expect(page.locator('.settings > section > h2')).toHaveText(['Profile', 'Local usage', 'AI and services', 'Storage', 'External Agent (MCP)', 'Agent memory', 'Danger Zone']);
   await expect(page.getByTestId('local-usage')).toBeVisible();
   await expect(page.getByText('Plan: free and open source (AGPL-3.0).')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete local data' })).toBeVisible();

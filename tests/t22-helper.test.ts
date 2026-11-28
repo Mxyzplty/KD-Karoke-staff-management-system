@@ -114,8 +114,8 @@ const REFUSED: { label: string; tool: string; input: Rec; errors: InputError[] }
 ];
 
 describe('H1: T22 agent schemas and discovery metadata', () => {
-  it('46 helper tools include all three T22 tools in the required served positions, also present in SERVED_TOOLS', () => {
-    const names = TOOLS.map(t => t.name); expect(TOOLS).toHaveLength(46); expect(new Set(names).size).toBe(46);
+  it('49 helper tools include all three T22 tools in the required served positions, also present in SERVED_TOOLS', () => { // T23 (C8): 46 → 49
+    const names = TOOLS.map(t => t.name); expect(TOOLS).toHaveLength(49); expect(new Set(names).size).toBe(49);
     for (const tool of NEW_TOOLS) { expect(names).toContain(tool); expect(SERVED_TOOLS).toContain(tool); }
     for (const order of [names, [...SERVED_TOOLS]]) for (const [before, after] of [['addText', 'applyPreset'], ['applyTransition', 'browsePresets'], ['editProperties', 'fonts']]) {
       expect(order.indexOf(before)).toBeGreaterThanOrEqual(0); expect(order.indexOf(after)).toBe(order.indexOf(before) + 1);
@@ -190,7 +190,7 @@ describe('H2: schema and missing-tab refusals', () => {
 describe.each(['Streamable HTTP', 'stdio'] as const)('H2: MCP discovery and refusal over %s', transport => {
   async function client() { return transport === 'Streamable HTTP' ? mcpClient(await start()) : stdioClient(); }
   it('tools/list advertises all three T22 tools with their exact closed inputSchema', async () => {
-    const connection = await client(), { tools } = await connection.listTools(); expect(tools).toHaveLength(46);
+    const connection = await client(), { tools } = await connection.listTools(); expect(tools).toHaveLength(49); // T23 (C8): 46 → 49
     for (const name of NEW_TOOLS) {
       const tool = tools.find(t => t.name === name); expect(tool, name).toBeDefined(); expect(tool!.inputSchema).toEqual(definition(name).inputSchema); schemaContract(name, tool!.inputSchema);
     }

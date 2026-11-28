@@ -20,15 +20,16 @@ export const RECONNECT_STABLE_MS = 5000;
 /** WebSocket close codes the helper uses (4000–4999 are application codes). */
 export const CLOSE = { superseded: 4409, unauthorized: 4401, replaced: 4410, protocol: 4400, shutdown: 4503 } as const;
 
-/** The 46 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
+/** The 49 served tools: the 15 T03 tools, the 3 T04 tools (editProperties, setTimeRemap, writeKeyframes), the 2 T08 tools
  *  (addMotionGraphic, editMotionGraphic), T19's syncAndSwap and viewItemDetails (transcript, keyframes, beats), T10's
  *  writeEffects, T06's addShape and writeShapePoints, T07's addLayout and editLayout, T11's applyTransition, T05's addText,
  *  T21's getHelpSection and searchHelpDocs, T12's createMask, editMaskProperties, removeMask, writeMaskPoints, viewMaskFrame, previewSmartMask, trackSmartMask and
- *  removeBackground, T09's addCaptions, editAllCaptionStyles and listCaptionTemplates, T22's applyPreset, browsePresets and fonts, and `context` (layout L). Every other T18 name stays unserved (searchProjectAssets / searchUserLibrary
+ *  removeBackground, T09's addCaptions, editAllCaptionStyles and listCaptionTemplates, T22's applyPreset, browsePresets and fonts, T23's getAgentOverview, loadSkill and workspace, and `context` (layout L). Every other T18 name stays unserved (searchProjectAssets / searchUserLibrary
  *  too: Q6). T22 serves applyPreset, browsePresets and `fonts`. */
 export const SERVED_TOOLS = ['addCaptions', 'addLayout', 'addMedia', 'addMotionGraphic', 'addShape', 'addText', 'applyPreset', 'applyTransition', 'browsePresets', 'changeTrack', 'cloneItem', 'consolidateTracks', 'context', 'createMask', 'deleteItems', 'editAllCaptionStyles', 'editLayout', 'editMaskProperties', 'editMotionGraphic', 'editProperties', 'fonts', 'getHelpSection', 'listCaptionTemplates', 'manageMarkers', 'manageTrack',
   'manageTrackGroup', 'moveItem', 'removeMask', 'reorderItems', 'resizeCanvas', 'searchHelpDocs', 'setTimeRemap', 'slipItem', 'splitItem', 'syncAndSwap', 'transformItem', 'trimItem', 'viewItemDetails',
-  'writeEffects', 'writeKeyframes', 'writeMaskPoints', 'writeShapePoints', 'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground'] as const;
+  'writeEffects', 'writeKeyframes', 'writeMaskPoints', 'writeShapePoints', 'viewMaskFrame', 'previewSmartMask', 'trackSmartMask', 'removeBackground',
+  'getAgentOverview', 'loadSkill', 'workspace'] as const; // T23
 /** Calls that wait for a mask job: they have no client time-out shorter than the job (T12) and do not hold up other mutating calls;
  *  the job queue runs them one at a time. */
 export const LONG_TOOLS = new Set(['trackSmartMask', 'removeBackground']);
@@ -37,9 +38,9 @@ export const EASING_NAMES = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'easeIn
   'easeInBack', 'easeOutBack', 'easeInOutBack', 'easeOutElastic', 'easeOutBounce'] as const;
 /** Read-only set: skips the execution ledger and `timelineChanges` (agent tool results A0.2 item 1). */
 export const READ_ONLY = new Set(['viewItemDetails', 'context', 'fonts', 'browsePresets', 'listEffects', 'getEffectDetails', 'captureFrame', 'viewMaskFrame', 'previewSmartMask', 'listAllowedDir',
-  'listCaptionTemplates', 'getMotionGraphicCode', 'searchStockMedia', 'searchHelpDocs', 'getHelpSection']);
-/** T21: answered before the project check, because they need no project. */
-export const HELP_TOOLS: ReadonlySet<string> = new Set(['searchHelpDocs', 'getHelpSection']);
+  'listCaptionTemplates', 'getMotionGraphicCode', 'searchStockMedia', 'searchHelpDocs', 'getHelpSection', 'getAgentOverview', 'loadSkill']);
+/** T21 (and T23's getAgentOverview, loadSkill): answered before the project check, because they need no project. */
+export const HELP_TOOLS: ReadonlySet<string> = new Set(['searchHelpDocs', 'getHelpSection', 'getAgentOverview', 'loadSkill']);
 /** Timeline-scope stale-read gate (agent tool results A0.2 item 3): always checked for these tools. */
 export const TIMELINE_GATED = new Set(['addMedia', 'addText', 'addShape', 'addCaptions', 'addMotionGraphic', 'addLayout', 'changeTrack', 'cloneItem', 'consolidateTracks',
   'deleteItems', 'manageTrack', 'manageTrackGroup', 'moveItem', 'reorderItems', 'splitItem', 'slipItem', 'trimItem']);

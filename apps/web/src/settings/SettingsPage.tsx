@@ -13,6 +13,7 @@ import type { Backup } from './backup';
 import { ClientGuide, CopyLine, GUIDES, HELPER_COMMAND, Troubleshooting } from './guides';
 import { deleteLocalData, formatBytes, localUsage, readParity, readProfile, saveParity, saveProfile } from './local';
 import type { LocalUsage as Figures } from './local';
+import { Memory } from './memory';
 import { modelLine } from './meter';
 import { resetOnboarding } from './onboarding';
 import { billingOf, modelFor, readProviders } from './providers';
@@ -117,5 +118,5 @@ function DangerZone() {
 }
 export function SettingsPage({ navigate }: { navigate: (path: string) => void }) {
   useEffect(() => { if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView(); }, []);
-  return <div className="settings"><h1>Settings</h1><Profile navigate={navigate} /><LocalUsage navigate={navigate} /><Services /><Storage /><ExternalAgent /><DangerZone /></div>;
+  return <div className="settings"><h1>Settings</h1><Profile navigate={navigate} /><LocalUsage navigate={navigate} /><Services /><Storage /><ExternalAgent /><Memory /><DangerZone /></div>;
 }

@@ -154,9 +154,13 @@ describe('t18a schemas (row 6)', () => {
     ['previewSmartMask', { frameRef: 'r1', strokes: [] }, [{ path: '$.strokes', code: 'MINITEMS', message: 'must NOT have fewer than 1 items' }]],
     ['trackSmartMask', { sourceStartSeconds: 0, sourceEndSeconds: 1 }, [{ path: '$.selectionId', code: 'REQUIRED', message: REQUIRED('selectionId') }]],
     ['removeBackground', { name: 'x' }, [{ path: '$.itemId', code: 'REQUIRED', message: REQUIRED('itemId') }]],
+    // T23 (C8 assertion-only edit): getAgentOverview, loadSkill and workspace are served; their rows are schema refusals like the others.
+    ['getAgentOverview', { refresh: 'yes' }, [{ path: '$.refresh', code: 'TYPE', message: 'must be boolean' }]],
+    ['loadSkill', {}, [{ path: '$.skillName', code: 'REQUIRED', message: REQUIRED('skillName') }]],
+    ['workspace', { command: 'mv' }, [{ path: '$.command', code: 'ENUM', message: ENUM_MSG }]],
   ];
 
-  it('row 6: the table covers exactly the 46 served tools', () => { // T09 (C8 assertion-only edit): 40 → 43; T22 (C8): 43 → 46
+  it('row 6: the table covers exactly the 49 served tools', () => { // T09 (C8 assertion-only edit): 40 → 43; T22 (C8): 43 → 46; T23 (C8): 46 → 49
     expect(TABLE.map(r => r[0])).toEqual([...SERVED_TOOLS]);
   });
 
@@ -237,7 +241,7 @@ describe('t18a schemas (row 6)', () => {
     expect(await helper.call('addMedia', { assetId: 'a', trackId: 't', timelineStart: 1 }, undefined)).toEqual(open);
   });
 
-  it('row 6: valid minimal input for all 46 tools passes the schema (and only then meets the tab)', async () => { // T09 (C8 assertion-only edit): 40 → 43; T22 (C8): 43 → 46
+  it('row 6: valid minimal input for all 49 tools passes the schema (and only then meets the tab)', async () => { // T09 (C8 assertion-only edit): 40 → 43; T22 (C8): 43 → 46; T23 (C8): 46 → 49
     const { helper } = await start();
     const valid: Record<string, unknown> = {
       addCaptions: { trackId: 'C1' } /* T09 (C8) */, addLayout: { layoutType: 'grid-2x2' } /* T07 (C8) */, addMedia: { assetId: 'video_1' }, addMotionGraphic: { code: 'export const G = () => null;', summary: 'A graphic.', width: 100, height: 100, x: 0, y: 0, trackId: 't' },
@@ -266,6 +270,7 @@ describe('t18a schemas (row 6)', () => {
       previewSmartMask: { frameRef: 'r1', strokes: [{ label: 1, points: [[0.5, 0.5]], radius: 0.1 }] },
       trackSmartMask: { selectionId: 's1', sourceStartSeconds: 0, sourceEndSeconds: 1 },
       removeBackground: { itemId: 'v1' },
+      getAgentOverview: {}, loadSkill: { skillName: 'transitions' }, workspace: { command: 'ls' }, // T23 (C8)
     };
     expect(Object.keys(valid)).toEqual([...SERVED_TOOLS]);
     for (const tool of SERVED_TOOLS) expect(await helper.call(tool, valid[tool], undefined), tool).toEqual({ success: false, code: 'TAB_NOT_CONNECTED', error: NOT_CONNECTED_ERROR });

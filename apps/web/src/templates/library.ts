@@ -131,7 +131,7 @@ export async function saveProjectTemplate(store: ProjectStore, projectId: string
   let result: Template | undefined;
   await store.swapRow<Row>('settings', TEMPLATES_ROW, row => {
     const r = clean(row), own = r.templates.find(t => t.fromProject === projectId);
-    result = !own ? fresh : !own.neverSaved ? marked(own, true) : fresh && { ...fresh, id: own.id, guidance: own.guidance, learning: own.learning, preferences: own.preferences };
+    result = !own ? fresh : !own.neverSaved ? marked(own, true) : fresh && { ...fresh, id: own.id, guidance: own.guidance, learning: own.learning, preferences: own.preferences, ...(own.files ? { files: own.files } : {}) };
     return !result || own && own.saved !== false ? null : { ...r, templates: [...r.templates.filter(t => t.id !== result!.id), result] };
   });
   if (!result) throw templateError('TEMPLATE_NOT_FOUND'); // deleted, or made by a lesson, between the two reads
