@@ -121,14 +121,14 @@ const assetsOf = (page: Page, id: string): Promise<AssetState[]> => page.evaluat
   const ids = new Set(lib.links.filter((l: any) => l.projectId === id && l.deleted_at === null).map((l: any) => l.assetId));
   return lib.assets.filter((a: any) => ids.has(a.id)).map((a: any) => ({ id: a.id as string, name: a.name as string, status: a.processing_status as string, steps: (a.processing_steps ?? {}) as Record<string, string> }));
 }, id);
-/** Run A evidence (lane A 17 Nov 23:01): per asset the stored error code and message, the preparation record's code and the
- *  transcript row (the only T19 row that keeps the worker's error text, analysis/steps.ts transcriptionStep). */
+/** Run A evidence (lane A 17 Nov 23:01): per asset the stored error code and message, the preparation record's phase, code
+ *  and per-step errors (stepErrors, media/prepare.ts), and the transcript row (analysis/steps.ts transcriptionStep). */
 const failureEvidence = (page: Page, ids: string[]) => page.evaluate(async ids => {
   const s = '/src/store/database.ts', { projectStore } = await import(s);
   return Promise.all(ids.map(async id => {
     const a: any = await projectStore.row('assets', id), p: any = await projectStore.row('preparations', id), t: any = await projectStore.row('transcripts', id);
     return { id, name: a?.name, status: a?.processing_status, steps: a?.processing_steps ?? {}, lastErrorCode: a?.last_error_code ?? null, lastErrorMessage: a?.last_error_message ?? null,
-      preparation: p ? { phase: p.phase, code: p.code ?? null } : null, transcript: t ? { status: t.status, error: t.error ?? null, reason: t.reason ?? null } : null };
+      preparation: p ? { phase: p.phase, code: p.code ?? null, stepErrors: p.stepErrors ?? null } : null, transcript: t ? { status: t.status, error: t.error ?? null, reason: t.reason ?? null } : null };
   }));
 }, ids);
 const ORT_WASM = { name: 'ort-wasm-simd-threaded.jsep.wasm', sha256: '62ff86b2f2fa3a79eb87a7e4720e8ea9051942bf975f314181bf7dcef2feac06' };
