@@ -7,6 +7,7 @@
 // is set. Each run writes its stream log, final document and summary under test-results/t23-runs/<mode>-<timestamp>/.
 // The spec starts its own dev server (CUTFRAME_T23_PORT, default 4231; local models only in mode A) and stops it after.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
@@ -118,6 +119,17 @@ const assetsOf = (page: Page, id: string): Promise<AssetState[]> => page.evaluat
   const ids = new Set(lib.links.filter((l: any) => l.projectId === id && l.deleted_at === null).map((l: any) => l.assetId));
   return lib.assets.filter((a: any) => ids.has(a.id)).map((a: any) => ({ id: a.id as string, name: a.name as string, status: a.processing_status as string, steps: (a.processing_steps ?? {}) as Record<string, string> }));
 }, id);
+/** Run A evidence (lane A 17 Nov 23:01): per asset the stored error code and message, the preparation record's code and the
+ *  transcript row (the only T19 row that keeps the worker's error text, analysis/steps.ts transcriptionStep). */
+const failureEvidence = (page: Page, ids: string[]) => page.evaluate(async ids => {
+  const s = '/src/store/database.ts', { projectStore } = await import(s);
+  return Promise.all(ids.map(async id => {
+    const a: any = await projectStore.row('assets', id), p: any = await projectStore.row('preparations', id), t: any = await projectStore.row('transcripts', id);
+    return { id, name: a?.name, status: a?.processing_status, steps: a?.processing_steps ?? {}, lastErrorCode: a?.last_error_code ?? null, lastErrorMessage: a?.last_error_message ?? null,
+      preparation: p ? { phase: p.phase, code: p.code ?? null } : null, transcript: t ? { status: t.status, error: t.error ?? null, reason: t.reason ?? null } : null };
+  }));
+}, ids);
+const ORT_WASM = { name: 'ort-wasm-simd-threaded.jsep.wasm', sha256: '62ff86b2f2fa3a79eb87a7e4720e8ea9051942bf975f314181bf7dcef2feac06' };
 
 /** Runs the stand-in user with the notes' exact flags from an empty folder; the stream goes to disk line by line. */
 async function runModel(run: string, helperPort: number, configDir: string, prompt: string, minutes: number) {
@@ -311,6 +323,18 @@ test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
   const summary: Json = { mode: MODE, started: new Date().toISOString(), run, base: BASE, model: MODEL };
   const save = () => writeFileSync(join(run, 'summary.json'), JSON.stringify(summary, null, 2));
   const cleanups: (() => unknown)[] = [];
+  // Browser evidence for every mode: page and worker console, uncaught page errors, and each .wasm the page or a worker loads.
+  const browserLog = join(run, 'browser.log'), wasm: { url: string; status: number; sha256: string | null }[] = [];
+  writeFileSync(browserLog, '');
+  page.on('console', m => appendFileSync(browserLog, `${new Date().toISOString()} ${m.worker() ? 'worker ' : ''}console.${m.type()} ${m.location().url}:${m.location().lineNumber} ${m.text()}\n`));
+  page.on('pageerror', e => appendFileSync(browserLog, `${new Date().toISOString()} pageerror ${e.stack ?? e.message}\n`));
+  page.context().on('response', async r => {
+    try {
+      if (!new URL(r.url()).pathname.endsWith('.wasm')) return;
+      const body = await r.body().catch(() => null);
+      wasm.push({ url: r.url(), status: r.status(), sha256: body ? createHash('sha256').update(body).digest('hex') : null });
+    } catch { /* evidence only */ }
+  });
   restoreBin();
   try {
     const vite = await startVite(run, MODE === 'A'); cleanups.push(() => killTree(vite));
@@ -358,7 +382,15 @@ test(`T23 stand-in user run: ${MODE}`, async ({ page }) => {
         await sleep(10_000);
       }
       save();
+      // Evidence before any stop (lane A 17 Nov 23:01): every asset's errors, the .wasm binaries loaded, the browser log.
+      const failed = (summary.preparation as AssetState[]).filter(a => a.status === 'failed' || Object.values(a.steps).includes('failed')).map(a => a.name);
+      const ortLoaded = wasm.some(w => new URL(w.url).pathname.endsWith(`/${ORT_WASM.name}`) && w.sha256 === ORT_WASM.sha256);
+      summary.evidence = { failed, assets: await failureEvidence(page, Object.values(ids)), wasm, ortLoaded, expectedWasm: ORT_WASM, browserLog: 'browser.log', helperLog: 'helper.log' };
+      save();
       expect(summary.preparation.find((a: Json) => a.name === SPEECH)?.steps.transcription, 'the dialogue needs a transcript (local models: CUTFRAME_LOCAL_MODELS=1 dev server)').toBe('complete');
+      // Fail-fast: no model phase on a failed preparation or on another ORT binary (errors: summary.evidence, browser.log).
+      expect(failed, 'fail-fast: preparation steps failed (summary.json evidence.assets)').toEqual([]);
+      expect(ortLoaded, `fail-fast: the page did not load ${ORT_WASM.name} ${ORT_WASM.sha256} (loaded: ${JSON.stringify(wasm)})`).toBe(true);
       const h = await harnessClient(helper);
       for (let k = 0; k < 10; k++) {
         const r = bodyOf(await h.call('viewItemDetails', { assetId: ids[MUSIC], include: 'beats' }));
